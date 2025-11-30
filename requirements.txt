@@ -11,7 +11,8 @@ websocket-client>=1.6.0
 # Data Analysis
 pandas>=2.0.0
 numpy>=1.24.0
-pandas-ta>=0.3.14b0
+# Technical Analysis - using ta instead of pandas-ta for better compatibility
+ta>=0.11.0
 
 # Database
 sqlalchemy>=2.0.0
