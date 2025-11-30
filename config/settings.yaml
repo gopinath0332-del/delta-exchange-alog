@@ -1,0 +1,44 @@
+# Trading Configuration
+
+# Supported timeframes for analysis
+timeframes:
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+
+# Backtesting Configuration
+backtesting:
+  initial_capital: 100000
+  # Delta Exchange fees (as of 2024)
+  commission_maker: 0.0004 # 0.04% maker fee
+  commission_taker: 0.0006 # 0.06% taker fee
+  slippage: 0.0001 # 0.01% conservative estimate
+
+# Risk Management Rules
+risk_management:
+  max_position_size: 0.1 # 10% of capital per position
+  max_daily_loss: 0.02 # 2% maximum daily loss
+  max_drawdown: 0.15 # 15% maximum drawdown
+  max_leverage: 10 # Maximum leverage allowed
+
+# Notification Settings
+notifications:
+  discord_enabled: true
+  email_enabled: true
+  alert_on_trade: true
+  alert_on_error: true
+  alert_on_position_open: true
+  alert_on_position_close: true
+
+# GUI Settings
+gui:
+  theme: dark
+  update_interval: 1000 # milliseconds
+  chart_candles: 200 # number of candles to display
+
+# Terminal Settings
+terminal:
+  refresh_rate: 1 # seconds
+  show_charts: true
