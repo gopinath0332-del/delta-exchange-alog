@@ -83,6 +83,31 @@ class DeltaRestClient:
             else:
                 raise APIError(f"API request failed: {error_msg}")
     
+    def _make_direct_request(self, endpoint: str, params: Optional[Dict] = None) -> Any:
+        """
+        Make direct API request for endpoints not in delta-rest-client.
+        
+        Args:
+            endpoint: API endpoint
+            params: Query parameters
+            
+        Returns:
+            API response
+        """
+        import requests
+        
+        self.rate_limiter.wait_if_needed()
+        
+        url = f"{self.config.base_url}{endpoint}"
+        
+        try:
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error("Direct API request failed", endpoint=endpoint, error=str(e))
+            raise APIError(f"API request failed: {e}")
+    
     # Product and Market Data Methods
     
     def get_products(self) -> List[Dict[str, Any]]:
@@ -93,9 +118,10 @@ class DeltaRestClient:
             List of product dictionaries
         """
         logger.debug("Fetching products")
-        response = self._make_request(self.client.get_products)
-        logger.info("Fetched products", count=len(response.get('result', [])))
-        return response.get('result', [])
+        response = self._make_direct_request("/v2/products")
+        products = response.get('result', [])
+        logger.info("Fetched products", count=len(products))
+        return products
     
     def get_product(self, product_id: int) -> Dict[str, Any]:
         """
@@ -185,13 +211,14 @@ class DeltaRestClient:
         # We need to paginate for longer periods
         while current_start < end:
             try:
-                response = self._make_request(
-                    self.client.get_candles,
-                    symbol=symbol,
-                    resolution=resolution,
-                    start=current_start,
-                    end=end
-                )
+                params = {
+                    'resolution': resolution,
+                    'symbol': symbol,
+                    'start': current_start,
+                    'end': end
+                }
+                
+                response = self._make_direct_request("/v2/history/candles", params=params)
                 
                 candles = response.get('result', [])
                 if not candles:
@@ -200,7 +227,8 @@ class DeltaRestClient:
                 all_candles.extend(candles)
                 
                 # Update start time for next batch
-                last_candle_time = candles[-1].get('time', 0)
+                # Candles have 'time' field with timestamp
+                last_candle_time = candles[-1].get('time', 0) if candles else 0
                 if last_candle_time <= current_start:
                     break
                 current_start = last_candle_time + 1
