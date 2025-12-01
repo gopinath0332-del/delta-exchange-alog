@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 """Startup script for the Delta Exchange Trading Platform.
 
 Provides an interactive menu to launch the application in GUI or Terminal mode.
@@ -49,7 +49,7 @@ def main():
 
         if choice == "1":
             console.print("[green]Launching GUI...[/green]")
-            run_command("python main.py --gui")
+            run_command("python3.9 main.py --gui")
 
         elif choice == "2":
             console.print("\n[bold]Terminal Commands:[/bold]")
@@ -68,7 +68,7 @@ def main():
                 timeframe = Prompt.ask("Timeframe", default="1h")
                 days = Prompt.ask("Days", default="30")
                 cmd = (
-                    f"python main.py fetch-data --symbol {symbol} "
+                    f"python3.9 main.py fetch-data --symbol {symbol} "
                     f"--timeframe {timeframe} --days {days}"
                 )
                 run_command(cmd)
@@ -78,7 +78,7 @@ def main():
                 symbol = Prompt.ask("Symbol", default="BTCUSD")
                 timeframe = Prompt.ask("Timeframe", default="1h")
                 cmd = (
-                    f"python main.py backtest --strategy {strategy} "
+                    f"python3.9 main.py backtest --strategy {strategy} "
                     f"--symbol {symbol} --timeframe {timeframe}"
                 )
                 run_command(cmd)
@@ -89,12 +89,13 @@ def main():
                 paper = Confirm.ask("Use Paper Trading?", default=True)
                 paper_flag = "--paper" if paper else ""
                 cmd = (
-                    f"python main.py live --strategy {strategy} " f"--symbol {symbol} {paper_flag}"
+                    f"python3.9 main.py live --strategy {strategy} "
+                    f"--symbol {symbol} {paper_flag}"
                 )
                 run_command(cmd)
 
             elif cmd_choice == "4":
-                run_command("python main.py report")
+                run_command("python3.9 main.py report")
 
             elif cmd_choice == "5":
                 continue

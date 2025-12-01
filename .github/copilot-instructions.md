@@ -67,6 +67,26 @@ cp config/.env.example config/.env
 python main.py fetch-data --symbol BTCUSD --timeframe 1h --days 1
 ```
 
+### Committing Code (with Pre-commit Hooks)
+
+```bash
+# 1. Stage your changes
+git add <files>
+
+# 2. Attempt commit (hooks will run and may modify files)
+git commit -m "your message"
+
+# 3. If hooks modify files, they'll show as "Failed" but files are fixed
+#    Re-stage the auto-formatted files and commit again
+git add <modified-files>
+git commit -m "your message"
+
+# Alternative: Run hooks manually before committing to fix issues upfront
+pre-commit run --all-files
+git add -u  # Stage all modified files
+git commit -m "your message"
+```
+
 ### Running Commands
 
 - **Fetch data**: `python main.py fetch-data --symbol BTCUSD --timeframe 1h --days 30`
@@ -79,6 +99,14 @@ python main.py fetch-data --symbol BTCUSD --timeframe 1h --days 1
 - Run tests: `pytest`
 - Coverage: `pytest --cov=core --cov=api --cov=data`
 - Target: >80% coverage per TODO.md
+
+### Pre-commit Hooks
+
+- **Auto-formatting on commit**: Pre-commit hooks automatically run `black`, `isort`, and other formatters
+- **Files are auto-fixed**: Hooks modify files in-place (trailing whitespace, formatting)
+- **Re-stage after hooks**: After pre-commit fixes files, re-run `git add <files>` then commit again
+- **Local validation**: Run `pre-commit run --all-files` to check/fix all files before committing
+- **Note**: Copilot instructions guide code generation, but pre-commit hooks enforce final formatting
 
 ## Project-Specific Conventions
 
@@ -132,6 +160,8 @@ Before completing any code generation/modification:
 5. ✓ Structured logging with key-value pairs
 6. ✓ PEP 8 compliant (imports grouped, line length <100)
 7. ✓ No linting errors or warnings
+
+**Note**: Pre-commit hooks will auto-format with `black` and `isort` on commit. Code should be close to final format, but hooks provide the final polish.
 
 ### Adding API Methods
 
