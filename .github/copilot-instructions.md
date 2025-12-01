@@ -27,10 +27,11 @@ Python-based crypto trading analysis platform for Delta Exchange futures with ba
 ### API Client (`api/rest_client.py`)
 
 - **Wrapper over delta-rest-client**: All API calls go through `DeltaRestClient`
+- **Prefer delta-rest-client library**: Use library methods when available (authenticated endpoints)
+- **Public endpoints**: Use `_make_direct_request()` for public endpoints not in delta-rest-client (e.g., `/v2/products`, `/v2/history/candles`)
 - **Built-in rate limiting**: 150 requests per 5 minutes enforced automatically via `RateLimiter`
 - **Pagination handling**: `get_historical_candles()` auto-paginates (Delta limit: 2000 candles/request)
 - Error hierarchy: `APIError` → `AuthenticationError`, `RateLimitError`
-- Direct requests for missing endpoints: Use `_make_direct_request(endpoint, params)` pattern
 
 ### Data Models (`data/models.py`)
 
@@ -186,15 +187,18 @@ def get_something(self, param: str) -> Dict[str, Any]:
     return response.get('result', {})
 ```
 
-### Direct API Requests (for missing endpoints)
+**Important**: Always use `delta-rest-client` library methods via `self.client`. Do not use `requests` library for Delta Exchange API communication.
+
+### Public Endpoint Pattern (for endpoints not in delta-rest-client)
 
 ```python
+# For public endpoints like /v2/products, /v2/history/candles
 params = {'resolution': resolution, 'symbol': symbol}
 response = self._make_direct_request("/v2/history/candles", params=params)
 candles = response.get('result', [])
 ```
 
-### Creating New Data Models
+### Configuration Extension
 
 ```python
 from datetime import datetime
@@ -270,17 +274,21 @@ except Exception as e:
 
 ## Key Dependencies
 
-- **delta-rest-client**: Official SDK for REST API (do not bypass for authenticated endpoints)
+- **delta-rest-client**: Official SDK for authenticated endpoints (use when available)
+- **requests**: For public endpoints not in delta-rest-client (wrapped in `_make_direct_request()`)
 - **structlog**: Structured logging (always use key-value logging)
 - **pydantic**: Data validation (v2.x with Field validators)
 - **ta**: Technical indicators (preferred over pandas-ta)
 - **sqlalchemy**: Database ORM (for `data/storage.py` when implementing)
 - **dearpygui**: GUI framework (OpenGL-based, requires graphics support)
 
+**API Usage**: Prefer delta-rest-client methods when available. Use `_make_direct_request()` only for public endpoints not in the library.
+
 ## Common Pitfalls
 
 - **Don't instantiate Config**: Use `get_config()` singleton
-- **Don't bypass rate limiting**: Always use `_make_request()` in `DeltaRestClient`
+- **Don't bypass rate limiting**: Always use `_make_request()` or `_make_direct_request()` in `DeltaRestClient`
+- **Prefer delta-rest-client**: Use library methods when available; use `_make_direct_request()` only for public endpoints not in library
 - **Don't mix timeframe formats**: Stick to `5m`, `1h`, `1d` (not `5min`, `1hour`)
 - **Candle pagination**: Delta returns max 2000—implement pagination for >2000
 - **Product ID required**: Many endpoints need product_id integer, not just symbol string
