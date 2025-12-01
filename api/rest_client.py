@@ -205,8 +205,32 @@ class DeltaRestClient:
 
         all_candles = []
         current_start = start
+        max_candles_per_request = 2000
 
         # Delta Exchange returns max 2000 candles per request
+        # Calculate expected number of candles based on resolution
+        resolution_minutes = {
+            "1m": 1,
+            "5m": 5,
+            "15m": 15,
+            "30m": 30,
+            "1h": 60,
+            "2h": 120,
+            "4h": 240,
+            "1d": 1440,
+        }
+
+        interval_minutes = resolution_minutes.get(resolution, 60)
+        total_minutes = (end - start) // 60
+        expected_candles = total_minutes // interval_minutes
+
+        logger.debug(
+            "Candle fetch parameters",
+            expected_candles=expected_candles,
+            interval_minutes=interval_minutes,
+            will_paginate=expected_candles > max_candles_per_request,
+        )
+
         # We need to paginate for longer periods
         while current_start < end:
             try:
@@ -221,18 +245,32 @@ class DeltaRestClient:
 
                 candles = response.get("result", [])
                 if not candles:
+                    logger.debug("No more candles returned, stopping pagination")
                     break
 
                 all_candles.extend(candles)
+
+                # If we got fewer candles than the limit, we're done
+                if len(candles) < max_candles_per_request:
+                    logger.debug("Received fewer candles than limit, fetch complete")
+                    break
 
                 # Update start time for next batch
                 # Candles have 'time' field with timestamp
                 last_candle_time = candles[-1].get("time", 0) if candles else 0
                 if last_candle_time <= current_start:
+                    logger.debug("Last candle time not advancing, stopping pagination")
                     break
+
+                # Move to next batch (add 1 second to avoid duplicate)
                 current_start = last_candle_time + 1
 
-                logger.debug("Fetched candle batch", count=len(candles), total=len(all_candles))
+                logger.debug(
+                    "Fetched candle batch",
+                    count=len(candles),
+                    total=len(all_candles),
+                    next_start=datetime.fromtimestamp(current_start).isoformat(),
+                )
 
             except Exception as e:
                 logger.error(
