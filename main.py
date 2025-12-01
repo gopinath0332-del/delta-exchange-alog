@@ -40,6 +40,64 @@ def cmd_fetch_data(args, config, logger):
     )
 
     client = DeltaRestClient(config)
+
+    # Fetch current ticker data
+    try:
+        # Use the official delta-rest-client library method
+        ticker = client.get_ticker(args.symbol)
+
+        logger.debug("Raw ticker data", ticker=ticker)
+
+        # Print ALL ticker fields to see what's available
+        print(f"\n{'='*60}")
+        print(f"DEBUG: All Ticker Fields for {args.symbol}")
+        print(f"{'='*60}")
+        for key, value in ticker.items():
+            print(f"{key}: {value}")
+        print(f"{'='*60}\n")
+
+        # Extract price data - trying common field names
+        current_price = (
+            ticker.get("close")
+            or ticker.get("mark_price")
+            or ticker.get("last_price")
+            or ticker.get("price")
+            or 0
+        )
+
+        print(f"\n{'='*60}")
+        print(f"Current Market Data for {args.symbol}")
+        print(f"{'='*60}")
+
+        if current_price > 0:
+            print(f"Last Traded Price: ${current_price:,.2f}")
+
+            if ticker.get("mark_price"):
+                print(f"Mark Price: ${ticker['mark_price']:,.2f}")
+            if ticker.get("open_interest"):
+                print(f"Open Interest: {ticker['open_interest']:,.0f}")
+            if ticker.get("volume"):
+                print(f"24h Volume: {ticker['volume']:,.2f}")
+            if ticker.get("turnover"):
+                print(f"24h Turnover: ${ticker['turnover']:,.2f}")
+            if ticker.get("funding_rate"):
+                print(f"Funding Rate: {ticker['funding_rate']:.6f}")
+
+            logger.info("Current market data", symbol=args.symbol, price=current_price)
+        else:
+            print(f"No live price data available")
+            print(f"Available ticker fields: {list(ticker.keys())}")
+
+        print(f"{'='*60}\n")
+
+    except Exception as e:
+        logger.warning("Failed to fetch ticker data", symbol=args.symbol, error=str(e))
+        print(f"Warning: Could not fetch current price for {args.symbol}")
+        import traceback
+
+        logger.debug("Ticker fetch error details", traceback=traceback.format_exc())
+
+    # Fetch historical candles
     candles = client.get_historical_candles(
         symbol=args.symbol, resolution=args.timeframe, days=args.days
     )
@@ -47,7 +105,7 @@ def cmd_fetch_data(args, config, logger):
     logger.info("Data fetched successfully", count=len(candles))
 
     # TODO: Save to database/CSV
-    print(f"Fetched {len(candles)} candles for {args.symbol} ({args.timeframe})")
+    print(f"\nFetched {len(candles)} candles for {args.symbol} ({args.timeframe})")
 
 
 def cmd_backtest(args, config, logger):

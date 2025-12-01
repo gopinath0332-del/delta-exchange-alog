@@ -84,7 +84,11 @@ class DeltaRestClient:
 
     def _make_direct_request(self, endpoint: str, params: Optional[Dict] = None) -> Any:
         """
-        Make direct API request for endpoints not in delta-rest-client.
+        Make direct API request for public endpoints not in delta-rest-client.
+
+        Note: Use delta-rest-client methods when available. This is only for
+        public endpoints like /v2/products, /v2/history/candles that are not
+        included in the delta-rest-client library.
 
         Args:
             endpoint: API endpoint
@@ -134,7 +138,7 @@ class DeltaRestClient:
         """
         logger.debug("Fetching product", product_id=product_id)
         response = self._make_request(self.client.get_product, product_id)
-        return cast(Dict[str, Any], response.get("result", {}))
+        return cast(Dict[str, Any], response)
 
     def get_ticker(self, symbol: str) -> Dict[str, Any]:
         """
@@ -148,7 +152,7 @@ class DeltaRestClient:
         """
         logger.debug("Fetching ticker", symbol=symbol)
         response = self._make_request(self.client.get_ticker, symbol)
-        return cast(Dict[str, Any], response.get("result", {}))
+        return cast(Dict[str, Any], response)
 
     def get_l2_orderbook(self, product_id: int) -> Dict[str, Any]:
         """
@@ -162,7 +166,7 @@ class DeltaRestClient:
         """
         logger.debug("Fetching L2 orderbook", product_id=product_id)
         response = self._make_request(self.client.get_l2_orderbook, product_id)
-        return cast(Dict[str, Any], response.get("result", {}))
+        return cast(Dict[str, Any], response)
 
     def get_historical_candles(
         self,
@@ -234,13 +238,13 @@ class DeltaRestClient:
         # We need to paginate for longer periods
         while current_start < end:
             try:
+                # Use direct request for historical candles (not in delta-rest-client)
                 params = {
                     "resolution": resolution,
                     "symbol": symbol,
                     "start": current_start,
                     "end": end,
                 }
-
                 response = self._make_direct_request("/v2/history/candles", params=params)
 
                 candles = response.get("result", [])
@@ -298,7 +302,7 @@ class DeltaRestClient:
         """
         logger.debug("Fetching wallet balance")
         response = self._make_request(self.client.get_balances)
-        return cast(Dict[str, Any], response.get("result", {}))
+        return cast(Dict[str, Any], response)
 
     def get_positions(self) -> List[Dict[str, Any]]:
         """
@@ -309,7 +313,7 @@ class DeltaRestClient:
         """
         logger.debug("Fetching positions")
         response = self._make_request(self.client.get_positions)
-        return cast(List[Dict[str, Any]], response.get("result", []))
+        return cast(List[Dict[str, Any]], response)
 
     def get_position(self, product_id: int) -> Dict[str, Any]:
         """
@@ -323,7 +327,7 @@ class DeltaRestClient:
         """
         logger.debug("Fetching position", product_id=product_id)
         response = self._make_request(self.client.get_position, product_id)
-        return cast(Dict[str, Any], response.get("result", {}))
+        return cast(Dict[str, Any], response)
 
     def get_live_orders(self, product_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """
@@ -337,7 +341,7 @@ class DeltaRestClient:
         """
         logger.debug("Fetching live orders", product_id=product_id)
         response = self._make_request(self.client.get_live_orders)
-        orders = response.get("result", [])
+        orders = response
 
         if product_id is not None:
             orders = [o for o in orders if o.get("product_id") == product_id]
@@ -386,8 +390,8 @@ class DeltaRestClient:
             **kwargs,
         )
 
-        logger.info("Order placed", order_id=response.get("result", {}).get("id"))
-        return cast(Dict[str, Any], response.get("result", {}))
+        logger.info("Order placed", order_id=response.get("id"))
+        return cast(Dict[str, Any], response)
 
     def cancel_order(self, product_id: int, order_id: int) -> Dict[str, Any]:
         """
@@ -403,7 +407,7 @@ class DeltaRestClient:
         logger.info("Cancelling order", product_id=product_id, order_id=order_id)
         response = self._make_request(self.client.cancel_order, product_id, order_id)
         logger.info("Order cancelled", order_id=order_id)
-        return cast(Dict[str, Any], response.get("result", {}))
+        return cast(Dict[str, Any], response)
 
     def cancel_all_orders(self, product_id: int) -> Dict[str, Any]:
         """
@@ -418,7 +422,7 @@ class DeltaRestClient:
         logger.info("Cancelling all orders", product_id=product_id)
         response = self._make_request(self.client.cancel_all_orders, product_id)
         logger.info("All orders cancelled", product_id=product_id)
-        return cast(Dict[str, Any], response.get("result", {}))
+        return cast(Dict[str, Any], response)
 
     def set_leverage(self, product_id: int, leverage: str) -> Dict[str, Any]:
         """
@@ -433,7 +437,7 @@ class DeltaRestClient:
         """
         logger.info("Setting leverage", product_id=product_id, leverage=leverage)
         response = self._make_request(self.client.set_leverage, product_id, leverage)
-        return cast(Dict[str, Any], response.get("result", {}))
+        return cast(Dict[str, Any], response)
 
 
 if __name__ == "__main__":
