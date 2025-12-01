@@ -9,12 +9,14 @@ from pydantic import BaseModel, Field, field_validator
 
 class OrderSide(str, Enum):
     """Order side enumeration."""
+
     BUY = "buy"
     SELL = "sell"
 
 
 class OrderType(str, Enum):
     """Order type enumeration."""
+
     MARKET = "market_order"
     LIMIT = "limit_order"
     STOP_MARKET = "stop_market_order"
@@ -23,6 +25,7 @@ class OrderType(str, Enum):
 
 class OrderStatus(str, Enum):
     """Order status enumeration."""
+
     OPEN = "open"
     PENDING = "pending"
     CLOSED = "closed"
@@ -33,6 +36,7 @@ class OrderStatus(str, Enum):
 
 class TradingMode(str, Enum):
     """Trading mode enumeration."""
+
     BACKTEST = "backtest"
     PAPER = "paper"
     LIVE = "live"
@@ -40,6 +44,7 @@ class TradingMode(str, Enum):
 
 class OHLCCandle(BaseModel):
     """OHLC candle data model."""
+
     timestamp: datetime
     open: float = Field(gt=0)
     high: float = Field(gt=0)
@@ -48,31 +53,32 @@ class OHLCCandle(BaseModel):
     volume: float = Field(ge=0)
     symbol: Optional[str] = None
     timeframe: Optional[str] = None
-    
-    @field_validator('high')
+
+    @field_validator("high")
     @classmethod
     def validate_high(cls, v, info):
         """Validate that high is >= low."""
-        if 'low' in info.data and v < info.data['low']:
-            raise ValueError('High must be >= low')
+        if "low" in info.data and v < info.data["low"]:
+            raise ValueError("High must be >= low")
         return v
-    
-    @field_validator('low')
+
+    @field_validator("low")
     @classmethod
     def validate_low(cls, v, info):
         """Validate that low is <= high."""
-        if 'high' in info.data and v > info.data['high']:
-            raise ValueError('Low must be <= high')
+        if "high" in info.data and v > info.data["high"]:
+            raise ValueError("Low must be <= high")
         return v
-    
+
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        """Pydantic model configuration."""
+
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class Ticker(BaseModel):
     """Ticker data model."""
+
     symbol: str
     timestamp: datetime
     price: float = Field(gt=0)
@@ -82,15 +88,16 @@ class Ticker(BaseModel):
     high_24h: Optional[float] = Field(default=None, gt=0)
     low_24h: Optional[float] = Field(default=None, gt=0)
     change_24h: Optional[float] = None
-    
+
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        """Pydantic model configuration."""
+
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class Position(BaseModel):
     """Position data model."""
+
     symbol: str
     product_id: int
     size: float  # Can be negative for short positions
@@ -102,32 +109,33 @@ class Position(BaseModel):
     leverage: Optional[int] = Field(default=None, gt=0)
     liquidation_price: Optional[float] = Field(default=None, gt=0)
     timestamp: datetime
-    
+
     @property
     def is_long(self) -> bool:
         """Check if position is long."""
         return self.size > 0
-    
+
     @property
     def is_short(self) -> bool:
         """Check if position is short."""
         return self.size < 0
-    
+
     @property
     def pnl(self) -> float:
         """Calculate total P&L."""
         unrealized = self.unrealized_pnl or 0
         realized = self.realized_pnl or 0
         return unrealized + realized
-    
+
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        """Pydantic model configuration."""
+
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class Order(BaseModel):
     """Order data model."""
+
     order_id: Optional[str] = None
     client_order_id: Optional[str] = None
     symbol: str
@@ -142,30 +150,31 @@ class Order(BaseModel):
     filled_timestamp: Optional[datetime] = None
     average_fill_price: Optional[float] = Field(default=None, gt=0)
     commission: Optional[float] = Field(default=None, ge=0)
-    
+
     @property
     def is_filled(self) -> bool:
         """Check if order is completely filled."""
         return self.status == OrderStatus.FILLED
-    
+
     @property
     def is_open(self) -> bool:
         """Check if order is open."""
         return self.status in [OrderStatus.OPEN, OrderStatus.PENDING, OrderStatus.PARTIALLY_FILLED]
-    
+
     @property
     def remaining_quantity(self) -> float:
         """Calculate remaining quantity to be filled."""
         return self.quantity - self.filled_quantity
-    
+
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        """Pydantic model configuration."""
+
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class Trade(BaseModel):
     """Trade execution data model."""
+
     trade_id: str
     order_id: str
     symbol: str
@@ -176,25 +185,26 @@ class Trade(BaseModel):
     commission: float = Field(ge=0)
     timestamp: datetime
     is_maker: bool = False
-    
+
     @property
     def total_value(self) -> float:
         """Calculate total trade value."""
         return self.price * self.quantity
-    
+
     @property
     def net_value(self) -> float:
         """Calculate net value after commission."""
         return self.total_value - self.commission
-    
+
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        """Pydantic model configuration."""
+
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class Product(BaseModel):
     """Product (trading instrument) data model."""
+
     product_id: int
     symbol: str
     description: Optional[str] = None
@@ -204,29 +214,31 @@ class Product(BaseModel):
     contract_value: Optional[float] = Field(default=None, gt=0)
     max_leverage: Optional[int] = Field(default=None, gt=0)
     is_active: bool = True
-    
+
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        """Pydantic model configuration."""
+
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class WalletBalance(BaseModel):
     """Wallet balance data model."""
+
     asset: str
     balance: float = Field(ge=0)
     available_balance: float = Field(ge=0)
     locked_balance: float = Field(default=0, ge=0)
     timestamp: datetime
-    
+
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        """Pydantic model configuration."""
+
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class Signal(BaseModel):
     """Trading signal data model."""
+
     timestamp: datetime
     symbol: str
     signal_type: str  # 'buy', 'sell', 'hold'
@@ -234,8 +246,8 @@ class Signal(BaseModel):
     price: Optional[float] = Field(default=None, gt=0)
     strategy_name: str
     metadata: Optional[dict] = None
-    
+
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        """Pydantic model configuration."""
+
+        json_encoders = {datetime: lambda v: v.isoformat()}
