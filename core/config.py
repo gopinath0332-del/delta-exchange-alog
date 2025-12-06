@@ -150,10 +150,19 @@ class Config:
 
     def _init_logging_config(self):
         """Initialize logging configuration."""
-        self.log_level = os.getenv("LOG_LEVEL", "INFO")
+        # Environment-based log level: DEBUG for development, INFO for production
+        default_log_level = "DEBUG" if self.environment == "testnet" else "INFO"
+        self.log_level = os.getenv("LOG_LEVEL", default_log_level)
+        
         self.log_file = os.getenv("LOG_FILE", "logs/trading.log")
-        self.log_max_bytes = int(os.getenv("LOG_MAX_BYTES", "10485760"))
+        
+        # Default to 500MB for log file size
+        self.log_max_bytes = int(os.getenv("LOG_MAX_BYTES", "524288000"))  # 500MB
         self.log_backup_count = int(os.getenv("LOG_BACKUP_COUNT", "5"))
+        
+        # Error alerting configuration
+        self.enable_error_alerts = os.getenv("ENABLE_ERROR_ALERTS", "true").lower() == "true"
+        self.alert_throttle_seconds = int(os.getenv("ALERT_THROTTLE_SECONDS", "300"))  # 5 minutes
 
     def _init_trading_config(self):
         """Initialize trading configuration."""
