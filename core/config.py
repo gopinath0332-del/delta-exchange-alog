@@ -47,8 +47,13 @@ class GUIConfig(BaseModel):
     """GUI configuration."""
 
     theme: str = "dark"
-    update_interval: int = Field(default=1000, gt=0)  # milliseconds
+    window_width: int = Field(default=1400, gt=0)
+    window_height: int = Field(default=900, gt=0)
+    update_interval: int = Field(default=2000, gt=0)  # milliseconds
     chart_candles: int = Field(default=200, gt=0)
+    chart_default_timeframe: str = "1h"
+    orderbook_depth: int = Field(default=10, gt=0)
+
 
 
 class TerminalConfig(BaseModel):
