@@ -20,10 +20,17 @@ class BaseComponent(ABC):
         Args:
             tag: Optional unique tag for the component
         """
-        self.tag = tag or dpg.generate_uuid()
+        # Use provided tag or generate a simple unique string
+        # Don't call dpg.generate_uuid() here as context may not exist yet
+        if tag is None:
+            import uuid
+            self.tag = f"component_{uuid.uuid4().hex[:8]}"
+        else:
+            self.tag = tag
         self.visible = True
         self.enabled = True
         logger.debug("Component initialized", component=self.__class__.__name__, tag=self.tag)
+
 
     @abstractmethod
     def render(self, parent: Optional[str] = None) -> str:
@@ -113,20 +120,27 @@ class BasePanel(BaseComponent):
 
     def render(self, parent: Optional[str] = None) -> str:
         """Render the panel."""
-        with dpg.child_window(
-            tag=self.tag,
+        # Don't pass tag to child_window - let DearPyGui generate it
+        # Then store the auto-generated tag
+        child_window_tag = dpg.add_child_window(
             parent=parent,
             width=self.width,
             height=self.height,
             border=self.border,
-        ):
-            if self.title:
-                dpg.add_text(self.title, color=(200, 200, 200))
-                dpg.add_separator()
+        )
+        
+        # Store the auto-generated tag
+        self.tag = child_window_tag
+        
+        # Add content to the child window
+        if self.title:
+            dpg.add_text(self.title, color=(200, 200, 200), parent=child_window_tag)
+            dpg.add_separator(parent=child_window_tag)
 
-            self.render_content()
+        self.render_content()
 
         return self.tag
+
 
     @abstractmethod
     def render_content(self):

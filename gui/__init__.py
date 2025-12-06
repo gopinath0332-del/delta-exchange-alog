@@ -2,6 +2,7 @@
 
 __version__ = "0.1.0"
 
-from gui.main_window import TradingGUI
+from gui.main_window import run_gui
 
-__all__ = ["TradingGUI"]
+__all__ = ["run_gui"]
+

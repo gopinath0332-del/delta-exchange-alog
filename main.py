@@ -142,17 +142,53 @@ def cmd_gui(args, config, logger):
     """Launch GUI command."""
     logger.info("Launching GUI")
 
+    # Pre-flight checks before attempting to import DearPyGui
+    import platform
+    import os
+    
+    # Check for display on macOS
+    if platform.system() == "Darwin":
+        try:
+            from AppKit import NSScreen
+            screens = NSScreen.screens()
+            if not screens or len(screens) == 0:
+                print("\n" + "="*70)
+                print("ERROR: No display detected")
+                print("="*70)
+                print("\nThe GUI cannot run without a display.")
+                print("Please ensure you're running this on a Mac with an active display.")
+                print("\nAlternatively, use terminal mode:")
+                print("  python3 main.py fetch-data --symbol BTCUSD --timeframe 1h")
+                print("="*70 + "\n")
+                return
+        except ImportError:
+            logger.warning("Could not import AppKit to check display - proceeding anyway")
+    
     try:
         from gui.main_window import run_gui
 
+        print("\nInitializing GUI...")
+        print("Note: If the application crashes, it may be due to OpenGL/display issues.")
+        print("In that case, please use terminal mode instead.\n")
+        
         run_gui(config)
+        
     except ImportError as e:
         logger.error("Failed to import GUI module", error=str(e))
-        print(f"Error: GUI dependencies not installed. Please install with: pip install dearpygui")
-        print(f"Details: {e}")
+        print(f"\nError: GUI dependencies not installed.")
+        print(f"Please install with: pip install dearpygui")
+        print(f"Details: {e}\n")
     except Exception as e:
         logger.exception("GUI error", error=str(e))
-        print(f"Error launching GUI: {e}")
+        print(f"\nError launching GUI: {e}")
+        print("\nThis may be due to:")
+        print("  • OpenGL/graphics driver issues")
+        print("  • Display compatibility problems")
+        print("  • DearPyGui not compatible with your system")
+        print("\nPlease use terminal mode instead:")
+        print("  python3 main.py fetch-data --symbol BTCUSD")
+        print()
+
 
 
 
