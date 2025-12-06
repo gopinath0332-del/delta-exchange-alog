@@ -142,8 +142,18 @@ def cmd_gui(args, config, logger):
     """Launch GUI command."""
     logger.info("Launching GUI")
 
-    # TODO: Implement GUI
-    print("GUI not yet implemented")
+    try:
+        from gui.main_window import run_gui
+
+        run_gui(config)
+    except ImportError as e:
+        logger.error("Failed to import GUI module", error=str(e))
+        print(f"Error: GUI dependencies not installed. Please install with: pip install dearpygui")
+        print(f"Details: {e}")
+    except Exception as e:
+        logger.exception("GUI error", error=str(e))
+        print(f"Error launching GUI: {e}")
+
 
 
 def main():
