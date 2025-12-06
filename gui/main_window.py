@@ -37,6 +37,9 @@ class TradingGUI:
             # Create DearPyGui context
             dpg.create_context()
 
+            # Set global font scale for better readability
+            dpg.set_global_font_scale(1.5)
+
             # Setup UI
             self.setup_ui()
 
