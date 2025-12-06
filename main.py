@@ -17,12 +17,15 @@ def setup_environment():
     """Set up logging and configuration."""
     config = get_config()
 
-    # Setup logging
+    # Setup logging with error alerting
     setup_logging(
         log_level=config.log_level,
         log_file=config.log_file,
         log_max_bytes=config.log_max_bytes,
         log_backup_count=config.log_backup_count,
+        discord_webhook_url=config.discord_webhook_url if config.discord_enabled else None,
+        alert_throttle_seconds=config.alert_throttle_seconds,
+        enable_error_alerts=config.enable_error_alerts,
     )
 
     logger = get_logger(__name__)
