@@ -182,7 +182,7 @@ class TradingGUI:
 
         with dpg.group(horizontal=True):
             # Left column - Futures product table
-            with dpg.child_window(width=900, height=-1):
+            with dpg.child_window(width=-1, height=-1):
                 dpg.add_text("Futures", color=(100, 200, 255))
                 dpg.add_separator()
                 dpg.add_spacer(height=10)
@@ -223,58 +223,6 @@ class TradingGUI:
                     dpg.add_table_column(label="Open Interest", width_fixed=True, init_width_or_weight=100)
                     dpg.add_table_column(label="24h High/Low", width_fixed=True, init_width_or_weight=120)
                     dpg.add_table_column(label="Funding", width_fixed=True, init_width_or_weight=80)
-
-            # Right column - Order placement
-            with dpg.child_window(width=-1, height=-1):
-                dpg.add_text("Place Order", color=(100, 200, 255))
-                dpg.add_separator()
-                dpg.add_spacer(height=10)
-
-                # Selected product display
-                with dpg.group(horizontal=True):
-                    dpg.add_text("Product:", color=(160, 160, 160))
-                    dpg.add_text("None selected", tag="selected_product_text", color=(100, 200, 255))
-
-                dpg.add_spacer(height=10)
-                dpg.add_separator()
-                dpg.add_spacer(height=10)
-
-                # Ticker info
-                dpg.add_text("Ticker", color=(100, 200, 255))
-                dpg.add_separator()
-                dpg.add_text("Symbol: --", tag="ticker_symbol")
-                dpg.add_text("Price: $--", tag="ticker_price")
-                dpg.add_text("24h Change: --", tag="ticker_change")
-
-                dpg.add_spacer(height=20)
-                dpg.add_separator()
-                dpg.add_spacer(height=10)
-
-                dpg.add_text("Order Type:", color=(160, 160, 160))
-                dpg.add_combo([
-                    "Market Order", "Limit Order"
-                ], default_value="Limit Order", tag="order_type", width=-1)
-
-                dpg.add_spacer(height=10)
-                dpg.add_text("Side:", color=(160, 160, 160))
-                dpg.add_radio_button(["Buy", "Sell"], tag="order_side", horizontal=True)
-
-                dpg.add_spacer(height=10)
-                dpg.add_text("Quantity:", color=(160, 160, 160))
-                dpg.add_input_int(tag="order_quantity", default_value=1, min_value=1, min_clamped=True, width=-1)
-
-                dpg.add_spacer(height=10)
-                dpg.add_text("Price:", color=(160, 160, 160))
-                dpg.add_input_float(tag="order_price", default_value=0.0, format="%.2f", width=-1)
-
-                dpg.add_spacer(height=20)
-                with dpg.group(horizontal=True):
-                    dpg.add_button(label="Buy", callback=lambda: self.place_order("buy"), width=150, height=40)
-                    dpg.add_spacer(width=10)
-                    dpg.add_button(label="Sell", callback=lambda: self.place_order("sell"), width=150, height=40)
-
-                dpg.add_spacer(height=10)
-                dpg.add_text("", tag="order_status", wrap=400)
 
     def create_positions_tab(self):
         """Create positions tab."""
