@@ -591,9 +591,10 @@ class TradingGUI:
         while self.btcusd_strategy_running:
             try:
                 # 1. Fetch Data (1h candles)
-                # We need enough history for RSI(14) - 100 candles is safe
+                # We need enough history for RSI(14). 
+                # 100 is "safe" but 300 provides better precision for Wilder's smoothing.
                 end_time = int(time.time())
-                start_time = end_time - (100 * 3600) 
+                start_time = end_time - (300 * 3600) 
                 
                 # Fetch history
                 # Note: This relies on _make_direct_request. If this fails, we need to check API docs/auth.
@@ -615,7 +616,21 @@ class TradingGUI:
                 
                 # Parse
                 df = pd.DataFrame(candles)
-                if 'close' in df.columns:
+                if 'close' in df.columns and 'time' in df.columns:
+                     # Ensure correct sort order (ascending time)
+                     # Check first and last time
+                     first_time = df['time'].iloc[0]
+                     last_time = df['time'].iloc[-1]
+                     logger.info(f"Fetched {len(df)} candles. First: {first_time} Last: {last_time}")
+                     
+                     # If descending (newest first), reverse it
+                     if first_time > last_time:
+                         logger.info("Detected descending order, reversing dataframe for RSI calc")
+                         df = df.iloc[::-1].reset_index(drop=True)
+                     
+                     # Log data for debugging
+                     logger.info(f"Data for RSI: Last Close={df['close'].iloc[-1]}, Time={df['time'].iloc[-1]}")
+                     
                      closes = df['close'].astype(float)
                 else:
                      logger.error(f"Unexpected candle data format: {df.columns}")
