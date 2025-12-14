@@ -47,23 +47,47 @@ def main():
         }
     ]
 
-    print("\nAvailable Strategies:")
-    for strat in STRATEGIES:
-        print(f" {strat['id']}. {strat['name']}")
-        print(f"    - {strat['desc']}")
+    import argparse
+    parser = argparse.ArgumentParser(description="Delta Exchange Trading Bot - Terminal Mode")
+    parser.add_argument("--strategy", type=int, help="Strategy ID to run (e.g. 1)")
+    parser.add_argument("--non-interactive", action="store_true", help="Run in non-interactive mode (requires --strategy)")
+    args = parser.parse_args()
+
+    # Strategy Selection Logic
+    selected_strat = None
     
-    print("\n" + "-"*40)
+    if args.strategy:
+        selected_strat = next((s for s in STRATEGIES if s['id'] == args.strategy), None)
+        if not selected_strat:
+            print(f"Error: Strategy ID {args.strategy} not found.")
+            sys.exit(1)
+    
+    if not selected_strat and not args.non_interactive:
+        print("\nAvailable Strategies:")
+        for strat in STRATEGIES:
+            print(f" {strat['id']}. {strat['name']}")
+            print(f"    - {strat['desc']}")
+        
+        print("\n" + "-"*40)
+        
+        try:
+            choice = input("Select a strategy to run (enter number): ").strip()
+            selected_strat = next((s for s in STRATEGIES if str(s['id']) == choice), None)
+            
+            if not selected_strat:
+                print("\nInvalid selection. Exiting.")
+                sys.exit(1)
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            sys.exit(0)
+
+    if not selected_strat:
+        print("Error: No strategy selected. Use interactive mode or provide --strategy ID.")
+        sys.exit(1)
+            
+    print(f"\nLaunching {selected_strat['name']}...")
     
     try:
-        choice = input("Select a strategy to run (enter number): ").strip()
-        selected_strat = next((s for s in STRATEGIES if str(s['id']) == choice), None)
-        
-        if not selected_strat:
-            print("\nInvalid selection. Exiting.")
-            sys.exit(1)
-            
-        print(f"\nLaunching {selected_strat['name']}...")
-        
         # Hardcoded for now as we only have one mode
         mode = "live" 
         

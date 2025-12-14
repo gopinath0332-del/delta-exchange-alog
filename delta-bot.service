@@ -1,0 +1,19 @@
+[Unit]
+Description=Delta Exchange Trading Bot
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/delta-exchange-alog
+ExecStart=/usr/bin/python3 /home/pi/delta-exchange-alog/run_terminal.py --strategy 1 --non-interactive
+Restart=on-failure
+RestartSec=60
+EnvironmentFile=/home/pi/delta-exchange-alog/config/.env
+
+# Logging
+StandardOutput=append:/home/pi/delta-exchange-alog/logs/service.log
+StandardError=append:/home/pi/delta-exchange-alog/logs/service.error.log
+
+[Install]
+WantedBy=multi-user.target
