@@ -676,55 +676,7 @@ class TradingGUI:
             except Exception as e:
                 logger.error(f"Error in strategy loop: {e}")
                 time.sleep(10)
-                # For now, show all products regardless of filter
-                # In production, you'd filter based on product metadata/tags
-                logger.info(f"Filter: {self.current_filter}")
-                pass
-            
-            # Apply search filter
-            if search_query:
-                filtered_products = [
-                    p for p in filtered_products
-                    if search_query in p.get("symbol", "").lower()
-                    or search_query in p.get("description", "").lower()
-                ]
-                logger.info(f"After search filter: {len(filtered_products)} products")
-            
-            # Clear existing table rows
-            if not dpg.does_item_exist("futures_table"):
-                logger.error("futures_table does not exist!")
-                return
-            
-            logger.info("Clearing existing table rows")
-            children = dpg.get_item_children("futures_table", slot=1)
-            if children:
-                logger.info(f"Deleting {len(children)} existing rows")
-                for child in children:
-                    dpg.delete_item(child)
-            
-            # Add new rows
-            logger.info(f"Adding {len(filtered_products)} rows to table")
-            rows_added = 0
-            
-            for product in filtered_products:  # Show all filtered products (only 3 specific symbols)
-                symbol = product.get("symbol", "")
-                ticker = self.futures_tickers.get(symbol, {})
-                
-                logger.debug(f"Processing {symbol}, ticker data: {bool(ticker)}")
 
-                
-                # Extract ticker data
-                last_price = float(ticker.get("close", 0))
-                change_24h = float(ticker.get("price_change_24h", 0))
-                volume_24h = float(ticker.get("volume", 0))
-                open_interest = float(ticker.get("open_interest", 0))
-                high_24h = float(ticker.get("high", 0))
-                low_24h = float(ticker.get("low", 0))
-                
-                # Calculate change percentage
-                change_pct = (change_24h / last_price * 100) if last_price > 0 else 0
-                change_color = (46, 204, 113) if change_pct >= 0 else (231, 76, 60)
-                
     def filter_futures(self, category: str):
         """Filter futures by category."""
         try:
