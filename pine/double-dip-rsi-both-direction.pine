@@ -1,0 +1,133 @@
+//@version=5
+strategy("RSI-Double-dip Long-Short (No Overlap) + Alerts & BG (Mode Select)",
+     overlay=true,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=100,
+     pyramiding = 0)
+
+// ————— Inputs —————
+// Mode selection: Long / Short / Both
+mode = input.string(title="Mode", defval="Both", options=["Long", "Short", "Both"])
+// Derived booleans
+allowLong  = (mode == "Long"  or mode == "Both")
+allowShort = (mode == "Short" or mode == "Both")
+
+// RSI settings
+rsiPeriod = input.int(14, title="RSI Period")
+rsiSource = input.source(close, title="RSI Source")
+
+// Long settings
+longEntryLevel = input.float(50.0, title="Long Entry Level (RSI cross above)")
+longExitLevel  = input.float(40.0, title="Long Exit Level (RSI cross below)")
+
+// Short settings
+shortEntryLevel = input.float(35.0, title="Short Entry Level (RSI cross below)")
+shortExitLevel  = input.float(35.0, title="Short Exit Level (RSI cross above)")
+
+// Background Color Inputs
+longBgColor  = input.color(color.new(color.green, 85), title="Long Background Color")
+shortBgColor = input.color(color.new(color.red, 85), title="Short Background Color")
+
+// Alerts inputs (used only in alert() function)
+alertsEnable  = input.bool(true, title="Enable Alerts")
+longEnterMsg  = input.string("Entered LONG", title="Long Enter Message")
+longExitMsg   = input.string("Exited LONG",  title="Long Exit Message")
+shortEnterMsg = input.string("Entered SHORT",title="Short Enter Message")
+shortExitMsg  = input.string("Exited SHORT", title="Short Exit Message")
+
+// --- New inputs for previous-long-duration rule ---
+requirePrevLongMinDuration = input.bool(true, title="Require previous long min duration before taking short?")
+minDaysLong = input.int(2, title="Min days long was open (for short to be allowed)", minval=0)
+
+// RSI calculation
+rsi = ta.rsi(rsiSource, rsiPeriod)
+
+// ————— Conditions —————
+longSignal  = allowLong  and ta.crossover(rsi, longEntryLevel)
+longExit    = allowLong  and ta.crossunder(rsi, longExitLevel)
+shortSignal = allowShort and ta.crossunder(rsi, shortEntryLevel)
+shortExit   = allowShort and ta.crossover(rsi, shortExitLevel)
+
+// ————— Track last long's open/close times and duration (ms) —————
+ms_per_day = 24 * 60 * 60 * 1000
+var float lastLongEntryTime = na      // timestamp when last long was opened
+var float lastLongDuration = 0.0      // duration in ms of last closed long (0 if none yet)
+
+// detect when long position opens / closes (based on strategy.position_size transitions)
+inLong  = strategy.position_size > 0
+inLongPrev = nz(strategy.position_size[1]) > 0
+
+longOpened = inLong and not inLongPrev
+longClosed = not inLong and inLongPrev
+
+// set entry time when long opens
+if longOpened
+    lastLongEntryTime := time
+
+// when long closes, compute its duration (close_time - open_time) and store it
+if longClosed
+    if not na(lastLongEntryTime)
+        lastLongDuration := time - lastLongEntryTime
+    else
+        lastLongDuration := 0
+    lastLongEntryTime := na
+
+// ————— Short entry gating based on previous long duration —————
+// If requirement is enabled: allow short only if either
+//  - there was no prior long (lastLongDuration == 0) -> allow (prevents blocking initial shorts), OR
+//  - lastLongDuration >= minDaysLong * ms_per_day
+// If requirement is disabled: behave as before.
+shortEntryAllowedByPrevLong = true
+if requirePrevLongMinDuration
+    // if minDaysLong==0 treat as immediate allowed
+    threshold = minDaysLong * ms_per_day
+    shortEntryAllowedByPrevLong := (lastLongDuration == 0) or (lastLongDuration >= threshold)
+
+shortEntry = shortSignal and shortEntryAllowedByPrevLong
+
+// ————— Trade Logic (No Overlap) —————
+// Close Long when its exit triggers OR when a short entry triggers (only when short is allowed)
+if (longExit or (shortEntry and allowShort))
+    strategy.close("Long")
+
+// Close Short when its exit triggers OR when a long entry triggers (only when long is allowed)
+if (shortExit or (longSignal and allowLong))
+    strategy.close("Short")
+
+// Entries (respecting mode and prevent overlap)
+if (longSignal and strategy.position_size <= 0)
+    strategy.entry("Long", strategy.long)
+
+if (shortEntry and strategy.position_size >= 0)
+    strategy.entry("Short", strategy.short)
+
+// ————— Background Coloring —————
+inShort = strategy.position_size < 0
+
+bgcolor(inLong ? longBgColor : na)
+bgcolor(inShort ? shortBgColor : na)
+
+// ————— Alert transitions —————
+longOpenedAlert  = inLong and not inLong[1]
+longClosedAlert  = not inLong and inLong[1]
+shortOpenedAlert = inShort and not inShort[1]
+shortClosedAlert = not inShort and inShort[1]
+
+// ————— alertcondition() MUST use constant strings —————
+alertcondition(longOpenedAlert,  title="Long Entered",  message="Long Position Entered")
+alertcondition(longClosedAlert,  title="Long Exited",   message="Long Position Exited")
+alertcondition(shortOpenedAlert, title="Short Entered", message="Short Position Entered")
+alertcondition(shortClosedAlert, title="Short Exited",  message="Short Position Exited")
+
+// ————— Real alerts using dynamic user-defined messages —————
+if alertsEnable
+    if longOpenedAlert
+        alert(longEnterMsg, alert.freq_once_per_bar_close)
+
+    if longClosedAlert
+        alert(longExitMsg, alert.freq_once_per_bar_close)
+
+    if shortOpenedAlert
+        alert(shortEnterMsg, alert.freq_once_per_bar_close)
+
+    if shortClosedAlert
+        alert(shortExitMsg, alert.freq_once_per_bar_close)

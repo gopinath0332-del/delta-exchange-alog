@@ -29,6 +29,12 @@ class TradingGUI:
         self.update_thread: Optional[threading.Thread] = None
         self.selected_product: Optional[Dict[str, Any]] = None
 
+        # Initialize Strategies
+        from strategies.double_dip_rsi import DoubleDipRSIStrategy
+        self.btcusd_strategy = DoubleDipRSIStrategy()
+        self.btcusd_strategy_running = False
+        self.btcusd_thread = None
+
         logger.info("Trading GUI initialized", environment=config.environment)
 
     def start(self):
@@ -126,6 +132,11 @@ class TradingGUI:
                 with dpg.tab(label="Charts"):
                     with dpg.child_window(height=-1):
                         self.create_charts_tab()
+
+                # BTCUSD Strategy Tab
+                with dpg.tab(label="BTCUSD Strategy", tag="tab_btcusd_strategy"):
+                    with dpg.child_window(height=-1):
+                        self.create_btcusd_strategy_tab()
 
     def create_dashboard_tab(self):
         """Create dashboard tab."""
@@ -270,6 +281,67 @@ class TradingGUI:
         dpg.add_text("Use terminal mode for data analysis:")
         dpg.add_text("  python3 main.py fetch-data --symbol BTCUSD --timeframe 1h")
 
+    def create_btcusd_strategy_tab(self):
+        """Create BTCUSD Double-Dip RSI Strategy tab."""
+        dpg.add_text("BTCUSD Double-Dip RSI Strategy", color=(100, 200, 255))
+        dpg.add_separator()
+        dpg.add_spacer(height=10)
+        
+        with dpg.group(horizontal=True):
+            # Left Panel: Status & Controls
+            with dpg.child_window(width=400, height=-1):
+                dpg.add_text("Strategy Status", color=(160, 160, 160))
+                dpg.add_separator()
+                dpg.add_spacer(height=5)
+                
+                # Live RSI Display
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Current RSI (14): ")
+                    dpg.add_text("--", tag="btcusd_rsi_value", color=(255, 255, 255))
+                
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Prev (Closed) RSI: ")
+                    dpg.add_text("--", tag="btcusd_prev_rsi_value", color=(200, 200, 200))
+                
+                # Position Status
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Position:")
+                    dpg.add_text("FLAT", tag="btcusd_position_status", color=(200, 200, 200))
+                
+                dpg.add_spacer(height=10)
+                dpg.add_separator()
+                dpg.add_spacer(height=10)
+                
+                # Active Signal
+                dpg.add_text("Signal:", color=(160, 160, 160))
+                dpg.add_text("No Signal", tag="btcusd_last_signal", color=(100, 100, 100), wrap=380)
+                
+                dpg.add_spacer(height=20)
+                
+                # Controls
+                dpg.add_button(label="Start Strategy", tag="btn_start_btcusd", callback=self.toggle_btcusd_strategy, width=-1)
+                dpg.add_text("Status: Stopped", tag="btcusd_running_status", color=(255, 100, 100))
+
+            # Right Panel: Configuration (Read-only for now)
+            with dpg.child_window(width=-1, height=-1):
+                dpg.add_text("Strategy Configuration", color=(100, 200, 255))
+                dpg.add_separator()
+                dpg.add_spacer(height=5)
+                
+                dpg.add_text("RSI Settings:")
+                dpg.add_text("  Period: 14")
+                dpg.add_text("  Timeframe: 1h")
+                
+                dpg.add_spacer(height=10)
+                dpg.add_text("Long Conditions:")
+                dpg.add_text("  Entry: RSI > 50")
+                dpg.add_text("  Exit:  RSI < 40")
+                
+                dpg.add_spacer(height=10)
+                dpg.add_text("Short Conditions:")
+                dpg.add_text("  Entry: RSI < 35 (Wait 2 days after Long)")
+                dpg.add_text("  Exit:  RSI > 35")
+                
     # Callback methods
     def on_tab_change(self, sender, app_data, user_data):
         """Handle tab change events."""
@@ -394,9 +466,14 @@ class TradingGUI:
         try:
             logger.info("update_futures_table called")
             
-            if not hasattr(self, 'futures_products'):
+            if not hasattr(self, 'futures_products') or not self.futures_products:
                 logger.warning("No futures_products attribute found")
                 return
+
+            tickers = getattr(self, 'futures_tickers', [])
+            
+            # Create ticker map for O(1) lookup
+            ticker_map = {t['symbol']: t for t in tickers if 'symbol' in t}
             
             logger.info(f"Found {len(self.futures_products)} products to display")
             
@@ -404,113 +481,210 @@ class TradingGUI:
             search_query = ""
             if dpg.does_item_exist("futures_search"):
                 search_query = dpg.get_value("futures_search").lower()
-                logger.info(f"Search query: '{search_query}'")
             
             # Filter products
-            filtered_products = self.futures_products
+            target_symbols = self.config.gui.futures_symbols
+            display_products = []
             
-            # Apply category filter (simplified - in production you'd map products to categories)
-            if hasattr(self, 'current_filter') and self.current_filter != "ALL":
-                # For now, show all products regardless of filter
-                # In production, you'd filter based on product metadata/tags
-                logger.info(f"Filter: {self.current_filter}")
-                pass
+            # Apply category filter (simplified)
+            current_filter = getattr(self, 'current_filter', 'ALL')
             
-            # Apply search filter
-            if search_query:
-                filtered_products = [
-                    p for p in filtered_products
-                    if search_query in p.get("symbol", "").lower()
-                    or search_query in p.get("description", "").lower()
-                ]
-                logger.info(f"After search filter: {len(filtered_products)} products")
-            
-            # Clear existing table rows
-            if not dpg.does_item_exist("futures_table"):
-                logger.error("futures_table does not exist!")
-                return
-            
-            logger.info("Clearing existing table rows")
-            children = dpg.get_item_children("futures_table", slot=1)
-            if children:
-                logger.info(f"Deleting {len(children)} existing rows")
-                for child in children:
-                    dpg.delete_item(child)
-            
-            # Add new rows
-            logger.info(f"Adding {len(filtered_products)} rows to table")
-            rows_added = 0
-            
-            for product in filtered_products:  # Show all filtered products (only 3 specific symbols)
-                symbol = product.get("symbol", "")
-                ticker = self.futures_tickers.get(symbol, {})
+            for p in self.futures_products:
+                symbol = p.get('symbol', '')
                 
-                logger.debug(f"Processing {symbol}, ticker data: {bool(ticker)}")
+                # Check symbol match (configured symbols)
+                if symbol not in target_symbols:
+                    continue
+                
+                # Check search
+                if search_query and search_query not in symbol.lower():
+                    continue
 
-                
-                # Extract ticker data
-                last_price = float(ticker.get("close", 0))
-                change_24h = float(ticker.get("price_change_24h", 0))
-                volume_24h = float(ticker.get("volume", 0))
-                open_interest = float(ticker.get("open_interest", 0))
-                high_24h = float(ticker.get("high", 0))
-                low_24h = float(ticker.get("low", 0))
-                
-                # Calculate change percentage
-                change_pct = (change_24h / last_price * 100) if last_price > 0 else 0
-                change_color = (46, 204, 113) if change_pct >= 0 else (231, 76, 60)
-                
-                with dpg.table_row(parent="futures_table"):
-                    # Contract
-                    dpg.add_text(symbol)
-                    
-                    # Description
-                    description = product.get("description", "")
-                    dpg.add_text(description[:30] + "..." if len(description) > 30 else description)
-                    
-                    # Last Price
-                    dpg.add_text(f"${last_price:,.2f}" if last_price > 0 else "--")
-                    
-                    # 24h Change
-                    dpg.add_text(f"{change_pct:+.2f}%", color=change_color)
-                    
-                    # 24h Volume
-                    if volume_24h >= 1_000_000:
-                        dpg.add_text(f"${volume_24h/1_000_000:.2f}M")
-                    elif volume_24h >= 1_000:
-                        dpg.add_text(f"${volume_24h/1_000:.2f}K")
-                    else:
-                        dpg.add_text(f"${volume_24h:.2f}")
-                    
-                    # Open Interest
-                    if open_interest >= 1_000_000:
-                        dpg.add_text(f"${open_interest/1_000_000:.2f}M")
-                    elif open_interest >= 1_000:
-                        dpg.add_text(f"${open_interest/1_000:.2f}K")
-                    else:
-                        dpg.add_text(f"${open_interest:.2f}")
-                    
-                    # 24h High/Low
-                    if high_24h > 0 and low_24h > 0:
-                        dpg.add_text(f"${high_24h:,.2f} / ${low_24h:,.2f}")
-                    else:
-                        dpg.add_text("--")
-                    
-                    # Funding (placeholder - would need actual funding rate API)
-                    contract_type = product.get("contract_type", "")
-                    if "perpetual" in contract_type.lower():
-                        dpg.add_text("0.01%", color=(160, 160, 160))
-                    else:
-                        dpg.add_text("--", color=(160, 160, 160))
-                
-                rows_added += 1
+                display_products.append(p)
             
-            logger.info(f"Futures table updated successfully with {rows_added} rows")
+            logger.info(f"Displaying {len(display_products)} products after filtering")
+
+            # Update table
+            if dpg.does_item_exist("futures_table"):
+                # Clear rows
+                children = dpg.get_item_children("futures_table", slot=1)
+                if children:
+                    for child in children:
+                        dpg.delete_item(child)
+                
+                rows_added = 0
+                for product in display_products:
+                    symbol = product.get('symbol', '')
+                    ticker = ticker_map.get(symbol, {})
+                    
+                    # Color for 24h change
+                    change_24h = float(ticker.get('price_change_percent_24h', 0) or 0)
+                    change_color = (100, 255, 100) if change_24h >= 0 else (255, 100, 100)
+                    
+                    with dpg.table_row(parent="futures_table"):
+                        dpg.add_text(symbol)
+                        dpg.add_text(product.get('description', ''))
+                        dpg.add_text(f"{float(ticker.get('close', 0) or 0):.2f}")
+                        dpg.add_text(f"{change_24h:.2f}%", color=change_color)
+                        dpg.add_text(f"{float(ticker.get('volume_24h', 0) or 0):.2f}")
+                        dpg.add_text(f"{float(ticker.get('open_interest', 0) or 0):.2f}")
+                        
+                        high_24h = float(ticker.get('high_24h', 0) or 0)
+                        low_24h = float(ticker.get('low_24h', 0) or 0)
+                        dpg.add_text(f"{high_24h:.2f} / {low_24h:.2f}")
+                        
+                        # Funding placeholder
+                        dpg.add_text("0.0100%")
+                    
+                    rows_added += 1
+                
+                logger.info(f"Futures table updated successfully with {rows_added} rows")
+
         except Exception as e:
             logger.exception("Failed to update futures table", error=str(e))
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Show error in table
+            if dpg.does_item_exist("futures_table"):
+                 # Clear rows
+                children = dpg.get_item_children("futures_table", slot=1)
+                if children:
+                    for child in children:
+                        dpg.delete_item(child)
+                with dpg.table_row(parent="futures_table"):
+                    dpg.add_text("Error updating table")
+                    dpg.add_text(str(e))
 
+
+    def filter_futures(self, category: str):
+        """Filter futures by category."""
+        try:
+            self.current_filter = category
+            self.update_futures_table()
+            logger.info("Futures filtered", category=category)
+        except Exception as e:
+            logger.error("Failed to filter futures", error=str(e))
+
+    # BTCUSD Strategy Methods
+    def toggle_btcusd_strategy(self, sender, app_data, user_data):
+        """Toggle BTCUSD strategy on/off."""
+        if not self.btcusd_strategy_running:
+            # Start
+            self.btcusd_strategy_running = True
+            dpg.configure_item("btn_start_btcusd", label="Stop Strategy")
+            dpg.configure_item("btcusd_running_status", default_value="Status: Running", color=(100, 255, 100))
+            
+            # Start thread
+            import threading
+            self.btcusd_thread = threading.Thread(target=self.run_btcusd_strategy_loop, daemon=True)
+            self.btcusd_thread.start()
+            logger.info("BTCUSD Strategy started")
+        else:
+            # Stop
+            self.btcusd_strategy_running = False
+            dpg.configure_item("btn_start_btcusd", label="Start Strategy")
+            dpg.configure_item("btcusd_running_status", default_value="Status: Stopped", color=(255, 100, 100))
+            logger.info("BTCUSD Strategy stopped")
+
+    def run_btcusd_strategy_loop(self):
+        """Main loop for BTCUSD strategy execution."""
+        import time
+        import pandas as pd
+        
+        while self.btcusd_strategy_running:
+            try:
+                # 1. Fetch Data (1h candles)
+                # We need enough history for RSI(14). 
+                # 100 is "safe" but 300 provides better precision for Wilder's smoothing.
+                end_time = int(time.time())
+                start_time = end_time - (300 * 3600) 
+                
+                # Fetch history
+                # Note: This relies on _make_direct_request. If this fails, we need to check API docs/auth.
+                response = self.api_client._make_direct_request(
+                    "/v2/history/candles", 
+                    params={
+                        "resolution": "1h",
+                        "symbol": "BTCUSD",
+                        "start": start_time,
+                        "end": end_time
+                    }
+                )
+                
+                candles = response.get("result", [])
+                if not candles:
+                    logger.warning("No candle data fetched for BTCUSD")
+                    time.sleep(10)
+                    continue
+                
+                # Parse
+                df = pd.DataFrame(candles)
+                if 'close' in df.columns and 'time' in df.columns:
+                     # Ensure correct sort order (ascending time)
+                     # Check first and last time
+                     first_time = df['time'].iloc[0]
+                     last_time = df['time'].iloc[-1]
+                     logger.info(f"Fetched {len(df)} candles. First: {first_time} Last: {last_time}")
+                     
+                     # If descending (newest first), reverse it
+                     if first_time > last_time:
+                         logger.info("Detected descending order, reversing dataframe for RSI calc")
+                         df = df.iloc[::-1].reset_index(drop=True)
+                     
+                     # Log data for debugging
+                     logger.info(f"Data for RSI: Last Close={df['close'].iloc[-1]}, Time={df['time'].iloc[-1]}")
+                     
+                     closes = df['close'].astype(float)
+                else:
+                     logger.error(f"Unexpected candle data format: {df.columns}")
+                     time.sleep(10)
+                     continue
+
+                # 2. Calculate RSI & Check Signals
+                current_rsi, prev_rsi = self.btcusd_strategy.calculate_rsi(closes)
+                current_time = int(time.time() * 1000)
+                action, reason = self.btcusd_strategy.check_signals(current_rsi, current_time)
+                
+                # 3. Update UI
+                if dpg.does_item_exist("btcusd_rsi_value"):
+                    dpg.set_value("btcusd_rsi_value", f"{current_rsi:.2f}")
+                    
+                    # Update Prev RSI if element exists, else we might need to add it dynamically or just ignore
+                    # For better UX, we should ensure the element is created in create_btcusd_strategy_tab
+                    if dpg.does_item_exist("btcusd_prev_rsi_value"):
+                        dpg.set_value("btcusd_prev_rsi_value", f"{prev_rsi:.2f}")
+                    
+                    # Color code RSI
+                    if current_rsi > 70: color = (255, 100, 100)
+                    elif current_rsi < 30: color = (100, 255, 100)
+                    else: color = (255, 255, 255)
+                    dpg.configure_item("btcusd_rsi_value", color=color)
+                    
+                    # Update Signal Text
+                    if action:
+                        dpg.set_value("btcusd_last_signal", f"ACTION: {action}\nReason: {reason}")
+                        dpg.configure_item("btcusd_last_signal", color=(255, 255, 0)) # Yellow for action
+                        
+                        # Execute Action
+                        self.btcusd_strategy.update_position_state(action, current_time)
+                    else:
+                        dpg.set_value("btcusd_last_signal", "No Action")
+                        dpg.configure_item("btcusd_last_signal", color=(100, 100, 100))
+                    
+                    # Update Position Status
+                    pos = self.btcusd_strategy.current_position
+                    status_text = "FLAT"
+                    if pos == 1: status_text = "LONG"
+                    elif pos == -1: status_text = "SHORT"
+                    dpg.set_value("btcusd_position_status", status_text)
+
+                # Sleep
+                time.sleep(10)
+                
+            except Exception as e:
+                logger.error(f"Error in strategy loop: {e}")
+                time.sleep(10)
 
     def filter_futures(self, category: str):
         """Filter futures by category."""
