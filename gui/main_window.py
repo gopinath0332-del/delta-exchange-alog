@@ -689,21 +689,33 @@ class TradingGUI:
                              h = df['high'].astype(float)
                              l = df['low'].astype(float)
                              c = df['close'].astype(float)
-                             closes = (o + h + l + c) / 4.0
-                             logger.info(f"Using Heikin Ashi Closes. Last HA Close={closes.iloc[-1]:.2f}")
+                             # Overwrite close with HA close for Strategy use
+                             # Note: Strategy expects 'close' column in DF for backtest
+                             df['close'] = (o + h + l + c) / 4.0
+                             closes = df['close']
+                             logger.info(f"Using Heikin Ashi Closes for Backtest & Live. Last HA={closes.iloc[-1]:.2f}")
                      else:
                          closes = df['close'].astype(float)
                          logger.info(f"Using Normal Closes. Last Close={closes.iloc[-1]}")
+
+                     # 2. Run Backtest / Warmup (If first run or empty history)
+                     # This ensures we have trade history and valid duration state
+                     if not self.btcusd_strategy.trades and not self.btcusd_strategy.active_trade:
+                         # Re-run logic: Backtest on HISTORY only (exclude last candle)
+                         if len(df) > 1:
+                             logger.info("Backtesting history (excluding last candle)...")
+                             self.btcusd_strategy.run_backtest(df.iloc[:-1])
+                     
+                     # Now process current live candle
+                     current_time = int(time.time() * 1000)
+                     current_rsi, prev_rsi = self.btcusd_strategy.calculate_rsi(closes)
+                     logger.info(f"RSI Calculated: Current={current_rsi:.2f}, Prev={prev_rsi:.2f}")
+                     action, reason = self.btcusd_strategy.check_signals(current_rsi, current_time)
                 else:
                      logger.error(f"Unexpected candle data format: {df.columns}")
                      time.sleep(10)
                      continue
 
-                # 2. Calculate RSI & Check Signals
-                current_rsi, prev_rsi = self.btcusd_strategy.calculate_rsi(closes)
-                current_time = int(time.time() * 1000)
-                action, reason = self.btcusd_strategy.check_signals(current_rsi, current_time)
-                
                 # 3. Update UI
                 if dpg.does_item_exist("btcusd_rsi_value"):
                     dpg.set_value("btcusd_rsi_value", f"{current_rsi:.2f}")

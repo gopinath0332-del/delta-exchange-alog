@@ -185,3 +185,61 @@ class DoubleDipRSIStrategy:
     def set_position(self, position: int):
         """Manually set position state (e.g. from API sync)."""
         self.current_position = position
+
+    def run_backtest(self, df: pd.DataFrame):
+        """
+        Run backtest on historical data to check conditions/populate history.
+        Assumes df has 'close' and 'time' columns. dates in ascending order.
+        """
+        import ta
+        
+        # Reset State for clean backtest? 
+        # Or just clear trades/history but keep config?
+        self.trades = []
+        self.active_trade = None
+        self.current_position = 0
+        self.last_long_duration = 0.0
+        self.last_long_entry_time = None
+        
+        if df.empty:
+            return
+
+        # Calculate RSI for entire series
+        rsi_series = ta.momentum.rsi(df['close'], window=self.rsi_period)
+        
+        # Iterate through history
+        # We need at least RSI_PERIOD data points
+        for i in range(len(df)):
+            if i < self.rsi_period:
+                continue
+                
+            current_rsi = rsi_series.iloc[i]
+            if pd.isna(current_rsi):
+                continue
+                
+            # Convert timestamp to ms if needed (DataFrame time usually string or datetime object?)
+            # API returns ISO strings usually, but main_window parsing might have kept them?
+            # main_window logic: df = pd.DataFrame(candles) -> candles has 'time' (int unix timestamp in seconds?)?
+            # Let's check main_window.py... line 614: end_time = int(time.time())...
+            # Delta API returns candles with 'time' as Unix timestamp (seconds).
+            # So df['time'] is seconds. Strategy expects ms for update_position_state?
+            # update_position_state uses ms (current_time_ms).
+            
+            # Correction: API candles time is usually Unix Seconds.
+            # verify main_window sends time.time() * 1000 in LIVE loop.
+            # So backtest should scale seconds to ms.
+            
+            current_time_s = df['time'].iloc[i]
+            current_time_ms = current_time_s * 1000
+            
+            # Check Signals
+            # Strategy stores state. check_signals reads state.
+            # But check_signals return action, doesn't update state.
+            # So we simulate the loop: check -> update.
+            
+            action, _ = self.check_signals(current_rsi, current_time_ms)
+            
+            if action:
+                self.update_position_state(action, current_time_ms, current_rsi)
+                
+        logger.info(f"Backtest complete. Trades found: {len(self.trades)}")
