@@ -361,7 +361,7 @@ class TradingGUI:
                 dpg.add_text("Trade History", color=(100, 200, 255))
                 
                 # Trade History Table
-                with dpg.table(tag="btcusd_trade_history_table", header_row=True, borders_innerH=True, borders_outerH=True, borders_innerV=True, borders_outerV=True, row_background=True):
+                with dpg.table(tag="btcusd_trade_history_table", header_row=True, borders_innerH=True, borders_outerH=True, borders_innerV=True, borders_outerV=True, row_background=True, resizable=True, policy=dpg.mvTable_SizingStretchProp):
                     dpg.add_table_column(label="Type", width_fixed=True, init_width_or_weight=50)
                     dpg.add_table_column(label="Entry", width_stretch=True)
                     dpg.add_table_column(label="RSI In", width_fixed=True, init_width_or_weight=70)
