@@ -35,6 +35,10 @@ class DoubleDipRSIStrategy:
         self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat
         self.last_rsi = 0.0
         
+        # Trade History
+        self.trades = [] # List of completed trades
+        self.active_trade = None # Current active trade details
+        
     def calculate_rsi(self, closes: pd.Series) -> Tuple[float, float]:
         """
         Calculate RSI for the given series of close prices.
@@ -118,11 +122,27 @@ class DoubleDipRSIStrategy:
                 
         return action, reason
 
-    def update_position_state(self, action: str, current_time_ms: float):
+    def update_position_state(self, action: str, current_time_ms: float, current_rsi: float = 0.0):
         """Update internal state based on executed action."""
+        import datetime
+        
+        # Helper to format time
+        def format_time(ts_ms):
+            return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%Y-%m-%d %H:%M:%S')
+
         if action == "ENTRY_LONG":
             self.current_position = 1
             self.last_long_entry_time = current_time_ms
+            
+            # Start New Trade
+            self.active_trade = {
+                "type": "LONG",
+                "entry_time": format_time(current_time_ms),
+                "entry_rsi": current_rsi,
+                "exit_time": "-",
+                "exit_rsi": "-",
+                "status": "OPEN"
+            }
             
         elif action == "EXIT_LONG":
             self.current_position = 0
@@ -130,11 +150,37 @@ class DoubleDipRSIStrategy:
                 self.last_long_duration = current_time_ms - self.last_long_entry_time
             self.last_long_entry_time = None
             
+            # Close Trade
+            if self.active_trade and self.active_trade["type"] == "LONG":
+                self.active_trade["exit_time"] = format_time(current_time_ms)
+                self.active_trade["exit_rsi"] = current_rsi
+                self.active_trade["status"] = "CLOSED"
+                self.trades.append(self.active_trade)
+                self.active_trade = None
+            
         elif action == "ENTRY_SHORT":
             self.current_position = -1
             
+            # Start New Trade
+            self.active_trade = {
+                "type": "SHORT",
+                "entry_time": format_time(current_time_ms),
+                "entry_rsi": current_rsi,
+                "exit_time": "-",
+                "exit_rsi": "-",
+                "status": "OPEN"
+            }
+            
         elif action == "EXIT_SHORT":
             self.current_position = 0
+            
+            # Close Trade
+            if self.active_trade and self.active_trade["type"] == "SHORT":
+                self.active_trade["exit_time"] = format_time(current_time_ms)
+                self.active_trade["exit_rsi"] = current_rsi
+                self.active_trade["status"] = "CLOSED"
+                self.trades.append(self.active_trade)
+                self.active_trade = None
             
     def set_position(self, position: int):
         """Manually set position state (e.g. from API sync)."""

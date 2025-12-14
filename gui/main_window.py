@@ -353,6 +353,20 @@ class TradingGUI:
                 dpg.add_text("  Entry: RSI < 35 (Wait 2 days after Long)")
                 dpg.add_text("  Exit:  RSI > 35")
                 
+                dpg.add_spacer(height=20)
+                dpg.add_separator()
+                dpg.add_text("Trade History", color=(100, 200, 255))
+                
+                # Trade History Table
+                with dpg.table(tag="btcusd_trade_history_table", header_row=True, borders_innerH=True, borders_outerH=True, borders_innerV=True, borders_outerV=True, row_background=True):
+                    dpg.add_table_column(label="Type", width_fixed=True, init_width_or_weight=40)
+                    dpg.add_table_column(label="Entry Time", width_stretch=True)
+                    dpg.add_table_column(label="RSI In", width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="Exit Time", width_stretch=True)
+                    dpg.add_table_column(label="RSI Out", width_fixed=True, init_width_or_weight=50)
+
+                dpg.add_spacer(height=10)
+                
     # Callback methods
     def on_tab_change(self, sender, app_data, user_data):
         """Handle tab change events."""
@@ -715,7 +729,7 @@ class TradingGUI:
                         dpg.configure_item("btcusd_last_signal", color=(255, 255, 0)) # Yellow for action
                         
                         # Execute Action
-                        self.btcusd_strategy.update_position_state(action, current_time)
+                        self.btcusd_strategy.update_position_state(action, current_time, current_rsi)
                     else:
                         dpg.set_value("btcusd_last_signal", "No Action")
                         dpg.configure_item("btcusd_last_signal", color=(100, 100, 100))
@@ -726,6 +740,35 @@ class TradingGUI:
                     if pos == 1: status_text = "LONG"
                     elif pos == -1: status_text = "SHORT"
                     dpg.set_value("btcusd_position_status", status_text)
+                    
+                    # Update Trade History Table
+                    if dpg.does_item_exist("btcusd_trade_history_table"):
+                        # Clear existing rows (inefficient but simple for small history)
+                        children = dpg.get_item_children("btcusd_trade_history_table", slot=1)
+                        if children:
+                            for child in children:
+                                dpg.delete_item(child)
+                        
+                        # Add Completed Trades
+                        for trade in self.btcusd_strategy.trades:
+                            with dpg.table_row(parent="btcusd_trade_history_table"):
+                                type_color = (100, 255, 100) if trade["type"] == "LONG" else (255, 100, 100)
+                                dpg.add_text(trade["type"], color=type_color)
+                                dpg.add_text(trade["entry_time"])
+                                dpg.add_text(f"{trade['entry_rsi']:.2f}")
+                                dpg.add_text(trade["exit_time"])
+                                dpg.add_text(f"{trade['exit_rsi']:.2f}")
+
+                        # Add Active Trade (if any)
+                        active = self.btcusd_strategy.active_trade
+                        if active:
+                            with dpg.table_row(parent="btcusd_trade_history_table"):
+                                type_color = (100, 255, 100) if active["type"] == "LONG" else (255, 100, 100)
+                                dpg.add_text(active["type"], color=type_color)
+                                dpg.add_text(active["entry_time"])
+                                dpg.add_text(f"{active['entry_rsi']:.2f}")
+                                dpg.add_text("OPEN", color=(255, 255, 0))
+                                dpg.add_text("--")
 
                 # Responsive Sleep (Align to next 10-minute mark)
                 # Check status every 1s to allow quick stop
@@ -742,14 +785,7 @@ class TradingGUI:
                 logger.error(f"Error in strategy loop: {e}")
                 time.sleep(10) # 10s wait on error
 
-    def filter_futures(self, category: str):
-        """Filter futures by category."""
-        try:
-            self.current_filter = category
-            self.update_futures_table()
-            logger.info("Futures filtered", category=category)
-        except Exception as e:
-            logger.error("Failed to filter futures", error=str(e))
+
 
     def search_futures(self):
         """Search futures by query."""
