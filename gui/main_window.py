@@ -187,44 +187,7 @@ class TradingGUI:
                 dpg.add_separator()
                 dpg.add_spacer(height=10)
 
-                # Filter tabs
-                with dpg.group(horizontal=True):
-                    dpg.add_text("Filters:", color=(160, 160, 160))
-                    dpg.add_spacer(width=10)
-                    
-                # Filter buttons
-                filter_categories = [
-                    "ALL", "NEW", "LAYER 1", "SMART CONTRACTS", "SOLANA ECOSYSTEM",
-                    "MEME", "DEFI", "AI", "RWA", "LAYER 2", "GAMING", "NFT"
-                ]
-                
-                with dpg.group(horizontal=True):
-                    for category in filter_categories[:6]:  # First row
-                        dpg.add_button(
-                            label=category,
-                            callback=lambda s, a, u: self.filter_futures(u),
-                            user_data=category,
-                            width=100,
-                            height=25
-                        )
-                        dpg.add_spacer(width=5)
-                
-                dpg.add_spacer(height=5)
-                
-                with dpg.group(horizontal=True):
-                    for category in filter_categories[6:]:  # Second row
-                        dpg.add_button(
-                            label=category,
-                            callback=lambda s, a, u: self.filter_futures(u),
-                            user_data=category,
-                            width=100,
-                            height=25
-                        )
-                        dpg.add_spacer(width=5)
-
-                dpg.add_spacer(height=10)
-
-                # Search box
+                # Search box and Load button
                 with dpg.group(horizontal=True):
                     dpg.add_text("Search:", color=(160, 160, 160))
                     dpg.add_input_text(
@@ -368,6 +331,10 @@ class TradingGUI:
         try:
             logger.info("Starting to load futures products")
             
+            # Get symbols from configuration
+            target_symbols = self.config.gui.futures_symbols
+            logger.info(f"Loading futures for symbols: {target_symbols}")
+            
             # Show loading status
             if dpg.does_item_exist("futures_table"):
                 children = dpg.get_item_children("futures_table", slot=1)
@@ -386,13 +353,17 @@ class TradingGUI:
                     dpg.add_text("")
                     dpg.add_text("")
             
-            # Fetch futures products
+            # Fetch all futures products
             logger.info("Fetching futures products from API")
-            products = self.api_client.get_futures_products()
-            logger.info(f"Fetched {len(products)} futures products")
+            all_products = self.api_client.get_futures_products()
+            logger.info(f"Fetched {len(all_products)} total futures products")
+            
+            # Filter for specific symbols only
+            products = [p for p in all_products if p.get("symbol") in target_symbols]
+            logger.info(f"Filtered to {len(products)} target products: {target_symbols}")
             
             if not products:
-                logger.warning("No futures products returned from API")
+                logger.warning("No matching futures products found")
                 # Clear table and show message
                 if dpg.does_item_exist("futures_table"):
                     children = dpg.get_item_children("futures_table", slot=1)
@@ -401,7 +372,7 @@ class TradingGUI:
                             dpg.delete_item(child)
                     with dpg.table_row(parent="futures_table"):
                         dpg.add_text("No Data")
-                        dpg.add_text("No futures products available")
+                        dpg.add_text(f"No futures found for: {', '.join(target_symbols)}")
                         dpg.add_text("")
                         dpg.add_text("")
                         dpg.add_text("")
@@ -414,9 +385,9 @@ class TradingGUI:
             self.futures_products = products
             self.current_filter = "ALL"
             
-            # Get ticker data for all products (limit to first 50 for performance)
+            # Get ticker data for the filtered products
             logger.info("Fetching ticker data for products")
-            symbols = [p.get("symbol", "") for p in products[:50]]
+            symbols = [p.get("symbol", "") for p in products]
             self.futures_tickers = self.api_client.get_tickers_batch(symbols)
             logger.info(f"Fetched {len(self.futures_tickers)} tickers")
             
@@ -493,14 +464,15 @@ class TradingGUI:
                     dpg.delete_item(child)
             
             # Add new rows
-            logger.info(f"Adding {min(len(filtered_products), 50)} rows to table")
+            logger.info(f"Adding {len(filtered_products)} rows to table")
             rows_added = 0
             
-            for product in filtered_products[:50]:  # Limit to 50 for performance
+            for product in filtered_products:  # Show all filtered products (only 3 specific symbols)
                 symbol = product.get("symbol", "")
                 ticker = self.futures_tickers.get(symbol, {})
                 
                 logger.debug(f"Processing {symbol}, ticker data: {bool(ticker)}")
+
                 
                 # Extract ticker data
                 last_price = float(ticker.get("close", 0))

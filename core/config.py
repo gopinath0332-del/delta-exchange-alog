@@ -53,6 +53,7 @@ class GUIConfig(BaseModel):
     chart_candles: int = Field(default=200, gt=0)
     chart_default_timeframe: str = "1h"
     orderbook_depth: int = Field(default=10, gt=0)
+    futures_symbols: List[str] = Field(default_factory=list)  # Loaded from settings.yaml
 
 
 

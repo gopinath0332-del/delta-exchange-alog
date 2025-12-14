@@ -37,6 +37,11 @@ gui:
   theme: dark
   update_interval: 1000 # milliseconds
   chart_candles: 200 # number of candles to display
+  # Futures symbols to display in trading tab
+  futures_symbols:
+    - BTCUSD
+    - ETHUSD
+    - SOLUSD
 
 # Terminal Settings
 terminal:
