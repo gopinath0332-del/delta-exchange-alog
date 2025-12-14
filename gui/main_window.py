@@ -94,8 +94,8 @@ class TradingGUI:
 
     def setup_ui(self):
         """Setup the main UI - using working patterns from reference project."""
-        # Main window - using with context manager WITHOUT tag
-        with dpg.window(label="Delta Exchange Trading", width=1400, height=900, pos=(50, 50)):
+        # Main window - using with context manager and tag for primary window
+        with dpg.window(label="Delta Exchange Trading", tag="primary_window"):
             # Status bar
             with dpg.group(horizontal=True):
                 dpg.add_text("Status:", color=(160, 160, 160))
@@ -138,6 +138,9 @@ class TradingGUI:
                 with dpg.tab(label="BTCUSD Strategy", tag="tab_btcusd_strategy"):
                     with dpg.child_window(height=-1):
                         self.create_btcusd_strategy_tab()
+
+        # Set as primary window to enable OS resizing
+        dpg.set_primary_window("primary_window", True)
 
     def create_dashboard_tab(self):
         """Create dashboard tab."""
@@ -358,7 +361,7 @@ class TradingGUI:
                 dpg.add_text("Trade History", color=(100, 200, 255))
                 
                 # Trade History Table
-                with dpg.table(tag="btcusd_trade_history_table", header_row=True, borders_innerH=True, borders_outerH=True, borders_innerV=True, borders_outerV=True, row_background=True):
+                with dpg.table(tag="btcusd_trade_history_table", header_row=True, borders_innerH=True, borders_outerH=True, borders_innerV=True, borders_outerV=True, row_background=True, resizable=True, policy=dpg.mvTable_SizingStretchProp):
                     dpg.add_table_column(label="Type", width_fixed=True, init_width_or_weight=50)
                     dpg.add_table_column(label="Entry", width_stretch=True)
                     dpg.add_table_column(label="RSI In", width_fixed=True, init_width_or_weight=70)
