@@ -34,6 +34,7 @@ class TradingGUI:
         self.btcusd_strategy = DoubleDipRSIStrategy()
         self.btcusd_strategy_running = False
         self.btcusd_thread = None
+        self.btcusd_candle_type_selection = "Heikin Ashi"  # Default to HA
 
         logger.info("Trading GUI initialized", environment=config.environment)
 
@@ -297,7 +298,7 @@ class TradingGUI:
                 # Settings
                 dpg.add_spacer(height=5)
                 dpg.add_text("Settings:")
-                dpg.add_combo(["Normal", "Heikin Ashi"], default_value="Heikin Ashi", label="Candle Type", tag="btcusd_candle_type", width=150)
+                dpg.add_combo(["Normal", "Heikin Ashi"], default_value="Heikin Ashi", label="Candle Type", tag="btcusd_candle_type", width=150, callback=self.on_btcusd_candle_type_change)
                 dpg.add_spacer(height=10)
                 
                 # Live RSI Display
@@ -598,6 +599,11 @@ class TradingGUI:
             dpg.configure_item("btcusd_running_status", default_value="Status: Stopped", color=(255, 100, 100))
             logger.info("BTCUSD Strategy stopped")
 
+    def on_btcusd_candle_type_change(self, sender, app_data):
+        """Handle candle type change."""
+        self.btcusd_candle_type_selection = app_data
+        logger.info(f"Candle type changed to: {app_data}")
+
     def run_btcusd_strategy_loop(self):
         """Main loop for BTCUSD strategy execution."""
         import time
@@ -649,10 +655,8 @@ class TradingGUI:
                      logger.info(f"Data for RSI: Last Close={df['close'].iloc[-1]}, Time={df['time'].iloc[-1]}")
                      
                      # Determine Candle Type
-                     use_ha = False
-                     if dpg.does_item_exist("btcusd_candle_type"):
-                         candle_type = dpg.get_value("btcusd_candle_type")
-                         use_ha = (candle_type == "Heikin Ashi")
+                     candle_type = getattr(self, "btcusd_candle_type_selection", "Normal")
+                     use_ha = (candle_type == "Heikin Ashi")
                      
                      if use_ha:
                          # Calculate Heikin Ashi Close = (O + H + L + C) / 4
