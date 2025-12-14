@@ -653,7 +653,7 @@ class TradingGUI:
                     # Update Prev RSI if element exists, else we might need to add it dynamically or just ignore
                     # For better UX, we should ensure the element is created in create_btcusd_strategy_tab
                     if dpg.does_item_exist("btcusd_prev_rsi_value"):
-                        dpg.set_value("btcusd_prev_rsi_value", f"Prev (Closed): {prev_rsi:.2f}")
+                        dpg.set_value("btcusd_prev_rsi_value", f"{prev_rsi:.2f}")
                     
                     # Color code RSI
                     if current_rsi > 70: color = (255, 100, 100)
