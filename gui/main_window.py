@@ -314,6 +314,10 @@ class TradingGUI:
                 with dpg.group(horizontal=True):
                     dpg.add_text("Position:")
                     dpg.add_text("FLAT", tag="btcusd_position_status", color=(200, 200, 200))
+
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Last Updated: ")
+                    dpg.add_text("--", tag="btcusd_last_updated", color=(150, 150, 150))
                 
                 dpg.add_spacer(height=10)
                 dpg.add_separator()
@@ -690,10 +694,14 @@ class TradingGUI:
                 if dpg.does_item_exist("btcusd_rsi_value"):
                     dpg.set_value("btcusd_rsi_value", f"{current_rsi:.2f}")
                     
-                    # Update Prev RSI if element exists, else we might need to add it dynamically or just ignore
-                    # For better UX, we should ensure the element is created in create_btcusd_strategy_tab
+                    # Update Prev RSI
                     if dpg.does_item_exist("btcusd_prev_rsi_value"):
                         dpg.set_value("btcusd_prev_rsi_value", f"{prev_rsi:.2f}")
+
+                    # Update Last Updated Time
+                    if dpg.does_item_exist("btcusd_last_updated"):
+                        update_time_str = time.strftime("%H:%M:%S")
+                        dpg.set_value("btcusd_last_updated", f"{update_time_str}")
                     
                     # Color code RSI
                     if current_rsi > 70: color = (255, 100, 100)
@@ -719,12 +727,20 @@ class TradingGUI:
                     elif pos == -1: status_text = "SHORT"
                     dpg.set_value("btcusd_position_status", status_text)
 
-                # Sleep
-                time.sleep(10)
+                # Responsive Sleep (Align to next 10-minute mark)
+                # Check status every 1s to allow quick stop
+                current_ts = int(time.time())
+                sleep_seconds = 600 - (current_ts % 600)
+                logger.debug(f"Sleeping for {sleep_seconds} seconds to align with clock...")
+                
+                for _ in range(sleep_seconds): 
+                    if not self.btcusd_strategy_running:
+                        break
+                    time.sleep(1)
                 
             except Exception as e:
                 logger.error(f"Error in strategy loop: {e}")
-                time.sleep(10)
+                time.sleep(10) # 10s wait on error
 
     def filter_futures(self, category: str):
         """Filter futures by category."""
