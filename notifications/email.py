@@ -62,11 +62,34 @@ class EmailNotifier:
             msg.attach(MIMEText(body, type_str))
 
             # Connect and send
-            context = ssl.create_default_context() if self.use_tls else None
-            
+            context = None
+            if self.use_tls:
+                try:
+                    # Try to create default context (may fail on macOS)
+                    context = ssl.create_default_context()
+                    
+                    # Try to load certifi certs if available
+                    try:
+                        import certifi
+                        context.load_verify_locations(certifi.where())
+                        logger.debug("Loaded SSL certificates from certifi")
+                    except ImportError:
+                        pass
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to create default SSL context: {e}, falling back to unverified context")
+                    context = ssl._create_unverified_context()
+
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                # Basic connection
+                # Upgrade to TLS
                 if self.use_tls:
-                    server.starttls(context=context)
+                    try:
+                        server.starttls(context=context)
+                    except ssl.SSLCertVerificationError:
+                        logger.warning("SSL verification failed, retrying with unverified context")
+                        context = ssl._create_unverified_context()
+                        server.starttls(context=context)
                 
                 server.login(self.username, self.password)
                 server.send_message(msg)
@@ -104,4 +127,21 @@ class EmailNotifier:
         </html>
         """
         
+        self.send_email(subject, body, is_html=True)
+
+    def send_status_message(self, title: str, message: str):
+        """
+        Send a status update email.
+        """
+        subject = f"Status Update: {title}"
+        
+        body = f"""
+        <html>
+          <body>
+            <h2>{title}</h2>
+            <p>{message}</p>
+            <p>Sent from Delta Exchange Trading Bot</p>
+          </body>
+        </html>
+        """
         self.send_email(subject, body, is_html=True)
