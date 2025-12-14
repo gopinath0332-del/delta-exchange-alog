@@ -53,8 +53,15 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     else:
         logger.error("Network connection timed out after 60s. Proceeding anyway.")
 
+    # Get System Hostname
+    import socket
+    hostname = socket.gethostname()
+
     logger.info("Starting strategy loop... Press Ctrl+C to stop.")
-    notifier.send_status_message(f"Strategy Started (Terminal - {mode})", f"{symbol} {strategy_name} started.")
+    notifier.send_status_message(
+        f"Strategy Started (Terminal - {mode})", 
+        f"{symbol} {strategy_name} started on host: **{hostname}**"
+    )
     
     try:
         while True:
