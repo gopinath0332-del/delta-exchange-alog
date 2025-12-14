@@ -34,6 +34,7 @@ class TradingGUI:
         self.btcusd_strategy = DoubleDipRSIStrategy()
         self.btcusd_strategy_running = False
         self.btcusd_thread = None
+        self.btcusd_candle_type_selection = "Heikin Ashi"  # Default to HA
 
         logger.info("Trading GUI initialized", environment=config.environment)
 
@@ -294,6 +295,12 @@ class TradingGUI:
                 dpg.add_separator()
                 dpg.add_spacer(height=5)
                 
+                # Settings
+                dpg.add_spacer(height=5)
+                dpg.add_text("Settings:")
+                dpg.add_combo(["Normal", "Heikin Ashi"], default_value="Heikin Ashi", label="Candle Type", tag="btcusd_candle_type", width=150, callback=self.on_btcusd_candle_type_change)
+                dpg.add_spacer(height=10)
+                
                 # Live RSI Display
                 with dpg.group(horizontal=True):
                     dpg.add_text("Current RSI (14): ")
@@ -307,6 +314,10 @@ class TradingGUI:
                 with dpg.group(horizontal=True):
                     dpg.add_text("Position:")
                     dpg.add_text("FLAT", tag="btcusd_position_status", color=(200, 200, 200))
+
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Last Updated: ")
+                    dpg.add_text("--", tag="btcusd_last_updated", color=(150, 150, 150))
                 
                 dpg.add_spacer(height=10)
                 dpg.add_separator()
@@ -575,6 +586,11 @@ class TradingGUI:
             dpg.configure_item("btn_start_btcusd", label="Stop Strategy")
             dpg.configure_item("btcusd_running_status", default_value="Status: Running", color=(100, 255, 100))
             
+            # Check if thread is already alive (restart case)
+            if self.btcusd_thread and self.btcusd_thread.is_alive():
+                logger.info("Resuming existing BTCUSD Strategy thread")
+                return
+
             # Start thread
             import threading
             self.btcusd_thread = threading.Thread(target=self.run_btcusd_strategy_loop, daemon=True)
@@ -587,6 +603,11 @@ class TradingGUI:
             dpg.configure_item("btcusd_running_status", default_value="Status: Stopped", color=(255, 100, 100))
             logger.info("BTCUSD Strategy stopped")
 
+    def on_btcusd_candle_type_change(self, sender, app_data):
+        """Handle candle type change."""
+        self.btcusd_candle_type_selection = app_data
+        logger.info(f"Candle type changed to: {app_data}")
+
     def run_btcusd_strategy_loop(self):
         """Main loop for BTCUSD strategy execution."""
         import time
@@ -594,6 +615,8 @@ class TradingGUI:
         
         while self.btcusd_strategy_running:
             try:
+                logger.debug("Strategy loop iteration check")
+                
                 # 1. Fetch Data (1h candles)
                 # We need enough history for RSI(14). 
                 # 100 is "safe" but 300 provides better precision for Wilder's smoothing.
@@ -635,7 +658,28 @@ class TradingGUI:
                      # Log data for debugging
                      logger.info(f"Data for RSI: Last Close={df['close'].iloc[-1]}, Time={df['time'].iloc[-1]}")
                      
-                     closes = df['close'].astype(float)
+                     # Determine Candle Type
+                     candle_type = getattr(self, "btcusd_candle_type_selection", "Normal")
+                     use_ha = (candle_type == "Heikin Ashi")
+                     
+                     if use_ha:
+                         # Calculate Heikin Ashi Close = (O + H + L + C) / 4
+                         # Ensure all columns exist and are float
+                         for col in ['open', 'high', 'low', 'close']:
+                             if col not in df.columns:
+                                 logger.error(f"Missing column for HA: {col}")
+                                 closes = df['close'].astype(float) # Fallback
+                                 break
+                         else:
+                             o = df['open'].astype(float)
+                             h = df['high'].astype(float)
+                             l = df['low'].astype(float)
+                             c = df['close'].astype(float)
+                             closes = (o + h + l + c) / 4.0
+                             logger.info(f"Using Heikin Ashi Closes. Last HA Close={closes.iloc[-1]:.2f}")
+                     else:
+                         closes = df['close'].astype(float)
+                         logger.info(f"Using Normal Closes. Last Close={closes.iloc[-1]}")
                 else:
                      logger.error(f"Unexpected candle data format: {df.columns}")
                      time.sleep(10)
@@ -650,10 +694,14 @@ class TradingGUI:
                 if dpg.does_item_exist("btcusd_rsi_value"):
                     dpg.set_value("btcusd_rsi_value", f"{current_rsi:.2f}")
                     
-                    # Update Prev RSI if element exists, else we might need to add it dynamically or just ignore
-                    # For better UX, we should ensure the element is created in create_btcusd_strategy_tab
+                    # Update Prev RSI
                     if dpg.does_item_exist("btcusd_prev_rsi_value"):
                         dpg.set_value("btcusd_prev_rsi_value", f"{prev_rsi:.2f}")
+
+                    # Update Last Updated Time
+                    if dpg.does_item_exist("btcusd_last_updated"):
+                        update_time_str = time.strftime("%H:%M:%S")
+                        dpg.set_value("btcusd_last_updated", f"{update_time_str}")
                     
                     # Color code RSI
                     if current_rsi > 70: color = (255, 100, 100)
@@ -679,12 +727,20 @@ class TradingGUI:
                     elif pos == -1: status_text = "SHORT"
                     dpg.set_value("btcusd_position_status", status_text)
 
-                # Sleep
-                time.sleep(10)
+                # Responsive Sleep (Align to next 10-minute mark)
+                # Check status every 1s to allow quick stop
+                current_ts = int(time.time())
+                sleep_seconds = 600 - (current_ts % 600)
+                logger.debug(f"Sleeping for {sleep_seconds} seconds to align with clock...")
+                
+                for _ in range(sleep_seconds): 
+                    if not self.btcusd_strategy_running:
+                        break
+                    time.sleep(1)
                 
             except Exception as e:
                 logger.error(f"Error in strategy loop: {e}")
-                time.sleep(10)
+                time.sleep(10) # 10s wait on error
 
     def filter_futures(self, category: str):
         """Filter futures by category."""
