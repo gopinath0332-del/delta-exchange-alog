@@ -34,12 +34,13 @@ class TestDoubleDipRSIStrategy:
         
         # Manually set a short duration for last long (e.g., 1 hour) which matches min_days_long=2 requirement?
         # Wait, requirement is >= 2 days. So 1 hour should BLOCK it.
-        strategy.last_long_duration = 3600 * 1000 # 1 hour
+        # NOW: Even 0 (no history) should block it.
+        strategy.last_long_duration = 0 
         strategy.current_position = 0
         
         # Trigger Short Signal
         action, reason = strategy.check_signals(30.0, current_time)
-        assert action is None # Should be blocked
+        assert action is None # Should be blocked (conservative default)
         
     def test_short_entry_signal_allowed(self):
         strategy = DoubleDipRSIStrategy()

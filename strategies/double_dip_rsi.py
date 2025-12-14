@@ -92,9 +92,16 @@ class DoubleDipRSIStrategy:
             # Check duration of last long
             ms_per_day = 24 * 60 * 60 * 1000
             threshold = self.min_days_long * ms_per_day
-            # Allowed if no prior long OR duration >= threshold
-            short_allowed = (self.last_long_duration == 0) or (self.last_long_duration >= threshold)
-        
+            
+            # Logic: Short allowed ONLY if Last long duration >= threshold
+            # If last_long_duration is 0 (no history), we BLOCK shorts to be conservative 
+            # and match the "Wait 2 days" constraint safety.
+            short_allowed = (self.last_long_duration >= threshold) and (self.last_long_duration > 0)
+            
+            if not short_allowed:
+                 # Optional: Log reason if needed, but for now we just block
+                 reason = f"Blocked: Prev Long duration {self.last_long_duration/ms_per_day:.2f}d < {self.min_days_long}d"
+                 
         if self.current_position >= 0: # Flat or Long
             if short_signal and short_allowed:
                 action = "ENTRY_SHORT"
