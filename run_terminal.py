@@ -35,20 +35,40 @@ def main():
     print("\n" + "="*80)
     print(" DELTA EXCHANGE TRADING BOT - TERMINAL MODE")
     print("="*80)
-    print(" This script runs the BTCUSD Double-Dip RSI Strategy.")
-    print(" Press Ctrl+C to stop.")
-    print("="*80 + "\n")
-
-    # Run the strategy
-    # Defaulting to BTCUSD / Double-Dip / Live (or Paper if configured)
-    # You can expand this with argparse if needed
     
-    symbol = "BTCUSD"
-    strategy = "double-dip"
-    mode = "live" # or paper
+    # Available Strategies
+    STRATEGIES = [
+        {
+            "id": 1,
+            "name": "BTCUSD Double-Dip RSI (Heikin Ashi)", 
+            "symbol": "BTCUSD", 
+            "monitor": "double-dip",
+            "desc": "Long/Short strategy based on RSI thresholds and duration."
+        }
+    ]
+
+    print("\nAvailable Strategies:")
+    for strat in STRATEGIES:
+        print(f" {strat['id']}. {strat['name']}")
+        print(f"    - {strat['desc']}")
+    
+    print("\n" + "-"*40)
     
     try:
-        run_strategy_terminal(config, strategy, symbol, mode)
+        choice = input("Select a strategy to run (enter number): ").strip()
+        selected_strat = next((s for s in STRATEGIES if str(s['id']) == choice), None)
+        
+        if not selected_strat:
+            print("\nInvalid selection. Exiting.")
+            sys.exit(1)
+            
+        print(f"\nLaunching {selected_strat['name']}...")
+        
+        # Hardcoded for now as we only have one mode
+        mode = "live" 
+        
+        run_strategy_terminal(config, selected_strat['monitor'], selected_strat['symbol'], mode)
+        
     except KeyboardInterrupt:
         print("\nExiting...")
         sys.exit(0)
