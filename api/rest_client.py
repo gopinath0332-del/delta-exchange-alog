@@ -168,6 +168,73 @@ class DeltaRestClient:
         response = self._make_request(self.client.get_l2_orderbook, product_id)
         return cast(Dict[str, Any], response)
 
+    def get_futures_products(self) -> List[Dict[str, Any]]:
+        """
+        Get all futures and perpetual products.
+
+        Returns:
+            List of futures/perpetual products with metadata
+        """
+        logger.debug("Fetching futures products")
+        all_products = self.get_products()
+        
+        # Filter for futures and perpetual contracts
+        futures_products = [
+            p for p in all_products
+            if p.get("contract_type") in ["futures", "perpetual_futures", "move_options"]
+            and p.get("state") == "live"
+        ]
+        
+        logger.info("Fetched futures products", count=len(futures_products))
+        return futures_products
+
+    def get_tickers_batch(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Get ticker data for multiple symbols efficiently.
+
+        Args:
+            symbols: List of trading symbols
+
+        Returns:
+            Dictionary mapping symbol to ticker data
+        """
+        logger.debug("Fetching batch tickers", count=len(symbols))
+        tickers = {}
+        
+        # Delta Exchange doesn't have a batch ticker endpoint, so we fetch individually
+        # but with rate limiting handled by our wrapper
+        for symbol in symbols:
+            try:
+                ticker = self.get_ticker(symbol)
+                tickers[symbol] = ticker
+            except Exception as e:
+                logger.warning("Failed to fetch ticker", symbol=symbol, error=str(e))
+                # Continue with other symbols
+                continue
+        
+        logger.info("Fetched batch tickers", success_count=len(tickers), total=len(symbols))
+        return tickers
+
+    def get_funding_rate(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Get current funding rate for perpetual contracts.
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            Funding rate data or None if not available
+        """
+        try:
+            logger.debug("Fetching funding rate", symbol=symbol)
+            # Use direct request as funding rate endpoint may not be in delta-rest-client
+            response = self._make_direct_request(f"/v2/products/{symbol}/funding_rate")
+            return cast(Dict[str, Any], response.get("result"))
+        except Exception as e:
+            logger.debug("Funding rate not available", symbol=symbol, error=str(e))
+            return None
+
+
     def get_historical_candles(
         self,
         symbol: str,

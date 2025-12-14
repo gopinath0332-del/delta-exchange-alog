@@ -175,29 +175,91 @@ class TradingGUI:
                     dpg.add_text("⚠ PRODUCTION MODE - Real funds at risk!", color=(231, 76, 60))
 
     def create_trading_tab(self):
-        """Create trading tab."""
+        """Create trading tab with futures product table."""
         dpg.add_text("Trading", color=(100, 200, 255))
         dpg.add_separator()
         dpg.add_spacer(height=10)
 
         with dpg.group(horizontal=True):
-            # Left column - Market data
-            with dpg.child_window(width=400, height=-1):
-                dpg.add_text("Market Data", color=(100, 200, 255))
+            # Left column - Futures product table
+            with dpg.child_window(width=900, height=-1):
+                dpg.add_text("Futures", color=(100, 200, 255))
                 dpg.add_separator()
                 dpg.add_spacer(height=10)
 
-                dpg.add_text("Product:")
-                dpg.add_combo([], tag="product_combo", width=-1, callback=self.on_product_selected)
-                dpg.add_button(label="Load Products", callback=self.load_products, width=-1)
+                # Filter tabs
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Filters:", color=(160, 160, 160))
+                    dpg.add_spacer(width=10)
+                    
+                # Filter buttons
+                filter_categories = [
+                    "ALL", "NEW", "LAYER 1", "SMART CONTRACTS", "SOLANA ECOSYSTEM",
+                    "MEME", "DEFI", "AI", "RWA", "LAYER 2", "GAMING", "NFT"
+                ]
+                
+                with dpg.group(horizontal=True):
+                    for category in filter_categories[:6]:  # First row
+                        dpg.add_button(
+                            label=category,
+                            callback=lambda s, a, u: self.filter_futures(u),
+                            user_data=category,
+                            width=100,
+                            height=25
+                        )
+                        dpg.add_spacer(width=5)
+                
+                dpg.add_spacer(height=5)
+                
+                with dpg.group(horizontal=True):
+                    for category in filter_categories[6:]:  # Second row
+                        dpg.add_button(
+                            label=category,
+                            callback=lambda s, a, u: self.filter_futures(u),
+                            user_data=category,
+                            width=100,
+                            height=25
+                        )
+                        dpg.add_spacer(width=5)
 
-                dpg.add_spacer(height=20)
-                dpg.add_text("Ticker", color=(100, 200, 255))
-                dpg.add_separator()
+                dpg.add_spacer(height=10)
 
-                dpg.add_text("Symbol: --", tag="ticker_symbol")
-                dpg.add_text("Price: $--", tag="ticker_price")
-                dpg.add_text("24h Change: --", tag="ticker_change")
+                # Search box
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Search:", color=(160, 160, 160))
+                    dpg.add_input_text(
+                        tag="futures_search",
+                        hint="Search contracts...",
+                        callback=self.search_futures,
+                        width=300
+                    )
+                    dpg.add_spacer(width=10)
+                    dpg.add_button(label="Load Futures", callback=self.load_futures_products, width=120)
+
+                dpg.add_spacer(height=10)
+
+                # Futures table
+                with dpg.table(
+                    tag="futures_table",
+                    header_row=True,
+                    resizable=True,
+                    borders_innerH=True,
+                    borders_innerV=True,
+                    borders_outerH=True,
+                    borders_outerV=True,
+                    scrollY=True,
+                    height=500,
+                    row_background=True,
+                    policy=dpg.mvTable_SizingStretchProp
+                ):
+                    dpg.add_table_column(label="Contract", width_fixed=True, init_width_or_weight=100)
+                    dpg.add_table_column(label="Description", width_stretch=True, init_width_or_weight=150)
+                    dpg.add_table_column(label="Last Price", width_fixed=True, init_width_or_weight=100)
+                    dpg.add_table_column(label="24h Change", width_fixed=True, init_width_or_weight=100)
+                    dpg.add_table_column(label="24h Volume", width_fixed=True, init_width_or_weight=100)
+                    dpg.add_table_column(label="Open Interest", width_fixed=True, init_width_or_weight=100)
+                    dpg.add_table_column(label="24h High/Low", width_fixed=True, init_width_or_weight=120)
+                    dpg.add_table_column(label="Funding", width_fixed=True, init_width_or_weight=80)
 
             # Right column - Order placement
             with dpg.child_window(width=-1, height=-1):
@@ -205,19 +267,41 @@ class TradingGUI:
                 dpg.add_separator()
                 dpg.add_spacer(height=10)
 
-                dpg.add_text("Order Type:")
-                dpg.add_combo(["Market Order", "Limit Order"], default_value="Limit Order", tag="order_type", width=-1)
+                # Selected product display
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Product:", color=(160, 160, 160))
+                    dpg.add_text("None selected", tag="selected_product_text", color=(100, 200, 255))
 
                 dpg.add_spacer(height=10)
-                dpg.add_text("Side:")
+                dpg.add_separator()
+                dpg.add_spacer(height=10)
+
+                # Ticker info
+                dpg.add_text("Ticker", color=(100, 200, 255))
+                dpg.add_separator()
+                dpg.add_text("Symbol: --", tag="ticker_symbol")
+                dpg.add_text("Price: $--", tag="ticker_price")
+                dpg.add_text("24h Change: --", tag="ticker_change")
+
+                dpg.add_spacer(height=20)
+                dpg.add_separator()
+                dpg.add_spacer(height=10)
+
+                dpg.add_text("Order Type:", color=(160, 160, 160))
+                dpg.add_combo([
+                    "Market Order", "Limit Order"
+                ], default_value="Limit Order", tag="order_type", width=-1)
+
+                dpg.add_spacer(height=10)
+                dpg.add_text("Side:", color=(160, 160, 160))
                 dpg.add_radio_button(["Buy", "Sell"], tag="order_side", horizontal=True)
 
                 dpg.add_spacer(height=10)
-                dpg.add_text("Quantity:")
+                dpg.add_text("Quantity:", color=(160, 160, 160))
                 dpg.add_input_int(tag="order_quantity", default_value=1, min_value=1, min_clamped=True, width=-1)
 
                 dpg.add_spacer(height=10)
-                dpg.add_text("Price:")
+                dpg.add_text("Price:", color=(160, 160, 160))
                 dpg.add_input_float(tag="order_price", default_value=0.0, format="%.2f", width=-1)
 
                 dpg.add_spacer(height=20)
@@ -279,26 +363,233 @@ class TradingGUI:
         dpg.add_text("  python3 main.py fetch-data --symbol BTCUSD --timeframe 1h")
 
     # Callback methods
-    def load_products(self):
-        """Load available products."""
+    def load_futures_products(self):
+        """Load futures products and populate table."""
         try:
-            products = self.api_client.get_products()
-            product_items = []
-            for product in products:
-                if product.get("state") == "live":
-                    symbol = product.get("symbol", "")
-                    product_id = product.get("id", "")
-                    product_items.append(f"{symbol} (ID: {product_id})")
-
-            if dpg.does_item_exist("product_combo"):
-                dpg.configure_item("product_combo", items=product_items)
-
-            logger.info("Products loaded", count=len(product_items))
+            logger.info("Starting to load futures products")
+            
+            # Show loading status
+            if dpg.does_item_exist("futures_table"):
+                children = dpg.get_item_children("futures_table", slot=1)
+                if children:
+                    for child in children:
+                        dpg.delete_item(child)
+                
+                # Add loading message
+                with dpg.table_row(parent="futures_table"):
+                    dpg.add_text("Loading...")
+                    dpg.add_text("Fetching futures products...")
+                    dpg.add_text("")
+                    dpg.add_text("")
+                    dpg.add_text("")
+                    dpg.add_text("")
+                    dpg.add_text("")
+                    dpg.add_text("")
+            
+            # Fetch futures products
+            logger.info("Fetching futures products from API")
+            products = self.api_client.get_futures_products()
+            logger.info(f"Fetched {len(products)} futures products")
+            
+            if not products:
+                logger.warning("No futures products returned from API")
+                # Clear table and show message
+                if dpg.does_item_exist("futures_table"):
+                    children = dpg.get_item_children("futures_table", slot=1)
+                    if children:
+                        for child in children:
+                            dpg.delete_item(child)
+                    with dpg.table_row(parent="futures_table"):
+                        dpg.add_text("No Data")
+                        dpg.add_text("No futures products available")
+                        dpg.add_text("")
+                        dpg.add_text("")
+                        dpg.add_text("")
+                        dpg.add_text("")
+                        dpg.add_text("")
+                        dpg.add_text("")
+                return
+            
+            # Store products for filtering
+            self.futures_products = products
+            self.current_filter = "ALL"
+            
+            # Get ticker data for all products (limit to first 50 for performance)
+            logger.info("Fetching ticker data for products")
+            symbols = [p.get("symbol", "") for p in products[:50]]
+            self.futures_tickers = self.api_client.get_tickers_batch(symbols)
+            logger.info(f"Fetched {len(self.futures_tickers)} tickers")
+            
+            # Update table
+            logger.info("Updating futures table")
+            self.update_futures_table()
+            
+            logger.info("Futures products loaded successfully", count=len(products))
         except Exception as e:
-            logger.error("Failed to load products", error=str(e))
+            logger.exception("Failed to load futures products", error=str(e))
+            # Show error in table
+            if dpg.does_item_exist("futures_table"):
+                children = dpg.get_item_children("futures_table", slot=1)
+                if children:
+                    for child in children:
+                        dpg.delete_item(child)
+                with dpg.table_row(parent="futures_table"):
+                    dpg.add_text("Error")
+                    dpg.add_text(f"Failed to load: {str(e)}")
+                    dpg.add_text("")
+                    dpg.add_text("")
+                    dpg.add_text("")
+                    dpg.add_text("")
+                    dpg.add_text("")
+                    dpg.add_text("")
+
+
+    def update_futures_table(self):
+        """Update futures table with current filter and search."""
+        try:
+            logger.info("update_futures_table called")
+            
+            if not hasattr(self, 'futures_products'):
+                logger.warning("No futures_products attribute found")
+                return
+            
+            logger.info(f"Found {len(self.futures_products)} products to display")
+            
+            # Get search query
+            search_query = ""
+            if dpg.does_item_exist("futures_search"):
+                search_query = dpg.get_value("futures_search").lower()
+                logger.info(f"Search query: '{search_query}'")
+            
+            # Filter products
+            filtered_products = self.futures_products
+            
+            # Apply category filter (simplified - in production you'd map products to categories)
+            if hasattr(self, 'current_filter') and self.current_filter != "ALL":
+                # For now, show all products regardless of filter
+                # In production, you'd filter based on product metadata/tags
+                logger.info(f"Filter: {self.current_filter}")
+                pass
+            
+            # Apply search filter
+            if search_query:
+                filtered_products = [
+                    p for p in filtered_products
+                    if search_query in p.get("symbol", "").lower()
+                    or search_query in p.get("description", "").lower()
+                ]
+                logger.info(f"After search filter: {len(filtered_products)} products")
+            
+            # Clear existing table rows
+            if not dpg.does_item_exist("futures_table"):
+                logger.error("futures_table does not exist!")
+                return
+            
+            logger.info("Clearing existing table rows")
+            children = dpg.get_item_children("futures_table", slot=1)
+            if children:
+                logger.info(f"Deleting {len(children)} existing rows")
+                for child in children:
+                    dpg.delete_item(child)
+            
+            # Add new rows
+            logger.info(f"Adding {min(len(filtered_products), 50)} rows to table")
+            rows_added = 0
+            
+            for product in filtered_products[:50]:  # Limit to 50 for performance
+                symbol = product.get("symbol", "")
+                ticker = self.futures_tickers.get(symbol, {})
+                
+                logger.debug(f"Processing {symbol}, ticker data: {bool(ticker)}")
+                
+                # Extract ticker data
+                last_price = float(ticker.get("close", 0))
+                change_24h = float(ticker.get("price_change_24h", 0))
+                volume_24h = float(ticker.get("volume", 0))
+                open_interest = float(ticker.get("open_interest", 0))
+                high_24h = float(ticker.get("high", 0))
+                low_24h = float(ticker.get("low", 0))
+                
+                # Calculate change percentage
+                change_pct = (change_24h / last_price * 100) if last_price > 0 else 0
+                change_color = (46, 204, 113) if change_pct >= 0 else (231, 76, 60)
+                
+                with dpg.table_row(parent="futures_table"):
+                    # Contract
+                    dpg.add_text(symbol)
+                    
+                    # Description
+                    description = product.get("description", "")
+                    dpg.add_text(description[:30] + "..." if len(description) > 30 else description)
+                    
+                    # Last Price
+                    dpg.add_text(f"${last_price:,.2f}" if last_price > 0 else "--")
+                    
+                    # 24h Change
+                    dpg.add_text(f"{change_pct:+.2f}%", color=change_color)
+                    
+                    # 24h Volume
+                    if volume_24h >= 1_000_000:
+                        dpg.add_text(f"${volume_24h/1_000_000:.2f}M")
+                    elif volume_24h >= 1_000:
+                        dpg.add_text(f"${volume_24h/1_000:.2f}K")
+                    else:
+                        dpg.add_text(f"${volume_24h:.2f}")
+                    
+                    # Open Interest
+                    if open_interest >= 1_000_000:
+                        dpg.add_text(f"${open_interest/1_000_000:.2f}M")
+                    elif open_interest >= 1_000:
+                        dpg.add_text(f"${open_interest/1_000:.2f}K")
+                    else:
+                        dpg.add_text(f"${open_interest:.2f}")
+                    
+                    # 24h High/Low
+                    if high_24h > 0 and low_24h > 0:
+                        dpg.add_text(f"${high_24h:,.2f} / ${low_24h:,.2f}")
+                    else:
+                        dpg.add_text("--")
+                    
+                    # Funding (placeholder - would need actual funding rate API)
+                    contract_type = product.get("contract_type", "")
+                    if "perpetual" in contract_type.lower():
+                        dpg.add_text("0.01%", color=(160, 160, 160))
+                    else:
+                        dpg.add_text("--", color=(160, 160, 160))
+                
+                rows_added += 1
+            
+            logger.info(f"Futures table updated successfully with {rows_added} rows")
+        except Exception as e:
+            logger.exception("Failed to update futures table", error=str(e))
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
+
+    def filter_futures(self, category: str):
+        """Filter futures by category."""
+        try:
+            self.current_filter = category
+            self.update_futures_table()
+            logger.info("Futures filtered", category=category)
+        except Exception as e:
+            logger.error("Failed to filter futures", error=str(e))
+
+    def search_futures(self):
+        """Search futures by query."""
+        try:
+            self.update_futures_table()
+        except Exception as e:
+            logger.error("Failed to search futures", error=str(e))
+
+    def load_products(self):
+        """Load available products (legacy method for compatibility)."""
+        # Redirect to new futures method
+        self.load_futures_products()
 
     def on_product_selected(self, sender, app_data):
-        """Handle product selection."""
+        """Handle product selection (legacy method for compatibility)."""
+
         try:
             if "ID:" in app_data:
                 product_id_str = app_data.split("ID: ")[1].rstrip(")")
