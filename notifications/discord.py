@@ -55,6 +55,8 @@ class DiscordNotifier:
             response.raise_for_status()
             logger.debug("Discord notification sent")
 
+        except requests.RequestException as e:
+            logger.error("Discord connection failed", error=str(e))
         except Exception as e:
             logger.error("Failed to send Discord notification", error=str(e))
 

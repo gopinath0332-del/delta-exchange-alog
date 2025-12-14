@@ -105,3 +105,20 @@ class EmailNotifier:
         """
         
         self.send_email(subject, body, is_html=True)
+
+    def send_status_message(self, title: str, message: str):
+        """
+        Send a status update email.
+        """
+        subject = f"Status Update: {title}"
+        
+        body = f"""
+        <html>
+          <body>
+            <h2>{title}</h2>
+            <p>{message}</p>
+            <p>Sent from Delta Exchange Trading Bot</p>
+          </body>
+        </html>
+        """
+        self.send_email(subject, body, is_html=True)

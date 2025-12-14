@@ -64,3 +64,21 @@ class NotificationManager:
         """Send error alert."""
         if self.discord:
             self.discord.send_message(f"**Error:** {error}", title=f"⚠️ {title}", color=15158332) # Red
+
+    def send_status_message(self, title: str, message: str):
+        """
+        Send status message to all enabled channels.
+        
+        Args:
+            title: Message title
+            message: Message content
+        """
+        # Send to Discord (Blue color)
+        if self.discord:
+            self.discord.send_message(message, title=title, color=3447003)
+            
+        # Send to Email
+        if self.email:
+            self.email.send_status_message(title, message)
+            
+        logger.info(f"Status message sent: {title} - {message}")

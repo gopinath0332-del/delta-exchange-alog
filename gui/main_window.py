@@ -615,12 +615,19 @@ class TradingGUI:
             self.btcusd_thread = threading.Thread(target=self.run_btcusd_strategy_loop, daemon=True)
             self.btcusd_thread.start()
             logger.info("BTCUSD Strategy started")
+            
+            # Send Notification
+            self.notifier.send_status_message("Strategy Started", "BTCUSD Double-Dip RSI Strategy has been started.")
+
         else:
             # Stop
             self.btcusd_strategy_running = False
             dpg.configure_item("btn_start_btcusd", label="Start Strategy")
             dpg.configure_item("btcusd_running_status", default_value="Status: Stopped", color=(255, 100, 100))
             logger.info("BTCUSD Strategy stopped")
+            
+            # Send Notification
+            self.notifier.send_status_message("Strategy Stopped", "BTCUSD Double-Dip RSI Strategy has been stopped.")
 
     def on_btcusd_candle_type_change(self, sender, app_data):
         """Handle candle type change."""
