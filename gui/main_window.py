@@ -297,7 +297,7 @@ class TradingGUI:
                 # Settings
                 dpg.add_spacer(height=5)
                 dpg.add_text("Settings:")
-                dpg.add_combo(["Normal", "Heikin Ashi"], default_value="Normal", label="Candle Type", tag="btcusd_candle_type", width=150)
+                dpg.add_combo(["Normal", "Heikin Ashi"], default_value="Heikin Ashi", label="Candle Type", tag="btcusd_candle_type", width=150)
                 dpg.add_spacer(height=10)
                 
                 # Live RSI Display
@@ -581,6 +581,11 @@ class TradingGUI:
             dpg.configure_item("btn_start_btcusd", label="Stop Strategy")
             dpg.configure_item("btcusd_running_status", default_value="Status: Running", color=(100, 255, 100))
             
+            # Check if thread is already alive (restart case)
+            if self.btcusd_thread and self.btcusd_thread.is_alive():
+                logger.info("Resuming existing BTCUSD Strategy thread")
+                return
+
             # Start thread
             import threading
             self.btcusd_thread = threading.Thread(target=self.run_btcusd_strategy_loop, daemon=True)
@@ -600,6 +605,8 @@ class TradingGUI:
         
         while self.btcusd_strategy_running:
             try:
+                logger.debug("Strategy loop iteration check")
+                
                 # 1. Fetch Data (1h candles)
                 # We need enough history for RSI(14). 
                 # 100 is "safe" but 300 provides better precision for Wilder's smoothing.
