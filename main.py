@@ -249,16 +249,22 @@ def main():
             parser.print_help()
 
     except DeltaExchangeError as e:
-        logger.error("Application error", error=str(e))
+        if 'logger' in locals():
+            logger.error("Application error", error=str(e))
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
-        logger.info("Application interrupted by user")
+        if 'logger' in locals():
+            logger.info("Application interrupted by user")
         print("\nInterrupted by user")
         sys.exit(0)
     except Exception as e:
-        logger.exception("Unexpected error", error=str(e))
+        if 'logger' in locals():
+            logger.exception("Unexpected error", error=str(e))
         print(f"Unexpected error: {e}", file=sys.stderr)
+        # Check if traceback is needed
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
