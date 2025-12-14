@@ -101,14 +101,14 @@ class TradingGUI:
             dpg.add_separator()
 
             # Main tabs
-            with dpg.tab_bar():
+            with dpg.tab_bar(callback=self.on_tab_change, tag="main_tab_bar"):
                 # Dashboard Tab
-                with dpg.tab(label="Dashboard"):
+                with dpg.tab(label="Dashboard", tag="tab_dashboard"):
                     with dpg.child_window(height=-1):
                         self.create_dashboard_tab()
 
                 # Trading Tab
-                with dpg.tab(label="Trading"):
+                with dpg.tab(label="Trading", tag="tab_trading"):
                     with dpg.child_window(height=-1):
                         self.create_trading_tab()
 
@@ -187,17 +187,14 @@ class TradingGUI:
                 dpg.add_separator()
                 dpg.add_spacer(height=10)
 
-                # Search box and Load button
+                # Search box
                 with dpg.group(horizontal=True):
-                    dpg.add_text("Search:", color=(160, 160, 160))
                     dpg.add_input_text(
                         tag="futures_search",
                         hint="Search contracts...",
                         callback=self.search_futures,
                         width=300
                     )
-                    dpg.add_spacer(width=10)
-                    dpg.add_button(label="Load Futures", callback=self.load_futures_products, width=120)
 
                 dpg.add_spacer(height=10)
 
@@ -274,6 +271,33 @@ class TradingGUI:
         dpg.add_text("  python3 main.py fetch-data --symbol BTCUSD --timeframe 1h")
 
     # Callback methods
+    def on_tab_change(self, sender, app_data, user_data):
+        """Handle tab change events."""
+        logger.info(f"Tab changed: sender={sender}, app_data={app_data}, user_data={user_data}")
+        
+        # Determine selected tab tag
+        selected_tab = app_data
+        
+        # If app_data is an int (internal ID), try to get the tag/alias
+        if isinstance(app_data, int):
+            alias = dpg.get_item_alias(app_data)
+            if alias:
+                selected_tab = alias
+                logger.info(f"Resolved tab ID {app_data} to alias {alias}")
+            else:
+                # Fallback: check label
+                label = dpg.get_item_label(app_data)
+                logger.info(f"Tab ID {app_data} has label: {label}")
+                if label == "Trading":
+                    selected_tab = "tab_trading"
+        
+        # Detect if Trading tab is selected
+        if selected_tab == "tab_trading":
+            logger.info("Trading tab selected - triggering load_futures_products")
+            # Use threading to prevent UI freeze
+            import threading
+            threading.Thread(target=self.load_futures_products, daemon=True).start()
+
     def load_futures_products(self):
         """Load futures products and populate table."""
         try:
@@ -283,7 +307,9 @@ class TradingGUI:
             target_symbols = self.config.gui.futures_symbols
             logger.info(f"Loading futures for symbols: {target_symbols}")
             
-            # Show loading status
+            # Show loading status (must be on main thread)
+            # DPG is generally thread-safe for item deletion/creation but let's be careful
+            # For now we'll do it directly as DPG handles its own locking usually
             if dpg.does_item_exist("futures_table"):
                 children = dpg.get_item_children("futures_table", slot=1)
                 if children:
@@ -293,7 +319,7 @@ class TradingGUI:
                 # Add loading message
                 with dpg.table_row(parent="futures_table"):
                     dpg.add_text("Loading...")
-                    dpg.add_text("Fetching futures products...")
+                    dpg.add_text("Fetching data...")
                     dpg.add_text("")
                     dpg.add_text("")
                     dpg.add_text("")
