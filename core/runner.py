@@ -35,6 +35,24 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
 
+    # Wait for Internet Connectivity (RPi Startup Fix)
+    logger.info("Waiting for network connectivity...")
+    network_retries = 0
+    while network_retries < 30:
+        try:
+            import socket
+            sock = socket.create_connection(("8.8.8.8", 53), timeout=3)
+            sock.close()
+            logger.info("Network connected.")
+            break
+        except OSError:
+            network_retries += 1
+            if network_retries % 5 == 0:
+                logger.warning(f"Waiting for network... ({network_retries}/30)")
+            time.sleep(2)
+    else:
+        logger.error("Network connection timed out after 60s. Proceeding anyway.")
+
     logger.info("Starting strategy loop... Press Ctrl+C to stop.")
     notifier.send_status_message(f"Strategy Started (Terminal - {mode})", f"{symbol} {strategy_name} started.")
     
