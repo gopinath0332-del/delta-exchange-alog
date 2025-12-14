@@ -9,6 +9,7 @@ import dearpygui.dearpygui as dpg
 from api.rest_client import DeltaRestClient
 from core.config import Config
 from core.logger import get_logger
+from notifications.manager import NotificationManager
 
 logger = get_logger(__name__)
 
@@ -25,6 +26,7 @@ class TradingGUI:
         """
         self.config = config
         self.api_client = DeltaRestClient(config)
+        self.notifier = NotificationManager(config)
         self.running = False
         self.update_thread: Optional[threading.Thread] = None
         self.selected_product: Optional[Dict[str, Any]] = None
@@ -745,6 +747,19 @@ class TradingGUI:
                         
                         # Execute Action
                         self.btcusd_strategy.update_position_state(action, current_time, current_rsi)
+                        
+                        # Send Notification
+                        try:
+                            price = closes.iloc[-1]
+                            self.notifier.send_trade_alert(
+                                symbol="BTCUSD",
+                                side=action,
+                                price=float(price),
+                                rsi=current_rsi,
+                                reason=reason
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to send notification: {e}")
                     else:
                         dpg.set_value("btcusd_last_signal", "No Action")
                         dpg.configure_item("btcusd_last_signal", color=(100, 100, 100))

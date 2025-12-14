@@ -1,0 +1,107 @@
+"""Email notification handler."""
+
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from typing import List, Optional
+
+from core.config import Config
+from core.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class EmailNotifier:
+    """Handles sending email notifications via SMTP."""
+
+    def __init__(self, config: Config):
+        """
+        Initialize Email notifier.
+
+        Args:
+            config: Configuration object containing email settings
+        """
+        self.config = config
+        self.enabled = config.email_enabled
+        
+        # Load settings
+        self.smtp_host = config.email_smtp_host
+        self.smtp_port = config.email_smtp_port
+        self.use_tls = config.email_use_tls
+        self.username = config.email_username
+        self.password = config.email_password
+        self.from_addr = config.email_from
+        self.recipients = config.email_recipients
+
+    def send_email(self, subject: str, body: str, is_html: bool = False):
+        """
+        Send an email to configured recipients.
+
+        Args:
+            subject: Email subject
+            body: Email body content
+            is_html: True if body is HTML, False for plain text
+        """
+        if not self.config.email_enabled:
+            return
+            
+        if not self.recipients or not self.username or not self.password:
+            logger.warning("Email configuration incomplete, skipping email")
+            return
+
+        try:
+            # Create message
+            msg = MIMEMultipart()
+            msg["From"] = self.from_addr
+            msg["To"] = ", ".join(self.recipients)
+            msg["Subject"] = subject
+
+            # Attach body
+            type_str = "html" if is_html else "plain"
+            msg.attach(MIMEText(body, type_str))
+
+            # Connect and send
+            context = ssl.create_default_context() if self.use_tls else None
+            
+            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                if self.use_tls:
+                    server.starttls(context=context)
+                
+                server.login(self.username, self.password)
+                server.send_message(msg)
+                
+            logger.debug("Email sent successfully", subject=subject)
+
+        except Exception as e:
+            logger.error("Failed to send email", error=str(e))
+
+    def send_trade_alert(self, 
+                        symbol: str, 
+                        side: str, 
+                        price: float, 
+                        rsi: float, 
+                        reason: str):
+        """
+        Send a formatted trade alert email.
+        """
+        subject = f"Trading Alert: {side} {symbol}"
+        
+        # HTML Body
+        body = f"""
+        <html>
+          <body>
+            <h2>Trading Signal Detected</h2>
+            <ul>
+              <li><strong>Symbol:</strong> {symbol}</li>
+              <li><strong>Side:</strong> <span style="color: {'green' if side == 'LONG' else 'red'}">{side}</span></li>
+              <li><strong>Price:</strong> ${price:,.2f}</li>
+              <li><strong>RSI:</strong> {rsi:.2f}</li>
+              <li><strong>Reason:</strong> {reason}</li>
+            </ul>
+            <p>Sent from Delta Exchange Trading Bot</p>
+          </body>
+        </html>
+        """
+        
+        self.send_email(subject, body, is_html=True)
