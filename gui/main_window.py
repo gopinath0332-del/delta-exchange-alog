@@ -294,6 +294,12 @@ class TradingGUI:
                 dpg.add_separator()
                 dpg.add_spacer(height=5)
                 
+                # Settings
+                dpg.add_spacer(height=5)
+                dpg.add_text("Settings:")
+                dpg.add_combo(["Normal", "Heikin Ashi"], default_value="Normal", label="Candle Type", tag="btcusd_candle_type", width=150)
+                dpg.add_spacer(height=10)
+                
                 # Live RSI Display
                 with dpg.group(horizontal=True):
                     dpg.add_text("Current RSI (14): ")
@@ -635,7 +641,30 @@ class TradingGUI:
                      # Log data for debugging
                      logger.info(f"Data for RSI: Last Close={df['close'].iloc[-1]}, Time={df['time'].iloc[-1]}")
                      
-                     closes = df['close'].astype(float)
+                     # Determine Candle Type
+                     use_ha = False
+                     if dpg.does_item_exist("btcusd_candle_type"):
+                         candle_type = dpg.get_value("btcusd_candle_type")
+                         use_ha = (candle_type == "Heikin Ashi")
+                     
+                     if use_ha:
+                         # Calculate Heikin Ashi Close = (O + H + L + C) / 4
+                         # Ensure all columns exist and are float
+                         for col in ['open', 'high', 'low', 'close']:
+                             if col not in df.columns:
+                                 logger.error(f"Missing column for HA: {col}")
+                                 closes = df['close'].astype(float) # Fallback
+                                 break
+                         else:
+                             o = df['open'].astype(float)
+                             h = df['high'].astype(float)
+                             l = df['low'].astype(float)
+                             c = df['close'].astype(float)
+                             closes = (o + h + l + c) / 4.0
+                             logger.info(f"Using Heikin Ashi Closes. Last HA Close={closes.iloc[-1]:.2f}")
+                     else:
+                         closes = df['close'].astype(float)
+                         logger.info(f"Using Normal Closes. Last Close={closes.iloc[-1]}")
                 else:
                      logger.error(f"Unexpected candle data format: {df.columns}")
                      time.sleep(10)
