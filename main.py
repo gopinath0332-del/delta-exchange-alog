@@ -7,6 +7,7 @@ from pathlib import Path
 from core.config import get_config
 from core.exceptions import DeltaExchangeError
 from core.logger import get_logger, setup_logging
+from notifications.manager import NotificationManager
 
 # Add project root to path
 project_root = Path(__file__).parent
@@ -125,9 +126,13 @@ def cmd_live(args, config, logger):
     """Start live trading command."""
     mode = "paper" if args.paper else "live"
     logger.info("Starting live trading", strategy=args.strategy, symbol=args.symbol, mode=mode)
-
-    # TODO: Implement live trading
-    print(f"Live trading ({mode} mode) not yet implemented")
+    
+    from core.runner import run_strategy_terminal
+    
+    try:
+        run_strategy_terminal(config, args.strategy, args.symbol, mode)
+    except Exception as e:
+        logger.error(f"Strategy execution failed: {e}")
 
 
 def cmd_report(args, config, logger):
