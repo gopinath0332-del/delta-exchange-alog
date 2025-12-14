@@ -48,7 +48,7 @@ Test the bot manually first:
 python3 run_terminal.py
 
 # Run non-interactively (Terminal Mode)
-python3 run_terminal.py --strategy 1 --non-interactive
+python3 -u run_terminal.py --strategy 1 --non-interactive
 ```
 
 Ensure it starts and sends the "Strategy Started" notification. Press `Ctrl+C` to stop.
