@@ -359,11 +359,11 @@ class TradingGUI:
                 
                 # Trade History Table
                 with dpg.table(tag="btcusd_trade_history_table", header_row=True, borders_innerH=True, borders_outerH=True, borders_innerV=True, borders_outerV=True, row_background=True):
-                    dpg.add_table_column(label="Type", width_fixed=True, init_width_or_weight=40)
-                    dpg.add_table_column(label="Entry Time", width_stretch=True)
-                    dpg.add_table_column(label="RSI In", width_fixed=True, init_width_or_weight=50)
-                    dpg.add_table_column(label="Exit Time", width_stretch=True)
-                    dpg.add_table_column(label="RSI Out", width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="Type", width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="Entry", width_stretch=True)
+                    dpg.add_table_column(label="RSI In", width_fixed=True, init_width_or_weight=70)
+                    dpg.add_table_column(label="Exit", width_stretch=True)
+                    dpg.add_table_column(label="RSI Out", width_fixed=True, init_width_or_weight=70)
 
                 dpg.add_spacer(height=10)
                 
@@ -761,17 +761,7 @@ class TradingGUI:
                             for child in children:
                                 dpg.delete_item(child)
                         
-                        # Add Completed Trades
-                        for trade in self.btcusd_strategy.trades:
-                            with dpg.table_row(parent="btcusd_trade_history_table"):
-                                type_color = (100, 255, 100) if trade["type"] == "LONG" else (255, 100, 100)
-                                dpg.add_text(trade["type"], color=type_color)
-                                dpg.add_text(trade["entry_time"])
-                                dpg.add_text(f"{trade['entry_rsi']:.2f}")
-                                dpg.add_text(trade["exit_time"])
-                                dpg.add_text(f"{trade['exit_rsi']:.2f}")
-
-                        # Add Active Trade (if any)
+                        # Add Active Trade (if any) - Top of Table
                         active = self.btcusd_strategy.active_trade
                         if active:
                             with dpg.table_row(parent="btcusd_trade_history_table"):
@@ -781,6 +771,16 @@ class TradingGUI:
                                 dpg.add_text(f"{active['entry_rsi']:.2f}")
                                 dpg.add_text("OPEN", color=(255, 255, 0))
                                 dpg.add_text("--")
+                                
+                        # Add Completed Trades - Recent First (Reverse Order)
+                        for trade in reversed(self.btcusd_strategy.trades):
+                            with dpg.table_row(parent="btcusd_trade_history_table"):
+                                type_color = (100, 255, 100) if trade["type"] == "LONG" else (255, 100, 100)
+                                dpg.add_text(trade["type"], color=type_color)
+                                dpg.add_text(trade["entry_time"])
+                                dpg.add_text(f"{trade['entry_rsi']:.2f}")
+                                dpg.add_text(trade["exit_time"])
+                                dpg.add_text(f"{trade['exit_rsi']:.2f}")
 
                 # Responsive Sleep (Align to next 10-minute mark)
                 # Check status every 1s to allow quick stop

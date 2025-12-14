@@ -128,7 +128,7 @@ class DoubleDipRSIStrategy:
         
         # Helper to format time
         def format_time(ts_ms):
-            return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%Y-%m-%d %H:%M:%S')
+            return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
 
         if action == "ENTRY_LONG":
             self.current_position = 1
