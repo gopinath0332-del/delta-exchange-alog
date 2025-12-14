@@ -35,14 +35,21 @@ class DoubleDipRSIStrategy:
         self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat
         self.last_rsi = 0.0
         
-    def calculate_rsi(self, closes: pd.Series) -> float:
-        """Calculate RSI for the given series of close prices."""
+    def calculate_rsi(self, closes: pd.Series) -> Tuple[float, float]:
+        """
+        Calculate RSI for the given series of close prices.
+        
+        Returns:
+            Tuple[float, float]: (Current RSI, Previous RSI)
+        """
         try:
             rsi_series = ta.momentum.rsi(closes, window=self.rsi_period)
-            return rsi_series.iloc[-1]
+            if len(rsi_series) < 2:
+                return rsi_series.iloc[-1] if len(rsi_series) > 0 else 0.0, 0.0
+            return rsi_series.iloc[-1], rsi_series.iloc[-2]
         except Exception as e:
             logger.error(f"Error calculating RSI: {e}")
-            return 0.0
+            return 0.0, 0.0
 
     def check_signals(self, current_rsi: float, current_time_ms: float) -> Tuple[str, str]:
         """

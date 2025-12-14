@@ -296,8 +296,12 @@ class TradingGUI:
                 
                 # Live RSI Display
                 with dpg.group(horizontal=True):
-                    dpg.add_text("Current RSI (14):")
+                    dpg.add_text("Current RSI (14): ")
                     dpg.add_text("--", tag="btcusd_rsi_value", color=(255, 255, 255))
+                
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Prev (Closed) RSI: ")
+                    dpg.add_text("--", tag="btcusd_prev_rsi_value", color=(200, 200, 200))
                 
                 # Position Status
                 with dpg.group(horizontal=True):
@@ -638,13 +642,18 @@ class TradingGUI:
                      continue
 
                 # 2. Calculate RSI & Check Signals
-                current_rsi = self.btcusd_strategy.calculate_rsi(closes)
+                current_rsi, prev_rsi = self.btcusd_strategy.calculate_rsi(closes)
                 current_time = int(time.time() * 1000)
                 action, reason = self.btcusd_strategy.check_signals(current_rsi, current_time)
                 
                 # 3. Update UI
                 if dpg.does_item_exist("btcusd_rsi_value"):
                     dpg.set_value("btcusd_rsi_value", f"{current_rsi:.2f}")
+                    
+                    # Update Prev RSI if element exists, else we might need to add it dynamically or just ignore
+                    # For better UX, we should ensure the element is created in create_btcusd_strategy_tab
+                    if dpg.does_item_exist("btcusd_prev_rsi_value"):
+                        dpg.set_value("btcusd_prev_rsi_value", f"Prev (Closed): {prev_rsi:.2f}")
                     
                     # Color code RSI
                     if current_rsi > 70: color = (255, 100, 100)

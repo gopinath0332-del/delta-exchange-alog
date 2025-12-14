@@ -7,8 +7,9 @@ class TestDoubleDipRSIStrategy:
         strategy = DoubleDipRSIStrategy()
         # Create a series of prices
         prices = pd.Series([100, 101, 102, 103, 104, 105, 104, 103, 102, 101, 100] * 5)
-        rsi = strategy.calculate_rsi(prices)
+        rsi, prev_rsi = strategy.calculate_rsi(prices)
         assert isinstance(rsi, float)
+        assert isinstance(prev_rsi, float)
         assert 0 <= rsi <= 100
 
     def test_long_entry_signal(self):
