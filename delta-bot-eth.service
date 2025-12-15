@@ -1,0 +1,15 @@
+[Unit]
+Description=Delta Exchange Bot - ETHUSD
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/Apps/delta-exchange-alog
+# Strategy 2 = ETHUSD
+ExecStart=/usr/bin/python3 -u /home/pi/Apps/delta-exchange-alog/run_terminal.py --strategy 2 --non-interactive
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

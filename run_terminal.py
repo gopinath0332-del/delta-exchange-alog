@@ -44,6 +44,13 @@ def main():
             "symbol": "BTCUSD", 
             "monitor": "double-dip",
             "desc": "Long/Short strategy based on RSI thresholds and duration."
+        },
+        {
+            "id": 2,
+            "name": "ETHUSD Double-Dip RSI (Heikin Ashi)", 
+            "symbol": "ETHUSD", 
+            "monitor": "double-dip",
+            "desc": "Long/Short strategy for ETH using same parameters."
         }
     ]
 
