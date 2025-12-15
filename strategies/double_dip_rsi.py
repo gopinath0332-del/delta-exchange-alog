@@ -91,7 +91,6 @@ class DoubleDipRSIStrategy:
         # shortSignal = crossunder(rsi, shortEntryLevel) -> RSI crosses below 35
         short_signal = current_rsi < self.short_entry_level
         
-        short_allowed = True
         if self.require_prev_long_min_duration:
             # Check duration of last long
             ms_per_day = 24 * 60 * 60 * 1000
@@ -102,6 +101,10 @@ class DoubleDipRSIStrategy:
             # and match the "Wait 2 days" constraint safety.
             short_allowed = (self.last_long_duration >= threshold) and (self.last_long_duration > 0)
             
+            if short_signal:
+                days_duration = self.last_long_duration / ms_per_day
+                logger.info(f"DEBUG: Short Signal Check | RSI={current_rsi:.2f} | LastLongDur={days_duration:.2f}d | Allowed={short_allowed}")
+
             if not short_allowed:
                  # Optional: Log reason if needed, but for now we just block
                  reason = f"Blocked: Prev Long duration {self.last_long_duration/ms_per_day:.2f}d < {self.min_days_long}d"
@@ -163,6 +166,9 @@ class DoubleDipRSIStrategy:
             
         elif action == "ENTRY_SHORT":
             self.current_position = -1
+            
+            # Reset duration so we don't allow multiple shorts from one long duration
+            self.last_long_duration = 0.0
             
             # Start New Trade
             self.active_trade = {
