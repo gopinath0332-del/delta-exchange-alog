@@ -53,36 +53,36 @@ python3 -u run_terminal.py --strategy 1 --non-interactive
 
 Ensure it starts and sends the "Strategy Started" notification. Press `Ctrl+C` to stop.
 
-## Step 3: Setup Systemd Service
+## Step 3: Setup Systemd Service (ETHUSD)
 
-To run 24/7, we use `systemd`.
+To run the ETHUSD strategy 24/7, use the dedicated service file.
 
 1.  **Edit Service File**:
-    Check the provided `delta-bot.service` file. Ensure paths match your installation (default assumes `User=pi` and path `/home/pi/delta-exchange-alog`).
+    Check the provided `delta-bot-eth.service` file. Ensure paths match your installation (default assumes `User=pi` and path `/home/pi/delta-exchange-alog`).
 
     ```bash
-    nano delta-bot.service
+    nano delta-bot-eth.service
     ```
 
 2.  **Install Service**:
 
     ```bash
-    sudo cp delta-bot.service /etc/systemd/system/
+    sudo cp delta-bot-eth.service /etc/systemd/system/
     sudo systemctl daemon-reload
     ```
 
 3.  **Enable and Start**:
     ```bash
-    sudo systemctl enable delta-bot.service
-    sudo systemctl start delta-bot.service
+    sudo systemctl enable delta-bot-eth.service
+    sudo systemctl start delta-bot-eth.service
     ```
 
 ## Step 4: Maintenance
 
-- **Check Status**: `sudo systemctl status delta-bot.service`
-- **View Logs**: `journalctl -u delta-bot.service -f` or check `logs/service.log`
-- **Stop**: `sudo systemctl stop delta-bot.service`
-- **Restart**: `sudo systemctl restart delta-bot.service`
+- **Check Status**: `sudo systemctl status delta-bot-eth.service`
+- **View Logs**: `journalctl -u delta-bot-eth.service -f`
+- **Stop**: `sudo systemctl stop delta-bot-eth.service`
+- **Restart**: `sudo systemctl restart delta-bot-eth.service`
 
 ## Troubleshooting
 
