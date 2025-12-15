@@ -122,7 +122,7 @@ class DoubleDipRSIStrategy:
                 
         return action, reason
 
-    def update_position_state(self, action: str, current_time_ms: float, current_rsi: float = 0.0):
+    def update_position_state(self, action: str, current_time_ms: float, current_rsi: float = 0.0, price: float = 0.0):
         """Update internal state based on executed action."""
         import datetime
         
@@ -139,8 +139,10 @@ class DoubleDipRSIStrategy:
                 "type": "LONG",
                 "entry_time": format_time(current_time_ms),
                 "entry_rsi": current_rsi,
+                "entry_price": price,
                 "exit_time": "-",
                 "exit_rsi": "-",
+                "exit_price": "-",
                 "status": "OPEN"
             }
             
@@ -154,6 +156,7 @@ class DoubleDipRSIStrategy:
             if self.active_trade and self.active_trade["type"] == "LONG":
                 self.active_trade["exit_time"] = format_time(current_time_ms)
                 self.active_trade["exit_rsi"] = current_rsi
+                self.active_trade["exit_price"] = price
                 self.active_trade["status"] = "CLOSED"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
@@ -166,8 +169,10 @@ class DoubleDipRSIStrategy:
                 "type": "SHORT",
                 "entry_time": format_time(current_time_ms),
                 "entry_rsi": current_rsi,
+                "entry_price": price,
                 "exit_time": "-",
                 "exit_rsi": "-",
+                "exit_price": "-",
                 "status": "OPEN"
             }
             
@@ -178,6 +183,7 @@ class DoubleDipRSIStrategy:
             if self.active_trade and self.active_trade["type"] == "SHORT":
                 self.active_trade["exit_time"] = format_time(current_time_ms)
                 self.active_trade["exit_rsi"] = current_rsi
+                self.active_trade["exit_price"] = price
                 self.active_trade["status"] = "CLOSED"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
@@ -217,6 +223,8 @@ class DoubleDipRSIStrategy:
             if pd.isna(current_rsi):
                 continue
                 
+            current_price = float(df['close'].iloc[i])
+                
             # Convert timestamp to ms if needed (DataFrame time usually string or datetime object?)
             # API returns ISO strings usually, but main_window parsing might have kept them?
             # main_window logic: df = pd.DataFrame(candles) -> candles has 'time' (int unix timestamp in seconds?)?
@@ -240,6 +248,6 @@ class DoubleDipRSIStrategy:
             action, _ = self.check_signals(current_rsi, current_time_ms)
             
             if action:
-                self.update_position_state(action, current_time_ms, current_rsi)
+                self.update_position_state(action, current_time_ms, current_rsi, current_price)
                 
         logger.info(f"Backtest complete. Trades found: {len(self.trades)}")

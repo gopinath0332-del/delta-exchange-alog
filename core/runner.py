@@ -140,15 +140,15 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          logger.info(f"SIGNAL: {action} - {reason}")
                          
                          # Execute Action (Update State)
-                         strategy.update_position_state(action, current_time_ms, current_rsi)
+                         price = float(closes.iloc[-1])
+                         strategy.update_position_state(action, current_time_ms, current_rsi, price)
                          
                          # Send Notification
                          try:
-                             price = closes.iloc[-1]
                              notifier.send_trade_alert(
                                  symbol=symbol,
                                  side=action,
-                                 price=float(price),
+                                 price=price,
                                  rsi=current_rsi,
                                  reason=reason
                              )
@@ -190,21 +190,39 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 print(" RECENT TRADE HISTORY")
                 print("-" * 80)
                 # Header
-                print(f" {'Type':<8} {'Entry Time':<16} {'Ent. RSI':<10} {'Exit Time':<16} {'Exit RSI':<10} {'Status':<10}")
+                print(f" {'Type':<8} {'Entry Time':<16} {'Ent. RSI':<10} {'Exit Time':<16} {'Exit RSI':<10} {'Points':<10} {'Status':<10}")
                 
+                # Helper to calc points
+                def get_points_str(trade, current_price=None):
+                    try:
+                        entry = float(trade.get('entry_price', 0))
+                        if trade['status'] == 'OPEN' and current_price:
+                            current = float(current_price)
+                            pts = current - entry if trade['type'] == 'LONG' else entry - current
+                            return f"{pts:+.2f}"
+                        elif trade['status'] == 'CLOSED':
+                            exit_p = float(trade.get('exit_price', 0))
+                            pts = exit_p - entry if trade['type'] == 'LONG' else entry - exit_p
+                            return f"{pts:+.2f}"
+                        return "-"
+                    except:
+                        return "-"
+
                 # Active Trade first
                 if strategy.active_trade:
                     t = strategy.active_trade
                     # Truncate RSI for display if float
                     e_rsi = f"{t['entry_rsi']:.2f}" if isinstance(t['entry_rsi'], float) else str(t['entry_rsi'])
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_rsi:<10} {'-':<16} {'-':<10} {'OPEN':<10}")
+                    pts_str = get_points_str(t, closes.iloc[-1])
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_rsi:<10} {'-':<16} {'-':<10} {pts_str:<10} {'OPEN':<10}")
                 
                 # Past trades (last 5, reversed)
                 recent_trades = strategy.trades[-5:] if strategy.trades else []
                 for t in reversed(recent_trades):
                     e_rsi = f"{t['entry_rsi']:.2f}" if isinstance(t['entry_rsi'], float) else str(t['entry_rsi'])
                     x_rsi = f"{t['exit_rsi']:.2f}" if isinstance(t['exit_rsi'], float) else str(t['exit_rsi'])
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_rsi:<10} {t['exit_time']:<16} {x_rsi:<10} {t['status']:<10}")
+                    pts_str = get_points_str(t)
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_rsi:<10} {t['exit_time']:<16} {x_rsi:<10} {pts_str:<10} {t['status']:<10}")
                     
                 if not recent_trades and not strategy.active_trade:
                     print(" (No trades recorded yet)")
