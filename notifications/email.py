@@ -104,7 +104,9 @@ class EmailNotifier:
                         side: str, 
                         price: float, 
                         rsi: float, 
-                        reason: str):
+                        reason: str,
+                        margin_used: Optional[float] = None,
+                        remaining_margin: Optional[float] = None):
         """
         Send a formatted trade alert email.
         """

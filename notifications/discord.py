@@ -65,7 +65,9 @@ class DiscordNotifier:
                         side: str, 
                         price: float, 
                         rsi: float, 
-                        reason: str):
+                        reason: str,
+                        margin_used: Optional[float] = None,
+                        remaining_margin: Optional[float] = None):
         """
         Send a formatted trade alert.
 
@@ -85,5 +87,11 @@ class DiscordNotifier:
             f"**Reason:** {reason}\n"
             f"**Time:** {time.strftime('%H:%M:%S UTC')}"
         )
+        
+        if margin_used is not None:
+            message += f"\n**Margin Used:** ${margin_used:,.2f}"
+            
+        if remaining_margin is not None:
+            message += f"\n**Remaining Wallet:** ${remaining_margin:,.2f}"
         
         self.send_message(message, title=title, color=color)

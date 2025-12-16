@@ -8,6 +8,7 @@ from core.logger import get_logger
 from core.config import Config
 from notifications.manager import NotificationManager
 from api.rest_client import DeltaRestClient
+from core.trading import execute_strategy_signal
 
 logger = get_logger(__name__)
 
@@ -143,17 +144,16 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          price = float(closes.iloc[-1])
                          strategy.update_position_state(action, current_time_ms, current_rsi, price)
                          
-                         # Send Notification
-                         try:
-                             notifier.send_trade_alert(
-                                 symbol=symbol,
-                                 side=action,
-                                 price=price,
-                                 rsi=current_rsi,
-                                 reason=reason
-                             )
-                         except Exception as e:
-                             logger.error(f"Failed to send notification: {e}")
+                         # Execute Signal (Order + Alert)
+                         execute_strategy_signal(
+                             client=client,
+                             notifier=notifier,
+                             symbol=symbol,
+                             action=action,
+                             price=price,
+                             rsi=current_rsi,
+                             reason=reason
+                         )
                 else:
                      logger.error(f"Unexpected candle data format: {df.columns}")
                      time.sleep(10)
