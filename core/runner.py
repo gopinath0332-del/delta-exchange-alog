@@ -191,7 +191,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 print(" RECENT TRADE HISTORY")
                 print("-" * 80)
                 # Header
-                print(f" {'Type':<8} {'Entry Time':<16} {'Ent. RSI':<10} {'Exit Time':<16} {'Exit RSI':<10} {'Points':<10} {'Status':<10}")
+                print(f" {'Type':<8} {'Entry Time':<16} {'Ent. Price':<12} {'Ent. RSI':<10} {'Exit Time':<16} {'Exit Price':<12} {'Exit RSI':<10} {'Points':<10} {'Status':<10}")
                 
                 # Helper to calc points
                 def get_points_str(trade, current_price=None):
@@ -214,16 +214,19 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     t = strategy.active_trade
                     # Truncate RSI for display if float
                     e_rsi = f"{t['entry_rsi']:.2f}" if isinstance(t['entry_rsi'], float) else str(t['entry_rsi'])
+                    e_price = f"{float(t.get('entry_price', 0)):.2f}"
                     pts_str = get_points_str(t, closes.iloc[-1])
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_rsi:<10} {'-':<16} {'-':<10} {pts_str:<10} {'OPEN':<10}")
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_rsi:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {'OPEN':<10}")
                 
                 # Past trades (last 5, reversed)
                 recent_trades = strategy.trades[-5:] if strategy.trades else []
                 for t in reversed(recent_trades):
                     e_rsi = f"{t['entry_rsi']:.2f}" if isinstance(t['entry_rsi'], float) else str(t['entry_rsi'])
                     x_rsi = f"{t['exit_rsi']:.2f}" if isinstance(t['exit_rsi'], float) else str(t['exit_rsi'])
+                    e_price = f"{float(t.get('entry_price', 0)):.2f}"
+                    x_price = f"{float(t.get('exit_price', 0)):.2f}"
                     pts_str = get_points_str(t)
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_rsi:<10} {t['exit_time']:<16} {x_rsi:<10} {pts_str:<10} {t['status']:<10}")
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_rsi:<10} {t['exit_time']:<16} {x_price:<12} {x_rsi:<10} {pts_str:<10} {t['status']:<10}")
                     
                 if not recent_trades and not strategy.active_trade:
                     print(" (No trades recorded yet)")

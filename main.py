@@ -85,7 +85,7 @@ def cmd_fetch_data(args, config, logger):
             if ticker.get("turnover"):
                 print(f"24h Turnover: ${ticker['turnover']:,.2f}")
             if ticker.get("funding_rate"):
-                print(f"Funding Rate: {ticker['funding_rate']:.6f}")
+                print(f"Funding Rate: {float(ticker['funding_rate']):.6f}")
 
             logger.info("Current market data", symbol=args.symbol, price=current_price)
         else:
