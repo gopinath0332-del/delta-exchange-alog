@@ -153,7 +153,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              action=action,
                              price=price,
                              rsi=current_rsi,
-                             reason=reason
+                             reason=reason,
+                             mode=mode
                          )
                 else:
                      logger.error(f"Unexpected candle data format: {df.columns}")
