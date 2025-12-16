@@ -12,7 +12,7 @@ from core.trading import execute_strategy_signal
 
 logger = get_logger(__name__)
 
-def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode: str):
+def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode: str, candle_type: str = "heikin-ashi"):
     """
     Run strategy in terminal mode with dashboard output.
     
@@ -21,6 +21,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         strategy_name: Name of strategy to run
         symbol: Trading symbol
         mode: 'live' or 'paper'
+        candle_type: 'heikin-ashi' or 'standard'
     """
     # Initialize API and Notifications
     client = DeltaRestClient(config)
@@ -61,7 +62,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     logger.info("Starting strategy loop... Press Ctrl+C to stop.")
     notifier.send_status_message(
         f"Strategy Started (Terminal - {mode})", 
-        f"{symbol} {strategy_name} started on host: **{hostname}**"
+        f"{symbol} {strategy_name} started on host: **{hostname}**\nCandle Type: {candle_type}"
     )
     
     try:
@@ -103,8 +104,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      if first_time > last_time:
                          df = df.iloc[::-1].reset_index(drop=True)
                      
-                     # Determine Candle Type (Default to Heikin Ashi for this strategy as per GUI)
-                     use_ha = True 
+                     # Determine Candle Type
+                     use_ha = (candle_type.lower() == "heikin-ashi")
                      
                      if use_ha:
                          # Calculate Heikin Ashi Close = (O + H + L + C) / 4

@@ -7,7 +7,7 @@ from pathlib import Path
 from core.config import get_config
 from core.exceptions import DeltaExchangeError
 from core.logger import get_logger, setup_logging
-from notifications.manager import NotificationManager
+
 
 # Add project root to path
 project_root = Path(__file__).parent
@@ -125,12 +125,12 @@ def cmd_backtest(args, config, logger):
 def cmd_live(args, config, logger):
     """Start live trading command."""
     mode = "paper" if args.paper else "live"
-    logger.info("Starting live trading", strategy=args.strategy, symbol=args.symbol, mode=mode)
+    logger.info("Starting live trading", strategy=args.strategy, symbol=args.symbol, mode=mode, candle_type=args.candle_type)
     
     from core.runner import run_strategy_terminal
     
     try:
-        run_strategy_terminal(config, args.strategy, args.symbol, mode)
+        run_strategy_terminal(config, args.strategy, args.symbol, mode, args.candle_type)
     except Exception as e:
         logger.error(f"Strategy execution failed: {e}")
 
@@ -143,65 +143,9 @@ def cmd_report(args, config, logger):
     print("Report generation not yet implemented")
 
 
-def cmd_gui(args, config, logger):
-    """Launch GUI command."""
-    logger.info("Launching GUI")
-
-    # Pre-flight checks before attempting to import DearPyGui
-    import platform
-    import os
-    
-    # Check for display on macOS
-    if platform.system() == "Darwin":
-        try:
-            from AppKit import NSScreen
-            screens = NSScreen.screens()
-            if not screens or len(screens) == 0:
-                print("\n" + "="*70)
-                print("ERROR: No display detected")
-                print("="*70)
-                print("\nThe GUI cannot run without a display.")
-                print("Please ensure you're running this on a Mac with an active display.")
-                print("\nAlternatively, use terminal mode:")
-                print("  python3 main.py fetch-data --symbol BTCUSD --timeframe 1h")
-                print("="*70 + "\n")
-                return
-        except ImportError:
-            logger.warning("Could not import AppKit to check display - proceeding anyway")
-    
-    try:
-        from gui.main_window import run_gui
-
-        print("\nInitializing GUI...")
-        print("Note: If the application crashes, it may be due to OpenGL/display issues.")
-        print("In that case, please use terminal mode instead.\n")
-        
-        run_gui(config)
-        
-    except ImportError as e:
-        logger.error("Failed to import GUI module", error=str(e))
-        print(f"\nError: GUI dependencies not installed.")
-        print(f"Please install with: pip install dearpygui")
-        print(f"Details: {e}\n")
-    except Exception as e:
-        logger.exception("GUI error", error=str(e))
-        print(f"\nError launching GUI: {e}")
-        print("\nThis may be due to:")
-        print("  • OpenGL/graphics driver issues")
-        print("  • Display compatibility problems")
-        print("  • DearPyGui not compatible with your system")
-        print("\nPlease use terminal mode instead:")
-        print("  python3 main.py fetch-data --symbol BTCUSD")
-        print()
-
-
-
-
 def main():
     """Run the main application entry point."""
     parser = argparse.ArgumentParser(description="Delta Exchange Crypto Trading Analysis Platform")
-
-    parser.add_argument("--gui", action="store_true", help="Launch GUI mode")
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -224,6 +168,12 @@ def main():
     live_parser.add_argument("--strategy", required=True, help="Strategy name")
     live_parser.add_argument("--symbol", required=True, help="Trading symbol")
     live_parser.add_argument("--paper", action="store_true", help="Paper trading mode")
+    live_parser.add_argument(
+        "--candle-type", 
+        choices=["standard", "heikin-ashi"], 
+        default="heikin-ashi",
+        help="Candle type for calculation (default: heikin-ashi)"
+    )
 
     # Report command
     report_parser = subparsers.add_parser("report", help="Generate report")
@@ -235,11 +185,6 @@ def main():
     try:
         # Setup environment
         config, logger = setup_environment()
-
-        # Handle GUI mode
-        if args.gui:
-            cmd_gui(args, config, logger)
-            return
 
         # Handle commands
         if args.command == "fetch-data":
