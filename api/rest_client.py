@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
-from delta_rest_client import DeltaRestClient as BaseDeltaClient
+from delta_rest_client import DeltaRestClient as BaseDeltaClient, OrderType
 
 from core.config import Config
 from core.exceptions import APIError, AuthenticationError, RateLimitError
@@ -446,6 +446,12 @@ class DeltaRestClient:
             order_type=order_type,
             limit_price=limit_price,
         )
+
+        if isinstance(order_type, str):
+            if order_type == "market_order":
+                order_type = OrderType.MARKET
+            elif order_type == "limit_order":
+                order_type = OrderType.LIMIT
 
         response = self._make_request(
             self.client.place_order,
