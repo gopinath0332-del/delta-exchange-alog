@@ -10,6 +10,7 @@ from api.rest_client import DeltaRestClient
 from core.config import Config
 from core.logger import get_logger
 from notifications.manager import NotificationManager
+from core.trading import execute_strategy_signal
 
 logger = get_logger(__name__)
 
@@ -755,18 +756,16 @@ class TradingGUI:
                         # Execute Action
                         self.btcusd_strategy.update_position_state(action, current_time, current_rsi)
                         
-                        # Send Notification
-                        try:
-                            price = closes.iloc[-1]
-                            self.notifier.send_trade_alert(
-                                symbol="BTCUSD",
-                                side=action,
-                                price=float(price),
-                                rsi=current_rsi,
-                                reason=reason
-                            )
-                        except Exception as e:
-                            logger.error(f"Failed to send notification: {e}")
+                        # Execute Signal (Order + Alert)
+                        execute_strategy_signal(
+                            client=self.api_client,
+                            notifier=self.notifier,
+                            symbol="BTCUSD",
+                            action=action,
+                            price=float(closes.iloc[-1]),
+                            rsi=current_rsi,
+                            reason=reason
+                        )
                     else:
                         dpg.set_value("btcusd_last_signal", "No Action")
                         dpg.configure_item("btcusd_last_signal", color=(100, 100, 100))
