@@ -72,18 +72,7 @@ def execute_strategy_signal(
             logger.warning(f"Unknown action: {action}")
             return
 
-        # 3. Set Leverage (Only on Entry)
-        # Only set leverage if orders are enabled, or maybe we still want to set it?
-        # Let's skip it if orders are disabled to be safe/quiet
-        if is_entry and mode != "paper" and enable_orders:
-            try:
-                client.set_leverage(product_id, str(leverage))
-                logger.info(f"Set leverage to {leverage}x for {symbol}")
-            except Exception as e:
-                logger.error(f"Failed to set leverage: {e}")
-                # Continue anyway, might already be set
-        
-        # 4. Check Order Placement Flag
+        # 3. Check Order Placement Flag
         enable_orders = os.getenv("ENABLE_ORDER_PLACEMENT", "false").lower() == "true"
         
         # Disable order placement for Partial Exits (Alert Only) unless we strictly support split lots
@@ -95,6 +84,17 @@ def execute_strategy_signal(
         if not enable_orders:
             logger.warning(f"Order placement disabled by configuration. Action: {action} on {symbol}")
             reason += " [DISABLED]"
+
+        # 4. Set Leverage (Only on Entry)
+        # Only set leverage if orders are enabled, or maybe we still want to set it?
+        # Let's skip it if orders are disabled to be safe/quiet
+        if is_entry and mode != "paper" and enable_orders:
+            try:
+                client.set_leverage(product_id, str(leverage))
+                logger.info(f"Set leverage to {leverage}x for {symbol}")
+            except Exception as e:
+                logger.error(f"Failed to set leverage: {e}")
+                # Continue anyway, might already be set
         
         # 5. Place Order (Market)
         if mode == "paper":
