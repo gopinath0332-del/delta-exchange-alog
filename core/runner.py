@@ -130,6 +130,74 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          if len(df) > 1:
                              logger.info("Backtesting history for warmup...")
                              strategy.run_backtest(df.iloc[:-1])
+
+                             # --- RECONCILIATION STEP ---
+                             # After backtest, we might still be out of sync if a trade happened 
+                             # while bot was off or failed to record.
+                             try:
+                                 logger.info("Reconciling state with live positions...")
+                                 
+                                 # We need product_id for get_positions
+                                 products = client.get_products()
+                                 target_product = next((p for p in products if p.get('symbol') == symbol), None)
+                                 
+                                 positions = []
+                                 if target_product:
+                                     pid = target_product.get('id')
+                                     logger.info(f"Resolved {symbol} to Product ID: {pid}")
+                                     positions = client.get_positions(product_id=pid)
+                                 else:
+                                     logger.warning(f"Could not resolve product ID for {symbol}. Trying without ID (might fail)...")
+                                     positions = client.get_positions()
+
+                                 logger.info(f"Reconciliation: Fetched {len(positions)} positions.")
+                                 logger.info(f"Positions raw type: {type(positions)}")
+                                 logger.info(f"Positions raw data: {positions}")
+
+                                 # If we filtered by product_id, API might return the single object directly
+                                 if isinstance(positions, dict):
+                                     logger.info("Positions returned as single dict object. Wrapping in list.")
+                                     positions = [positions]
+                                 
+                                 if positions and isinstance(positions, list):
+                                     logger.info(f"First position type: {type(positions[0])}")
+                                 
+                                 # Find position for this symbol/product
+                                 # Try multiple keys for symbol match
+                                 current_pos = None
+                                 for p in positions:
+                                     if isinstance(p, (str, int, float)):
+                                         logger.error(f"Position data is primitive type {type(p)}, expected dict: {p}")
+                                         continue
+                                     
+                                     # If we already filtered by Product ID, this is likely the one.
+                                     # But let's verify if possible, or just take it if it's the only one.
+                                     if len(positions) == 1 and target_product:
+                                          current_pos = p
+                                          break
+                                          
+                                     p_symbol = p.get('product_symbol') or p.get('symbol') or p.get('product_id') # Fallback check
+                                     if str(p_symbol) == symbol:
+                                         current_pos = p
+                                         break
+                                 
+                                 size = 0.0
+                                 entry_price = 0.0
+                                 
+                                 if current_pos:
+                                     size = float(current_pos.get('size', 0.0))
+                                     entry_price = float(current_pos.get('entry_price', 0.0))
+                                     logger.info(f"Reconciliation: Found position for {symbol}: Size={size}, Price={entry_price}")
+                                 else:
+                                     logger.info(f"Reconciliation: No position found for {symbol}")
+
+                                 strategy.reconcile_position(size, entry_price)
+                                 
+                                 
+                             except Exception as e:
+                                 logger.error(f"Failed to reconcile positions: {e}")
+                                 
+                             # ---------------------------
                      
                      # Now process current live candle
                      current_time_ms = int(time.time() * 1000)

@@ -91,31 +91,31 @@ class DoubleDipRSIStrategy:
         # shortSignal = crossunder(rsi, shortEntryLevel) -> RSI crosses below 35
         short_signal = current_rsi < self.short_entry_level
         
-        if self.require_prev_long_min_duration:
-            # Check duration of last long
-            ms_per_day = 24 * 60 * 60 * 1000
-            threshold = self.min_days_long * ms_per_day
+        # if self.require_prev_long_min_duration:
+        #     # Check duration of last long
+        #     ms_per_day = 24 * 60 * 60 * 1000
+        #     threshold = self.min_days_long * ms_per_day
             
-            # Logic: Short allowed ONLY if Last long duration >= threshold
-            # If last_long_duration is 0 (no history), we BLOCK shorts to be conservative 
-            # and match the "Wait 2 days" constraint safety.
-            short_allowed = (self.last_long_duration >= threshold) and (self.last_long_duration > 0)
+        #     # Logic: Short allowed ONLY if Last long duration >= threshold
+        #     # If last_long_duration is 0 (no history), we BLOCK shorts to be conservative 
+        #     # and match the "Wait 2 days" constraint safety.
+        #     short_allowed = (self.last_long_duration >= threshold) and (self.last_long_duration > 0)
             
-            if short_signal:
-                days_duration = self.last_long_duration / ms_per_day
-                logger.info(f"DEBUG: Short Signal Check | RSI={current_rsi:.2f} | LastLongDur={days_duration:.2f}d | Allowed={short_allowed}")
+        #     if short_signal:
+        #         days_duration = self.last_long_duration / ms_per_day
+        #         logger.info(f"DEBUG: Short Signal Check | RSI={current_rsi:.2f} | LastLongDur={days_duration:.2f}d | Allowed={short_allowed}")
 
-            if not short_allowed:
-                 # Optional: Log reason if needed, but for now we just block
-                 reason = f"Blocked: Prev Long duration {self.last_long_duration/ms_per_day:.2f}d < {self.min_days_long}d"
+        #     if not short_allowed:
+        #          # Optional: Log reason if needed, but for now we just block
+        #          reason = f"Blocked: Prev Long duration {self.last_long_duration/ms_per_day:.2f}d < {self.min_days_long}d"
                  
-        if self.current_position >= 0: # Flat or Long
-            if short_signal and short_allowed:
-                action = "ENTRY_SHORT"
-                reason = f"RSI {current_rsi:.2f} < {self.short_entry_level} (Duration OK)"
-            elif short_signal and not short_allowed:
-                 # Log/Reason but don't act? or just ignore
-                 pass
+        # if self.current_position >= 0: # Flat or Long
+        #     if short_signal and short_allowed:
+        #         action = "ENTRY_SHORT"
+        #         reason = f"RSI {current_rsi:.2f} < {self.short_entry_level} (Duration OK)"
+        #     elif short_signal and not short_allowed:
+        #          # Log/Reason but don't act? or just ignore
+        #          pass
                  
         # Short Exit
         if self.current_position < 0: # In Short
@@ -197,6 +197,74 @@ class DoubleDipRSIStrategy:
     def set_position(self, position: int):
         """Manually set position state (e.g. from API sync)."""
         self.current_position = position
+
+    def reconcile_position(self, size: float, entry_price: float):
+        """
+        Reconcile internal state with actual exchange position.
+        
+        Args:
+            size: Current position size (positive=Long, negative=Short, 0=Flat)
+            entry_price: Average entry price of the position
+        """
+        import time
+        import datetime
+        
+        # Helper to format time
+        def format_time(ts_ms):
+            return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
+
+        current_ts = int(time.time() * 1000)
+        
+        # Case 1: Exchange is LONG
+        if size > 0:
+            if self.current_position != 1:
+                logger.warning(f"State Mismatch! Exchange: LONG ({size}), Internal: {self.current_position}. Reconciling to LONG.")
+                self.current_position = 1
+                
+                # If we don't have an active trade, create a 'Recovered' one
+                if not self.active_trade:
+                    self.active_trade = {
+                        "type": "LONG",
+                        "entry_time": format_time(current_ts) + " (Rec)",
+                        "entry_rsi": 0.0, # Unknown
+                        "entry_price": entry_price,
+                        "exit_time": "-",
+                        "exit_rsi": "-",
+                        "exit_price": "-",
+                        "status": "OPEN"
+                    }
+        
+        # Case 2: Exchange is SHORT
+        elif size < 0:
+            if self.current_position != -1:
+                logger.warning(f"State Mismatch! Exchange: SHORT ({size}), Internal: {self.current_position}. Reconciling to SHORT.")
+                self.current_position = -1
+                
+                if not self.active_trade:
+                    self.active_trade = {
+                        "type": "SHORT",
+                        "entry_time": format_time(current_ts) + " (Rec)",
+                        "entry_rsi": 0.0, # Unknown
+                        "entry_price": entry_price,
+                        "exit_time": "-",
+                        "exit_rsi": "-",
+                        "exit_price": "-",
+                        "status": "OPEN"
+                    }
+
+        # Case 3: Exchange is FLAT
+        else:
+            if self.current_position != 0:
+                logger.warning(f"State Mismatch! Exchange: FLAT, Internal: {self.current_position}. Reconciling to FLAT.")
+                self.current_position = 0
+                
+                # Close any active trade
+                if self.active_trade:
+                    self.active_trade["exit_time"] = format_time(current_ts) + " (Rec)"
+                    self.active_trade["exit_price"] = entry_price # Use current market price ideally, but 0 is safe
+                    self.active_trade["status"] = "CLOSED"
+                    self.trades.append(self.active_trade)
+                    self.active_trade = None
 
     def run_backtest(self, df: pd.DataFrame):
         """

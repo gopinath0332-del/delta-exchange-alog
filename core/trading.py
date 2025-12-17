@@ -100,40 +100,54 @@ def execute_strategy_signal(
                 notifier.send_error(f"Order Failed: {symbol}", str(e))
                 return
 
-            # 5. Calculate Margin & Wallet (For Alert)
-            margin_used = 0.0
-            remaining_margin = 0.0
-    
+            # 5. Calculate Margin (Estimated)
+            # Do this BEFORE fetching wallet so we have it even if wallet fetch fails
             try:
-                # Fetch Wallet
-                wallet_data = client.get_wallet_balance()
-                
-                collateral_currency = product.get('settling_asset', {}).get('symbol') or 'USDT'
-                
-                # Helper to find currency in wallet_data
-                if isinstance(wallet_data, list):
-                    balance_obj = next((b for b in wallet_data if b.get('asset_symbol') == collateral_currency), {})
-                elif isinstance(wallet_data, dict) and 'result' in wallet_data:
-                     # Check if result is list
-                     res = wallet_data['result']
-                     if isinstance(res, list):
-                         balance_obj = next((b for b in res if b.get('asset_symbol') == collateral_currency), {})
-                     else:
-                         balance_obj = res # Maybe simple dict?
-                else:
-                    balance_obj = {}
-    
-                # Parse fields
-                available_balance = float(balance_obj.get('available_balance', 0.0))
-                remaining_margin = available_balance 
-    
-                # Calculate Estimated Margin for THIS order
-                # Margin = (Price * Size * ContractValue) / Leverage
                 notional_value = price * order_size * contract_value
                 margin_used = notional_value / leverage
-    
+                logger.info(f"Estimated margin used: {margin_used} (Notional: {notional_value}, Leverage: {leverage})")
             except Exception as e:
-                logger.warning(f"Failed to fetch margin details: {e}")
+                logger.error(f"Error calculating margin: {e}")
+                margin_used = 0.0
+
+            # 6. Fetch Wallet Balance (For Alert)
+            remaining_margin = 0.0
+            try:
+                wallet_data = client.get_wallet_balance()
+                logger.debug(f"Raw wallet data: {wallet_data}")
+                
+                collateral_currency = product.get('settling_asset', {}).get('symbol') or 'USDT'
+                logger.debug(f"Looking for collateral currency: {collateral_currency}")
+
+                balance_obj = {}
+                
+                # Robust parsing for different response structures
+                if isinstance(wallet_data, list):
+                    balance_obj = next((b for b in wallet_data if b.get('asset_symbol') == collateral_currency), {})
+                elif isinstance(wallet_data, dict):
+                    # Handle nested 'result' key which is common in Delta API
+                    data_source = wallet_data.get('result', wallet_data)
+                    
+                    if isinstance(data_source, list):
+                        balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency), {})
+                    elif isinstance(data_source, dict):
+                        # Sometimes result might be the balance object itself or map of assets
+                        if data_source.get('asset_symbol') == collateral_currency:
+                            balance_obj = data_source
+                        else:
+                            # Try finding by key if it's a dict of usage
+                            balance_obj = data_source.get(collateral_currency, {})
+
+                if not balance_obj:
+                    logger.warning(f"Could not find wallet balance for {collateral_currency} in response")
+
+                # Parse fields
+                available_balance = float(balance_obj.get('available_balance', 0.0))
+                remaining_margin = available_balance
+                logger.info(f"Fetched wallet balance for {collateral_currency}: {remaining_margin}")
+
+            except Exception as e:
+                logger.warning(f"Failed to fetch wallet details: {e}")
         
         # 6. Send Alert
         notifier.send_trade_alert(

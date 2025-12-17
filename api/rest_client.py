@@ -1,6 +1,10 @@
 """REST API client for Delta Exchange using delta-rest-client library."""
 
 import time
+import json
+import hmac
+import hashlib
+import urllib.parse
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
@@ -81,6 +85,70 @@ class DeltaRestClient:
                 raise AuthenticationError(f"Authentication failed: {error_msg}")
             else:
                 raise APIError(f"API request failed: {error_msg}")
+
+
+
+    def _generate_signature(self, method: str, endpoint: str, payload: str, timestamp: str) -> str:
+        """Generate HMAC-SHA256 signature."""
+        msg = f"{method}{timestamp}{endpoint}{payload}"
+        signature = hmac.new(
+            self.config.api_secret.encode('utf-8'),
+            msg.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        return signature
+
+    def _make_auth_request(self, method: str, endpoint: str, params: Optional[Dict] = None, data: Optional[Dict] = None) -> Any:
+        """
+        Make authenticated API request directly.
+        """
+        import requests
+        
+        self.rate_limiter.wait_if_needed()
+        
+        url = f"{self.config.base_url}{endpoint}"
+        timestamp = str(int(time.time()))
+        
+        # Prepare payload and query string for signature
+        query_string = ""
+        if params:
+            query_string = urllib.parse.urlencode(params)
+            url = f"{url}?{query_string}"
+            
+        payload = ""
+        if data:
+            payload = json.dumps(data)
+            
+        # For signature, endpoint should include query params if GET?
+        # Verify Delta API docs: Signature = method + timestamp + path + query_string + body
+        path_with_query = endpoint
+        if query_string:
+            path_with_query = f"{endpoint}?{query_string}"
+            
+        signature = self._generate_signature(method, path_with_query, payload, timestamp)
+        
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": self.config.api_key,
+            "timestamp": timestamp,
+            "signature": signature
+        }
+        
+        try:
+            if method == "GET":
+                response = requests.get(url, headers=headers, timeout=30)
+            elif method == "POST":
+                response = requests.post(url, headers=headers, data=payload, timeout=30)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
+                
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Auth API request failed: {endpoint}", error=str(e))
+            if e.response is not None:
+                logger.error(f"Response: {e.response.text}")
+            raise APIError(f"Auth request failed: {e}")
 
     def _make_direct_request(self, endpoint: str, params: Optional[Dict] = None) -> Any:
         """
@@ -371,16 +439,28 @@ class DeltaRestClient:
         response = self._make_request(self.client.get_balances)
         return cast(Dict[str, Any], response)
 
-    def get_positions(self) -> List[Dict[str, Any]]:
+    def get_positions(self, product_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Get open positions.
+
+        Args:
+             product_id: Optional product ID to filter
 
         Returns:
             List of open positions
         """
-        logger.debug("Fetching positions")
-        response = self._make_request(self.client.get_positions)
-        return cast(List[Dict[str, Any]], response)
+        logger.debug("Fetching positions", product_id=product_id)
+        
+        params = {}
+        if product_id:
+             params['product_id'] = product_id
+
+        # delta-rest-client v2 might not have get_positions, use direct request
+        try:
+            response = self._make_auth_request("GET", "/v2/positions", params=params)
+            return cast(List[Dict[str, Any]], response.get('result', []))
+        except Exception:
+            raise
 
     def get_position(self, product_id: int) -> Dict[str, Any]:
         """
