@@ -91,31 +91,31 @@ class DoubleDipRSIStrategy:
         # shortSignal = crossunder(rsi, shortEntryLevel) -> RSI crosses below 35
         short_signal = current_rsi < self.short_entry_level
         
-        if self.require_prev_long_min_duration:
-            # Check duration of last long
-            ms_per_day = 24 * 60 * 60 * 1000
-            threshold = self.min_days_long * ms_per_day
+        # if self.require_prev_long_min_duration:
+        #     # Check duration of last long
+        #     ms_per_day = 24 * 60 * 60 * 1000
+        #     threshold = self.min_days_long * ms_per_day
             
-            # Logic: Short allowed ONLY if Last long duration >= threshold
-            # If last_long_duration is 0 (no history), we BLOCK shorts to be conservative 
-            # and match the "Wait 2 days" constraint safety.
-            short_allowed = (self.last_long_duration >= threshold) and (self.last_long_duration > 0)
+        #     # Logic: Short allowed ONLY if Last long duration >= threshold
+        #     # If last_long_duration is 0 (no history), we BLOCK shorts to be conservative 
+        #     # and match the "Wait 2 days" constraint safety.
+        #     short_allowed = (self.last_long_duration >= threshold) and (self.last_long_duration > 0)
             
-            if short_signal:
-                days_duration = self.last_long_duration / ms_per_day
-                logger.info(f"DEBUG: Short Signal Check | RSI={current_rsi:.2f} | LastLongDur={days_duration:.2f}d | Allowed={short_allowed}")
+        #     if short_signal:
+        #         days_duration = self.last_long_duration / ms_per_day
+        #         logger.info(f"DEBUG: Short Signal Check | RSI={current_rsi:.2f} | LastLongDur={days_duration:.2f}d | Allowed={short_allowed}")
 
-            if not short_allowed:
-                 # Optional: Log reason if needed, but for now we just block
-                 reason = f"Blocked: Prev Long duration {self.last_long_duration/ms_per_day:.2f}d < {self.min_days_long}d"
+        #     if not short_allowed:
+        #          # Optional: Log reason if needed, but for now we just block
+        #          reason = f"Blocked: Prev Long duration {self.last_long_duration/ms_per_day:.2f}d < {self.min_days_long}d"
                  
-        if self.current_position >= 0: # Flat or Long
-            if short_signal and short_allowed:
-                action = "ENTRY_SHORT"
-                reason = f"RSI {current_rsi:.2f} < {self.short_entry_level} (Duration OK)"
-            elif short_signal and not short_allowed:
-                 # Log/Reason but don't act? or just ignore
-                 pass
+        # if self.current_position >= 0: # Flat or Long
+        #     if short_signal and short_allowed:
+        #         action = "ENTRY_SHORT"
+        #         reason = f"RSI {current_rsi:.2f} < {self.short_entry_level} (Duration OK)"
+        #     elif short_signal and not short_allowed:
+        #          # Log/Reason but don't act? or just ignore
+        #          pass
                  
         # Short Exit
         if self.current_position < 0: # In Short
