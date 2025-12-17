@@ -4,6 +4,7 @@ Handles order placement, leverage setting, and margin calculations.
 """
 
 from typing import Optional
+import os
 from core.logger import get_logger
 from api.rest_client import DeltaRestClient
 from notifications.manager import NotificationManager
@@ -68,7 +69,9 @@ def execute_strategy_signal(
             return
 
         # 3. Set Leverage (Only on Entry)
-        if is_entry and mode != "paper":
+        # Only set leverage if orders are enabled, or maybe we still want to set it?
+        # Let's skip it if orders are disabled to be safe/quiet
+        if is_entry and mode != "paper" and enable_orders:
             try:
                 client.set_leverage(product_id, str(leverage))
                 logger.info(f"Set leverage to {leverage}x for {symbol}")
@@ -76,7 +79,14 @@ def execute_strategy_signal(
                 logger.error(f"Failed to set leverage: {e}")
                 # Continue anyway, might already be set
         
-        # 4. Place Order (Market)
+        # 4. Check Order Placement Flag
+        enable_orders = os.getenv("ENABLE_ORDER_PLACEMENT", "false").lower() == "true"
+        
+        if not enable_orders:
+            logger.warning(f"Order placement disabled by configuration. Action: {action} on {symbol}")
+            reason += " [DISABLED]"
+        
+        # 5. Place Order (Market)
         if mode == "paper":
             logger.info(f"[PAPER] Simulating {side.upper()} order for {order_size} contract(s) of {symbol}")
             order = {"id": "PAPER_ORDER_ID"}
@@ -86,21 +96,25 @@ def execute_strategy_signal(
             notional_value = price * order_size * contract_value
             margin_used = notional_value / leverage
         else:
-            logger.info(f"Placing {side.upper()} order for {order_size} contract(s) of {symbol}")
-            try:
-                order = client.place_order(
-                    product_id=product_id,
-                    size=order_size,
-                    side=side,
-                    order_type="market_order"
-                )
-                logger.info(f"Order placed successfully: {order.get('id')}")
-            except Exception as e:
-                logger.error(f"Failed to place order: {e}")
-                notifier.send_error(f"Order Failed: {symbol}", str(e))
-                return
+            # 7. Execute Order if Enabled
+            if enable_orders:
+                logger.info(f"Placing {side.upper()} order for {order_size} contract(s) of {symbol}")
+                try:
+                    order = client.place_order(
+                        product_id=product_id,
+                        size=order_size,
+                        side=side,
+                        order_type="market_order"
+                    )
+                    logger.info(f"Order placed successfully: {order.get('id')}")
+                except Exception as e:
+                    logger.error(f"Failed to place order: {e}")
+                    notifier.send_error(f"Order Failed: {symbol}", str(e))
+                    return
+            else:
+                 logger.info("Skipping actual order placement (ENABLE_ORDER_PLACEMENT is false).")
 
-            # 5. Calculate Margin (Estimated)
+            # 6. Calculate Margin (Estimated)
             # Do this BEFORE fetching wallet so we have it even if wallet fetch fails
             try:
                 notional_value = price * order_size * contract_value

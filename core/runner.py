@@ -70,9 +70,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
             try:
                 # 1. Fetch Data (1h candles)
                 # We need enough history for RSI(14). 
-                # 100 is "safe" but 300 provides better precision for Wilder's smoothing.
+                # Use configured lookback days.
                 end_time = int(time.time())
-                start_time = end_time - (300 * 3600) 
+                days_lookback = getattr(config, 'default_historical_days', 30)
+                start_time = end_time - (days_lookback * 24 * 3600) 
                 
                 # Fetch history
                 # Note: This relies on _make_direct_request. If this fails, we need to check API docs/auth.

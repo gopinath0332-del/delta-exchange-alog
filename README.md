@@ -1,6 +1,6 @@
 # Delta Exchange Crypto Trading Analysis Platform
 
-A comprehensive Python-based crypto trading analysis platform with Delta Exchange futures API integration, supporting backtesting, paper trading, and live trading with both terminal and GUI interfaces.
+A comprehensive Python-based crypto trading analysis platform with Delta Exchange futures API integration, supporting backtesting, paper trading, and live trading with a terminal interface.
 
 ## Features
 
@@ -11,7 +11,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 - **Multiple Timeframes**: 5m, 15m, 1h, 4h, 1d (configurable)
 - **Notifications**: Discord webhooks and Email alerts
 - **PDF Reports**: Professional trading reports with charts
-- **Dual Interface**: Terminal CLI and DearPyGui GUI
+- **Terminal Interface**: Robust CLI dashboard with live strategy monitoring
 
 ## Project Structure
 
@@ -42,7 +42,6 @@ delta-exchange-alog/
 ├── notifications/      # Alert system
 ├── reporting/          # PDF report generation
 ├── terminal/           # Terminal interface
-├── gui/                # GUI interface (DearPyGui)
 └── tests/              # Unit and integration tests
 ```
 
@@ -51,7 +50,6 @@ delta-exchange-alog/
 ### Prerequisites
 
 - Python 3.9 or higher
-- OpenGL support (for GUI)
 - Delta Exchange account (testnet or production)
 
 ### Setup
@@ -98,6 +96,10 @@ DELTA_API_KEY=your_api_key_here
 DELTA_API_SECRET=your_api_secret_here
 DELTA_ENVIRONMENT=testnet  # or production
 DELTA_BASE_URL=https://cdn-ind.testnet.deltaex.org
+
+# Trading Configuration
+ENABLE_ORDER_PLACEMENT=false # Set to true to enable real order placement
+DEFAULT_HISTORICAL_DAYS=30   # Days of data to load for analysis
 
 # Discord Notifications
 DISCORD_WEBHOOK_URL=your_webhook_url
@@ -156,7 +158,7 @@ config = get_config()
 # Initialize API client
 client = DeltaRestClient(config)
 
-# Fetch historical data (30 days by default)
+# Fetch historical data (using DEFAULT_HISTORICAL_DAYS)
 candles = client.get_historical_candles(
     symbol="BTCUSD",
     resolution="1h"
@@ -172,19 +174,13 @@ logger.info("Fetched candles", count=len(candles))
 python main.py fetch-data --symbol BTCUSD --timeframe 1h --days 30
 
 # Run backtest
-python main.py backtest --strategy moving_average --symbol BTCUSD
+python main.py backtest --strategy double-dip --symbol BTCUSD
 
 # Start live trading (paper mode)
-python main.py live --strategy rsi --symbol BTCUSD --paper
+python main.py live --strategy double-dip --symbol BTCUSD --paper --candle-type heikin-ashi
 
 # Generate report
 python main.py report --backtest-id latest --output report.pdf
-```
-
-### GUI Mode
-
-```bash
-python main.py --gui
 ```
 
 ## Development Status
@@ -197,19 +193,18 @@ python main.py --gui
 - [x] Pydantic data models
 - [x] Configuration management
 - [x] Project structure
+- [x] Live trading engine (Terminal Based)
+- [x] Strategy framework (Double Dip RSI)
+- [x] Notifications (Discord/Email)
+- [x] Terminal interface
 
 ### 🚧 In Progress
 
 - [ ] WebSocket client for live data
 - [ ] Data storage (SQLite/CSV)
 - [ ] Data preprocessing
-- [ ] Strategy framework
-- [ ] Backtesting engine
-- [ ] Live trading engine
-- [ ] Notifications (Discord/Email)
+- [ ] Portfolio optimization
 - [ ] PDF report generation
-- [ ] Terminal interface
-- [ ] GUI interface
 
 ## API Reference
 
@@ -231,7 +226,7 @@ balance = client.get_wallet_balance()
 positions = client.get_positions()
 orders = client.get_live_orders()
 
-# Trading
+# Trading (check ENABLE_ORDER_PLACEMENT)
 order = client.place_order(
     product_id=1,
     size=10,
@@ -291,12 +286,10 @@ For issues and questions:
 
 ## Roadmap
 
-- [ ] Advanced technical indicators (RSI, MACD, Bollinger Bands)
+- [ ] Advanced technical indicators (MACD, Bollinger Bands)
 - [ ] Multiple strategy support
 - [ ] Walk-forward analysis
-- [ ] Portfolio optimization
 - [ ] Risk management dashboard
-- [ ] Real-time alerts
 - [ ] Mobile notifications
 - [ ] Cloud deployment support
 
