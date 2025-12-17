@@ -25,6 +25,8 @@ class DoubleDipRSIStrategy:
         self.short_entry_level = 35.0
         self.short_exit_level = 35.0
         
+        self.indicator_label = "RSI"
+
         # Duration Condition
         self.require_prev_long_min_duration = True
         self.min_days_long = 2

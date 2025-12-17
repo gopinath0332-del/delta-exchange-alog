@@ -289,7 +289,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 print(" RECENT TRADE HISTORY")
                 print("-" * 80)
                 # Header
-                print(f" {'Type':<8} {'Entry Time':<16} {'Ent. Price':<12} {'Ent. RSI':<10} {'Exit Time':<16} {'Exit Price':<12} {'Exit RSI':<10} {'Points':<10} {'Status':<10}")
+                label = getattr(strategy, 'indicator_label', "RSI")
+                ind_label = f"Ent. {label}"
+                x_ind_label = f"Exit {label}"
+                print(f" {'Type':<8} {'Entry Time':<16} {'Ent. Price':<12} {ind_label:<10} {'Exit Time':<16} {'Exit Price':<12} {x_ind_label:<10} {'Points':<10} {'Status':<10}")
                 
                 # Helper to calc points
                 def get_points_str(trade, current_price=None):
@@ -309,7 +312,16 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
 
                 # Helper to get indicator value
                 def get_ind_val(trade, prefix):
-                    # Try keys like entry_rsi, entry_cci, exit_rsi, exit_cci
+                    # Dynamic lookup based on strategy label
+                    label = getattr(strategy, 'indicator_label', "RSI").lower()
+                    key = f"{prefix}_{label}"
+                    
+                    # Try specific key first
+                    val = trade.get(key)
+                    if val is not None:
+                        return f"{val:.2f}" if isinstance(val, float) else str(val)
+                        
+                    # Fallback to RSI/CCI hardcoded check if old data
                     keys_to_try = [f"{prefix}_rsi", f"{prefix}_cci"]
                     for k in keys_to_try:
                         val = trade.get(k)

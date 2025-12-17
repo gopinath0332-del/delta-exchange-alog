@@ -29,6 +29,8 @@ class CCIEMAStrategy:
         self.atr_length = 20
         self.atr_multiplier = 9.0
         
+        self.indicator_label = "CCI"
+        
         # State
         self.current_position = 0  # 1 for Long, 0 for Flat
         self.last_entry_price = 0.0
