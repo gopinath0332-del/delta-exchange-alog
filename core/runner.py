@@ -33,6 +33,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         from strategies.double_dip_rsi import DoubleDipRSIStrategy
         strategy = DoubleDipRSIStrategy()
         logger.info("Initialized DoubleDipRSIStrategy")
+    elif strategy_name.lower() in ["cci-ema", "cciema"]:
+        from strategies.cci_ema_strategy import CCIEMAStrategy
+        strategy = CCIEMAStrategy()
+        logger.info("Initialized CCIEMAStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
@@ -202,10 +206,22 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      
                      # Now process current live candle
                      current_time_ms = int(time.time() * 1000)
-                     current_rsi, prev_rsi = strategy.calculate_rsi(closes)
-                     action, reason = strategy.check_signals(current_rsi, current_time_ms)
                      
-                     logger.info(f"Analysis: RSI={current_rsi:.2f} (Prev={prev_rsi:.2f}) | Action={action}")
+                     if hasattr(strategy, 'calculate_indicators'):
+                          # For CCI Strategy
+                          strategy.check_signals(df, current_time_ms)
+                          # Update dashboard cache? check_signals does it.
+                          # check_signals returns action/reason but for logging we might want values
+                          # The strategy instance stores last_cci etc.
+                          # But wait, check_signals returns (action, reason).
+                          action, reason = strategy.check_signals(df, current_time_ms)
+                          current_rsi = 0.0 # Not used for this strategy
+                          prev_rsi = 0.0
+                     else:
+                          # For Double Dip (Legacy style)
+                          current_rsi, prev_rsi = strategy.calculate_rsi(closes)
+                          action, reason = strategy.check_signals(current_rsi, current_time_ms)
+                          logger.info(f"Analysis: RSI={current_rsi:.2f} (Prev={prev_rsi:.2f}) | Action={action}")
                      
                      if action:
                          logger.info(f"SIGNAL: {action} - {reason}")
@@ -221,7 +237,9 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              symbol=symbol,
                              action=action,
                              price=price,
-                             rsi=current_rsi,
+                             action=action,
+                             price=price,
+                             rsi=current_rsi if hasattr(strategy, 'calculate_rsi') else getattr(strategy, 'last_cci', 0.0),
                              reason=reason,
                              mode=mode
                          )
@@ -245,10 +263,16 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 print(f" Position:     {pos_str}")
                 print(f" Candle Type:  {'Heikin Ashi' if use_ha else 'Standard'}")
                 print("-" * 80)
-                print(f" Market Data:")
-                print(f"   Price:      ${closes.iloc[-1]:,.2f}")
-                print(f"   RSI (14):   {current_rsi:.2f}")
-                print(f"   Prev RSI:   {prev_rsi:.2f}")
+                if isinstance(strategy, DoubleDipRSIStrategy):
+                    print(f"   Price:      ${closes.iloc[-1]:,.2f}")
+                    print(f"   RSI (14):   {current_rsi:.2f}")
+                    print(f"   Prev RSI:   {prev_rsi:.2f}")
+                elif hasattr(strategy, 'last_cci'): # Check for CCI Strategy
+                    print(f"   Price:      ${closes.iloc[-1]:,.2f}")
+                    print(f"   CCI (20):   {strategy.last_cci:.2f}")
+                    print(f"   EMA (50):   {strategy.last_ema:.2f}")
+                    print(f"   ATR (20):   {strategy.last_atr:.2f}")
+                
                 print("-" * 80)
                 
                 if action:
