@@ -68,10 +68,25 @@ class CCIEMAStrategy:
             current_ema = ema_series.iloc[-1]
             current_atr = atr_series.iloc[-1]
             
-            # Cache for dashboard
+            current_atr = atr_series.iloc[-1]
+            
+            # Cache for dashboard (Live)
             self.last_cci = current_cci
             self.last_ema = current_ema
             self.last_atr = current_atr
+            
+            # Cache Last Closed Candle (Index -2)
+            if len(df) >= 2:
+                import datetime
+                ts = df['time'].iloc[-2]
+                if ts > 1e10: ts = ts / 1000 # Handle ms if needed
+                self.last_closed_time_str = datetime.datetime.fromtimestamp(ts).strftime('%H:%M')
+                self.last_closed_cci = cci_series.iloc[-2]
+                self.last_closed_ema = ema_series.iloc[-2]
+            else:
+                self.last_closed_time_str = "-"
+                self.last_closed_cci = 0.0
+                self.last_closed_ema = 0.0
             
             return current_cci, current_ema, current_atr
             

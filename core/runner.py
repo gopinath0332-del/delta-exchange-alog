@@ -296,9 +296,13 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     print(f"   Prev RSI:   {prev_rsi:.2f}")
                 elif hasattr(strategy, 'last_cci'): # Check for CCI Strategy
                     print(f"   Price:      ${closes.iloc[-1]:,.2f}")
-                    print(f"   CCI (20):   {strategy.last_cci:.2f}")
+                    print(f"   CCI (20):   {strategy.last_cci:.2f} (Live)")
                     print(f"   EMA (50):   {strategy.last_ema:.2f}")
                     print(f"   ATR (20):   {strategy.last_atr:.2f}")
+                    if hasattr(strategy, 'last_closed_cci'):
+                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         print(f"     CCI:      {strategy.last_closed_cci:.2f}")
+                         print(f"     EMA:      {strategy.last_closed_ema:.2f}")
                 
                 print("-" * 80)
                 
