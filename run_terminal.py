@@ -51,6 +51,13 @@ def main():
             "symbol": "ETHUSD", 
             "monitor": "double-dip",
             "desc": "Long/Short strategy for ETH using same parameters."
+        },
+        {
+            "id": 3,
+            "name": "BTCUSD CCI + 50 EMA Strategy", 
+            "symbol": "BTCUSD", 
+            "monitor": "cci-ema",
+            "desc": "Long Entry, Partial Exit at ATR Target, Final Exit on Reversal."
         }
     ]
 

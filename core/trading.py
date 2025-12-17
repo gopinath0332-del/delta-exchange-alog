@@ -63,6 +63,10 @@ def execute_strategy_signal(
             side = "sell" # Close Long = Sell
         elif action == "EXIT_SHORT":
             side = "buy" # Close Short = Buy
+        elif action == "EXIT_LONG_PARTIAL":
+            side = "sell"
+            # Partial exit logic handled via alert primarily for now
+            logger.info("Partial Exit Triggered")
         
         if not side:
             logger.warning(f"Unknown action: {action}")
@@ -81,6 +85,12 @@ def execute_strategy_signal(
         
         # 4. Check Order Placement Flag
         enable_orders = os.getenv("ENABLE_ORDER_PLACEMENT", "false").lower() == "true"
+        
+        # Disable order placement for Partial Exits (Alert Only) unless we strictly support split lots
+        if "PARTIAL" in action:
+             logger.info(f"Partial exit action {action} - Sending ALERT ONLY (No Order).")
+             enable_orders = False
+             reason += " [PARTIAL - ALERT ONLY]"
         
         if not enable_orders:
             logger.warning(f"Order placement disabled by configuration. Action: {action} on {symbol}")

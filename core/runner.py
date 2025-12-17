@@ -33,6 +33,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         from strategies.double_dip_rsi import DoubleDipRSIStrategy
         strategy = DoubleDipRSIStrategy()
         logger.info("Initialized DoubleDipRSIStrategy")
+    elif strategy_name.lower() in ["cci-ema", "cciema"]:
+        from strategies.cci_ema_strategy import CCIEMAStrategy
+        strategy = CCIEMAStrategy()
+        logger.info("Initialized CCIEMAStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
@@ -109,20 +113,43 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      use_ha = (candle_type.lower() == "heikin-ashi")
                      
                      if use_ha:
-                         # Calculate Heikin Ashi Close = (O + H + L + C) / 4
-                         # Ensure all columns exist and are float
-                         for col in ['open', 'high', 'low', 'close']:
-                             if col not in df.columns:
-                                 logger.error(f"Missing column for HA: {col}")
-                                 closes = df['close'].astype(float) # Fallback
-                                 break
-                         else:
-                             o = df['open'].astype(float)
-                             h = df['high'].astype(float)
-                             l = df['low'].astype(float)
-                             c = df['close'].astype(float)
-                             df['close'] = (o + h + l + c) / 4.0
-                             closes = df['close']
+                         # Full Heikin Ashi Transformation
+                         # HA_Close = (O + H + L + C) / 4
+                         # HA_Open = (Prev_HA_Open + Prev_HA_Close) / 2
+                         # HA_High = Max(H, HA_Open, HA_Close)
+                         # HA_Low = Min(L, HA_Open, HA_Close)
+                         
+                         df_ha = df.copy()
+                         
+                         # Ensure float types
+                         o = df['open'].astype(float)
+                         h = df['high'].astype(float)
+                         l = df['low'].astype(float)
+                         c = df['close'].astype(float)
+                         
+                         # 1. HA Close
+                         df_ha['close'] = (o + h + l + c) / 4.0
+                         
+                         # 2. HA Open (Iterative calculation required)
+                         ha_open_list = [0.0] * len(df)
+                         ha_close_list = df_ha['close'].values
+                         
+                         # First candle: HA_Open = (Open + Close) / 2
+                         ha_open_list[0] = (o.iloc[0] + c.iloc[0]) / 2.0
+                         
+                         for i in range(1, len(df)):
+                             # HA_Open[i] = (HA_Open[i-1] + HA_Close[i-1]) / 2
+                             ha_open_list[i] = (ha_open_list[i-1] + ha_close_list[i-1]) / 2.0
+                             
+                         df_ha['open'] = ha_open_list
+                         
+                         # 3. HA High / Low
+                         df_ha['high'] = df_ha[['high', 'open', 'close']].max(axis=1)
+                         df_ha['low'] = df_ha[['low', 'open', 'close']].min(axis=1)
+                         
+                         # Replace original df with HA df for strategy use
+                         df = df_ha
+                         closes = df['close']
                      else:
                          closes = df['close'].astype(float)
 
@@ -184,10 +211,15 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                                  
                                  size = 0.0
                                  entry_price = 0.0
-                                 
                                  if current_pos:
-                                     size = float(current_pos.get('size', 0.0))
-                                     entry_price = float(current_pos.get('entry_price', 0.0))
+                                     val_size = current_pos.get('size')
+                                     if val_size is not None:
+                                         size = float(val_size)
+                                     
+                                     val_price = current_pos.get('entry_price')
+                                     if val_price is not None:
+                                         entry_price = float(val_price)
+                                         
                                      logger.info(f"Reconciliation: Found position for {symbol}: Size={size}, Price={entry_price}")
                                  else:
                                      logger.info(f"Reconciliation: No position found for {symbol}")
@@ -202,10 +234,22 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      
                      # Now process current live candle
                      current_time_ms = int(time.time() * 1000)
-                     current_rsi, prev_rsi = strategy.calculate_rsi(closes)
-                     action, reason = strategy.check_signals(current_rsi, current_time_ms)
                      
-                     logger.info(f"Analysis: RSI={current_rsi:.2f} (Prev={prev_rsi:.2f}) | Action={action}")
+                     if hasattr(strategy, 'calculate_indicators'):
+                          # For CCI Strategy
+                          strategy.check_signals(df, current_time_ms)
+                          # Update dashboard cache? check_signals does it.
+                          # check_signals returns action/reason but for logging we might want values
+                          # The strategy instance stores last_cci etc.
+                          # But wait, check_signals returns (action, reason).
+                          action, reason = strategy.check_signals(df, current_time_ms)
+                          current_rsi = 0.0 # Not used for this strategy
+                          prev_rsi = 0.0
+                     else:
+                          # For Double Dip (Legacy style)
+                          current_rsi, prev_rsi = strategy.calculate_rsi(closes)
+                          action, reason = strategy.check_signals(current_rsi, current_time_ms)
+                          logger.info(f"Analysis: RSI={current_rsi:.2f} (Prev={prev_rsi:.2f}) | Action={action}")
                      
                      if action:
                          logger.info(f"SIGNAL: {action} - {reason}")
@@ -221,7 +265,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              symbol=symbol,
                              action=action,
                              price=price,
-                             rsi=current_rsi,
+                             rsi=current_rsi if hasattr(strategy, 'calculate_rsi') else getattr(strategy, 'last_cci', 0.0),
                              reason=reason,
                              mode=mode
                          )
@@ -241,14 +285,25 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 
                 pos_map = {0: "FLAT", 1: "LONG", -1: "SHORT"}
                 pos_str = pos_map.get(strategy.current_position, "UNKNOWN")
+                print(f" Strategy:     {strategy_name.upper()}")
                 print(f" Status:       RUNNING ({mode.upper()})")
                 print(f" Position:     {pos_str}")
                 print(f" Candle Type:  {'Heikin Ashi' if use_ha else 'Standard'}")
                 print("-" * 80)
-                print(f" Market Data:")
-                print(f"   Price:      ${closes.iloc[-1]:,.2f}")
-                print(f"   RSI (14):   {current_rsi:.2f}")
-                print(f"   Prev RSI:   {prev_rsi:.2f}")
+                if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
+                    print(f"   Price:      ${closes.iloc[-1]:,.2f}")
+                    print(f"   RSI (14):   {current_rsi:.2f}")
+                    print(f"   Prev RSI:   {prev_rsi:.2f}")
+                elif hasattr(strategy, 'last_cci'): # Check for CCI Strategy
+                    print(f"   Price:      ${closes.iloc[-1]:,.2f}")
+                    print(f"   CCI (20):   {strategy.last_cci:.2f} (Live)")
+                    print(f"   EMA (50):   {strategy.last_ema:.2f}")
+                    print(f"   ATR (20):   {strategy.last_atr:.2f}")
+                    if hasattr(strategy, 'last_closed_cci'):
+                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         print(f"     CCI:      {strategy.last_closed_cci:.2f}")
+                         print(f"     EMA:      {strategy.last_closed_ema:.2f}")
+                
                 print("-" * 80)
                 
                 if action:
@@ -261,7 +316,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 print(" RECENT TRADE HISTORY")
                 print("-" * 80)
                 # Header
-                print(f" {'Type':<8} {'Entry Time':<16} {'Ent. Price':<12} {'Ent. RSI':<10} {'Exit Time':<16} {'Exit Price':<12} {'Exit RSI':<10} {'Points':<10} {'Status':<10}")
+                label = getattr(strategy, 'indicator_label', "RSI")
+                ind_label = f"Ent. {label}"
+                x_ind_label = f"Exit {label}"
+                print(f" {'Type':<8} {'Entry Time':<16} {'Ent. Price':<12} {ind_label:<10} {'Exit Time':<16} {'Exit Price':<12} {x_ind_label:<10} {'Points':<10} {'Status':<10}")
                 
                 # Helper to calc points
                 def get_points_str(trade, current_price=None):
@@ -279,30 +337,45 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     except:
                         return "-"
 
+                # Helper to get indicator value
+                def get_ind_val(trade, prefix):
+                    # Dynamic lookup based on strategy label
+                    label = getattr(strategy, 'indicator_label', "RSI").lower()
+                    key = f"{prefix}_{label}"
+                    
+                    # Try specific key first
+                    val = trade.get(key)
+                    if val is not None:
+                        return f"{val:.2f}" if isinstance(val, float) else str(val)
+                        
+                    # Fallback to RSI/CCI hardcoded check if old data
+                    keys_to_try = [f"{prefix}_rsi", f"{prefix}_cci"]
+                    for k in keys_to_try:
+                        val = trade.get(k)
+                        if val is not None:
+                            return f"{val:.2f}" if isinstance(val, float) else str(val)
+                    return "-"
+
                 # Active Trade first
                 if strategy.active_trade:
                     t = strategy.active_trade
-                    # Truncate RSI for display if float
-                    e_rsi = f"{t['entry_rsi']:.2f}" if isinstance(t['entry_rsi'], float) else str(t['entry_rsi'])
+                    e_ind = get_ind_val(t, 'entry')
                     e_price = f"{float(t.get('entry_price', 0)):.2f}"
                     pts_str = get_points_str(t, closes.iloc[-1])
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_rsi:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {'OPEN':<10}")
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {'OPEN':<10}")
                 
                 # Past trades (last 5, reversed)
                 recent_trades = strategy.trades[-5:] if strategy.trades else []
                 for t in reversed(recent_trades):
-                    e_rsi = f"{t['entry_rsi']:.2f}" if isinstance(t['entry_rsi'], float) else str(t['entry_rsi'])
-                    x_rsi = f"{t['exit_rsi']:.2f}" if isinstance(t['exit_rsi'], float) else str(t['exit_rsi'])
+                    e_ind = get_ind_val(t, 'entry')
+                    x_ind = get_ind_val(t, 'exit')
                     e_price = f"{float(t.get('entry_price', 0)):.2f}"
                     x_price = f"{float(t.get('exit_price', 0)):.2f}"
                     pts_str = get_points_str(t)
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_rsi:<10} {t['exit_time']:<16} {x_price:<12} {x_rsi:<10} {pts_str:<10} {t['status']:<10}")
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {t['exit_time']:<16} {x_price:<12} {x_ind:<10} {pts_str:<10} {t['status']:<10}")
                     
-                if not recent_trades and not strategy.active_trade:
-                    print(" (No trades recorded yet)")
-                    
-                print("="*80)
-                print(f"Sleeping for {sleep_seconds}s...")
+                print("-" * 80)
+                print(f"sleeping for {sleep_seconds}s...")
                 time.sleep(sleep_seconds)
                 
             except Exception as e:
