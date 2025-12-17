@@ -188,10 +188,15 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                                  
                                  size = 0.0
                                  entry_price = 0.0
-                                 
                                  if current_pos:
-                                     size = float(current_pos.get('size', 0.0))
-                                     entry_price = float(current_pos.get('entry_price', 0.0))
+                                     val_size = current_pos.get('size')
+                                     if val_size is not None:
+                                         size = float(val_size)
+                                     
+                                     val_price = current_pos.get('entry_price')
+                                     if val_price is not None:
+                                         entry_price = float(val_price)
+                                         
                                      logger.info(f"Reconciliation: Found position for {symbol}: Size={size}, Price={entry_price}")
                                  else:
                                      logger.info(f"Reconciliation: No position found for {symbol}")
@@ -237,8 +242,6 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              symbol=symbol,
                              action=action,
                              price=price,
-                             action=action,
-                             price=price,
                              rsi=current_rsi if hasattr(strategy, 'calculate_rsi') else getattr(strategy, 'last_cci', 0.0),
                              reason=reason,
                              mode=mode
@@ -263,7 +266,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 print(f" Position:     {pos_str}")
                 print(f" Candle Type:  {'Heikin Ashi' if use_ha else 'Standard'}")
                 print("-" * 80)
-                if isinstance(strategy, DoubleDipRSIStrategy):
+                if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
                     print(f"   Price:      ${closes.iloc[-1]:,.2f}")
                     print(f"   RSI (14):   {current_rsi:.2f}")
                     print(f"   Prev RSI:   {prev_rsi:.2f}")
@@ -303,30 +306,36 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     except:
                         return "-"
 
+                # Helper to get indicator value
+                def get_ind_val(trade, prefix):
+                    # Try keys like entry_rsi, entry_cci, exit_rsi, exit_cci
+                    keys_to_try = [f"{prefix}_rsi", f"{prefix}_cci"]
+                    for k in keys_to_try:
+                        val = trade.get(k)
+                        if val is not None:
+                            return f"{val:.2f}" if isinstance(val, float) else str(val)
+                    return "-"
+
                 # Active Trade first
                 if strategy.active_trade:
                     t = strategy.active_trade
-                    # Truncate RSI for display if float
-                    e_rsi = f"{t['entry_rsi']:.2f}" if isinstance(t['entry_rsi'], float) else str(t['entry_rsi'])
+                    e_ind = get_ind_val(t, 'entry')
                     e_price = f"{float(t.get('entry_price', 0)):.2f}"
                     pts_str = get_points_str(t, closes.iloc[-1])
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_rsi:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {'OPEN':<10}")
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {'OPEN':<10}")
                 
                 # Past trades (last 5, reversed)
                 recent_trades = strategy.trades[-5:] if strategy.trades else []
                 for t in reversed(recent_trades):
-                    e_rsi = f"{t['entry_rsi']:.2f}" if isinstance(t['entry_rsi'], float) else str(t['entry_rsi'])
-                    x_rsi = f"{t['exit_rsi']:.2f}" if isinstance(t['exit_rsi'], float) else str(t['exit_rsi'])
+                    e_ind = get_ind_val(t, 'entry')
+                    x_ind = get_ind_val(t, 'exit')
                     e_price = f"{float(t.get('entry_price', 0)):.2f}"
                     x_price = f"{float(t.get('exit_price', 0)):.2f}"
                     pts_str = get_points_str(t)
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_rsi:<10} {t['exit_time']:<16} {x_price:<12} {x_rsi:<10} {pts_str:<10} {t['status']:<10}")
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {t['exit_time']:<16} {x_price:<12} {x_ind:<10} {pts_str:<10} {t['status']:<10}")
                     
-                if not recent_trades and not strategy.active_trade:
-                    print(" (No trades recorded yet)")
-                    
-                print("="*80)
-                print(f"Sleeping for {sleep_seconds}s...")
+                print("-" * 80)
+                print(f"sleeping for {sleep_seconds}s...")
                 time.sleep(sleep_seconds)
                 
             except Exception as e:
