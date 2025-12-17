@@ -79,6 +79,19 @@ class CCIEMAStrategy:
             logger.error(f"Error calculating indicators: {e}")
             return 0.0, 0.0, 0.0
 
+    def calculate_prev_cci(self, df: pd.DataFrame) -> Optional[float]:
+        """Calculate CCI for the previous candle (index -2)."""
+        if len(df) < self.cci_length + 2:
+            return None
+        try:
+            # We need to calc series again? Or just slice properly
+            # Optimization: pass existing series if possible, but here we just recalc for safety
+            # Recalculating whole series is inefficient but safe.
+            cci_series = ta.trend.cci(df['high'], df['low'], df['close'], window=self.cci_length)
+            return cci_series.iloc[-2]
+        except:
+            return None
+
     def check_signals(self, df: pd.DataFrame, current_time_ms: float) -> Tuple[str, str]:
         """
         Check for entry/exit signals.
@@ -104,9 +117,14 @@ class CCIEMAStrategy:
         # Note: We check if CCI > 0 and we are not in position. 
         # Ideally check crossover, but absolute level > 0 is fine if we check state.
         if self.current_position == 0:
-            if cci > 0 and trend_bullish:
-                action = "ENTRY_LONG"
-                reason = f"CCI {cci:.2f} > 0 & Close {close:.2f} > EMA {ema:.2f}"
+            # Requires previous CCI for crossover check
+            prev_cci = self.calculate_prev_cci(df) # Need to implement this helper or fetch directly
+            if prev_cci is not None:
+                # Crossover: Prev <= 0 AND Curr > 0
+                cci_cross = (prev_cci <= 0) and (cci > 0)
+                if cci_cross and trend_bullish:
+                    action = "ENTRY_LONG"
+                    reason = f"CCI Cross {prev_cci:.2f}->{cci:.2f} > 0 & Close {close:.2f} > EMA {ema:.2f}"
                 
         # In Long Position
         elif self.current_position == 1:
@@ -217,8 +235,14 @@ class CCIEMAStrategy:
             action = None
             
             if self.current_position == 0:
-                if cci > 0 and close > ema:
+                # Crossover Check
+                # Ensure we have previous value
+                prev_cci = cci_series.iloc[i-1]
+                
+                # Logic: CrossOver 0 AND Close > EMA (at that moment)
+                if (prev_cci <= 0) and (cci > 0) and (close > ema):
                     action = "ENTRY_LONG"
+                    
             elif self.current_position == 1:
                 # Partial
                 if not self.partial_profit_taken:

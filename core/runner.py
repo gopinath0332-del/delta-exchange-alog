@@ -113,20 +113,43 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      use_ha = (candle_type.lower() == "heikin-ashi")
                      
                      if use_ha:
-                         # Calculate Heikin Ashi Close = (O + H + L + C) / 4
-                         # Ensure all columns exist and are float
-                         for col in ['open', 'high', 'low', 'close']:
-                             if col not in df.columns:
-                                 logger.error(f"Missing column for HA: {col}")
-                                 closes = df['close'].astype(float) # Fallback
-                                 break
-                         else:
-                             o = df['open'].astype(float)
-                             h = df['high'].astype(float)
-                             l = df['low'].astype(float)
-                             c = df['close'].astype(float)
-                             df['close'] = (o + h + l + c) / 4.0
-                             closes = df['close']
+                         # Full Heikin Ashi Transformation
+                         # HA_Close = (O + H + L + C) / 4
+                         # HA_Open = (Prev_HA_Open + Prev_HA_Close) / 2
+                         # HA_High = Max(H, HA_Open, HA_Close)
+                         # HA_Low = Min(L, HA_Open, HA_Close)
+                         
+                         df_ha = df.copy()
+                         
+                         # Ensure float types
+                         o = df['open'].astype(float)
+                         h = df['high'].astype(float)
+                         l = df['low'].astype(float)
+                         c = df['close'].astype(float)
+                         
+                         # 1. HA Close
+                         df_ha['close'] = (o + h + l + c) / 4.0
+                         
+                         # 2. HA Open (Iterative calculation required)
+                         ha_open_list = [0.0] * len(df)
+                         ha_close_list = df_ha['close'].values
+                         
+                         # First candle: HA_Open = (Open + Close) / 2
+                         ha_open_list[0] = (o.iloc[0] + c.iloc[0]) / 2.0
+                         
+                         for i in range(1, len(df)):
+                             # HA_Open[i] = (HA_Open[i-1] + HA_Close[i-1]) / 2
+                             ha_open_list[i] = (ha_open_list[i-1] + ha_close_list[i-1]) / 2.0
+                             
+                         df_ha['open'] = ha_open_list
+                         
+                         # 3. HA High / Low
+                         df_ha['high'] = df_ha[['high', 'open', 'close']].max(axis=1)
+                         df_ha['low'] = df_ha[['low', 'open', 'close']].min(axis=1)
+                         
+                         # Replace original df with HA df for strategy use
+                         df = df_ha
+                         closes = df['close']
                      else:
                          closes = df['close'].astype(float)
 
