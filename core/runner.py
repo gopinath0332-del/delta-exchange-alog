@@ -262,6 +262,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 
                 pos_map = {0: "FLAT", 1: "LONG", -1: "SHORT"}
                 pos_str = pos_map.get(strategy.current_position, "UNKNOWN")
+                print(f" Strategy:     {strategy_name.upper()}")
                 print(f" Status:       RUNNING ({mode.upper()})")
                 print(f" Position:     {pos_str}")
                 print(f" Candle Type:  {'Heikin Ashi' if use_ha else 'Standard'}")
