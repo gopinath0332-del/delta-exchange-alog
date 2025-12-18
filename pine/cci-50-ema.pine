@@ -1,8 +1,11 @@
+
 //@version=5
-strategy(title = "MCX Gold 1H – CCI + 50 EMA + Partial Profit + BG", overlay = true, pyramiding = 0, default_qty_type = strategy.percent_of_equity, default_qty_value = 100 )
+strategy(title = "MCX Gold 1H – CCI + 50 EMA + Partial Profit + BG",
+     overlay = true, pyramiding = 0,
+     default_qty_type = strategy.percent_of_equity, default_qty_value = 100)
 
 // ─── Inputs ───
-cciLength  = input.int(20, title="CCI Length")
+cciLength  = input.int(30, title="CCI Length")
 emaLength  = input.int(50, title="EMA Length")
 atrLength  = input.int(14, title="ATR Length")
 atrTarget  = input.float(1.0, title="ATR Multiplier for Partial Profit")
@@ -21,23 +24,25 @@ atr   = ta.atr(atrLength)
 // ─── Trend Filter ───
 trendBullish = close > ema50
 
-// ─── Entry & Exit Conditions ───
+// ─── Entry Condition ───
 longEntry = ta.crossover(cci, 0) and trendBullish
-finalExit = ta.crossunder(cci, 0) or close < ema50
+
+// ─── Exit Condition (Bar-close): Exit long when price closes below EMA ───
+finalExit = barstate.isconfirmed and close < ema50
 
 // ─── Trade Execution ───
 if (longEntry)
     strategy.entry("Long", strategy.long)
 
 // ─── Partial Profit Booking (50%) ───
-partialHit = false
+var bool partialHit = false
 if (strategy.position_size > 0)
     partialPrice = strategy.position_avg_price + atr * atrTarget
-    strategy.exit( id = "Partial Exit", from_entry = "Long", qty_percent = 50, limit = partialPrice )
+    strategy.exit(id = "Partial Exit", from_entry = "Long", qty_percent = 50, limit = partialPrice)
     partialHit := high >= partialPrice
 
 // ─── Final Exit ───
-if (finalExit)
+if (strategy.position_size > 0 and finalExit)
     strategy.close("Long")
 
 // ─── Background Color When in Position ───
@@ -47,10 +52,13 @@ bgcolor(enableBg and strategy.position_size > 0 ? longBgCol : na)
 plot(ema50, title="50 EMA", color=color.orange, linewidth=2)
 
 // ─── ALERT CONDITIONS ───
-alertcondition( longEntry, title = "Long Entry Alert", message = "MCX GOLD 1H: LONG ENTRY – CCI crossed above 0 & price above 50 EMA" )
+alertcondition(longEntry, title = "Long Entry Alert", message = "MCX GOLD 1H: LONG ENTRY – CCI crossed above 0 & price above 50 EMA")
 
-alertcondition( partialHit, title = "Partial Profit Alert", message = "MCX GOLD 1H: PARTIAL PROFIT BOOKED (50%) at ATR target" )
+alertcondition(partialHit, title = "Partial Profit Alert",
+     message = "MCX GOLD 1H: PARTIAL PROFIT BOOKED (50%) at ATR target")
 
-alertcondition( finalExit, title = "Final Exit Alert", message = "MCX GOLD 1H: FINAL EXIT – CCI crossed below 0 or price below 50 EMA" )
+alertcondition(finalExit, title = "Final Exit Alert",
+     message = "MCX GOLD 1H: FINAL EXIT – Price CLOSED below 50 EMA")
 
-alertcondition( ta.crossunder(close, ema50), title = "EMA Breakdown Alert", message = "MCX GOLD 1H: Price closed below 50 EMA" )
+// Optional: Real-time breakdown alert (intrabar cross below EMA)
+alertcondition(ta.crossunder(close, ema50), title = "EMA Breakdown Alert")

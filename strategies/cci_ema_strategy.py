@@ -24,7 +24,7 @@ class CCIEMAStrategy:
     
     def __init__(self):
         # Parameters
-        self.cci_length = 20
+        self.cci_length = 30
         self.ema_length = 50
         self.atr_length = 20
         self.atr_multiplier = 9.0
@@ -153,9 +153,9 @@ class CCIEMAStrategy:
             
             # 2. Final Exit Check
             # CCI CrossUnder 0 OR Close < EMA
-            if cci < 0 or close < ema:
+            if close < ema:
                 action = "EXIT_LONG"
-                reason = f"Exit Signal: CCI {cci:.2f} < 0 or Close {close:.2f} < EMA {ema:.2f}"
+                reason = f"Exit Signal: Close {close:.2f} < EMA {ema:.2f}"
                 
         return action, reason
 
@@ -268,7 +268,7 @@ class CCIEMAStrategy:
                 # Final (Note: Prioritize Final over Partial if both hit in same candle? Or check order?
                 # Pine script checks partial first, then final.
                 # If Final condition met, we exit all.
-                if cci < 0 or close < ema:
+                if close < ema:
                     action = "EXIT_LONG"
             
             if action:
