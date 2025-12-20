@@ -28,6 +28,16 @@ class TestTradingExecution(unittest.TestCase):
             ]
         }
         
+        # Default: No positions found
+        self.mock_client.get_positions.return_value = []
+        
+        # Patch Environment Variable
+        self.env_patcher = patch.dict('os.environ', {'ENABLE_ORDER_PLACEMENT': 'true'})
+        self.env_patcher.start()
+
+    def tearDown(self):
+        self.env_patcher.stop()
+        
     def test_entry_long(self):
         print("\nTesting ENTRY_LONG...")
         execute_strategy_signal(
@@ -80,6 +90,33 @@ class TestTradingExecution(unittest.TestCase):
             order_type="market_order"
         )
         print("ENTRY_SHORT Verified successfully.")
+
+    def test_entry_skipped_if_position_exists(self):
+        print("\nTesting ENTRY_SKIPPED (Position Exists)...")
+        
+        # Mock existing position
+        self.mock_client.get_positions.return_value = [
+            {"product_id": 123, "size": 10, "entry_price": 50000}
+        ]
+        
+        execute_strategy_signal(
+            client=self.mock_client,
+            notifier=self.mock_notifier,
+            symbol="BTCUSD",
+            action="ENTRY_LONG",
+            price=50000.0,
+            rsi=55.0,
+            reason="Test Long Duplicate"
+        )
+        
+        # Verify get_positions was called
+        self.mock_client.get_positions.assert_called_with(product_id=123)
+        
+        # Verify Place Order was NOT called
+        self.mock_client.place_order.assert_not_called()
+        self.mock_client.set_leverage.assert_not_called()
+        
+        print("ENTRY_SKIPPED Verified successfully.")
 
 if __name__ == '__main__':
     unittest.main()

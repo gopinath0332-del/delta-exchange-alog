@@ -72,6 +72,24 @@ def execute_strategy_signal(
             logger.warning(f"Unknown action: {action}")
             return
 
+        # Prevent duplicate entries if position already exists
+        if is_entry:
+            try:
+                current_positions = client.get_positions(product_id=product_id)
+                # Filter for non-zero size just in case
+                active_position = next((p for p in current_positions if float(p.get('size', 0)) != 0), None)
+                
+                if active_position:
+                    logger.warning(f"Skipping {action} for {symbol}: Active position already exists (Size: {active_position.get('size')}).")
+                    # Optional: Send status message or just log
+                    # notifier.send_status_message(f"Get Signal: {symbol}", f"Skipped {action} because a position already exists.")
+                    return
+            except Exception as e:
+                logger.error(f"Failed to check existing positions for {symbol}: {e}")
+                # Decide whether to proceed or abort. Safe bet is to abort if we can't verify state? 
+                # Or proceed with caution? Let's abort to be safe against double entry.
+                return
+
         # 3. Check Order Placement Flag
         enable_orders = os.getenv("ENABLE_ORDER_PLACEMENT", "false").lower() == "true"
         
