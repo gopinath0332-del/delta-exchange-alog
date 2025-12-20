@@ -40,7 +40,14 @@ class TestTradingExecution(unittest.TestCase):
         
     def test_entry_long(self):
         print("\nTesting ENTRY_LONG...")
-        execute_strategy_signal(
+        
+        # Mock Place Order Response with Fill Price
+        self.mock_client.place_order.return_value = {
+            "id": "ORDER123",
+            "avg_fill_price": "50010.5" # Slippage
+        }
+        
+        result = execute_strategy_signal(
             client=self.mock_client,
             notifier=self.mock_notifier,
             symbol="BTCUSD",
@@ -61,6 +68,10 @@ class TestTradingExecution(unittest.TestCase):
             order_type="market_order"
         )
         
+        # Verify Return Value
+        self.assertTrue(result['success'])
+        self.assertEqual(result['execution_price'], 50010.5)
+        
         # Verify Alert Sent with Margin
         # Margin = (50000 * 1 * 0.001) / 5 = 10.0
         self.mock_notifier.send_trade_alert.assert_called()
@@ -68,6 +79,10 @@ class TestTradingExecution(unittest.TestCase):
         self.assertEqual(args['side'], "ENTRY_LONG")
         self.assertAlmostEqual(args['margin_used'], 10.0)
         self.assertEqual(args['remaining_margin'], 900.0)
+        # Verify alert uses fill price? The code currently uses max(price, exec_price) logic or similar? 
+        # Actually in my update: price=execution_price if execution_price else price
+        self.assertEqual(args['price'], 50010.5)
+        
         print("ENTRY_LONG Verified successfully.")
 
     def test_entry_short(self):

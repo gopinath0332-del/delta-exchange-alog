@@ -180,7 +180,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
 
                                  logger.info(f"Reconciliation: Fetched {len(positions)} positions.")
                                  logger.info(f"Positions raw type: {type(positions)}")
-                                 logger.info(f"Positions raw data: {positions}")
+                                 # logger.info(f"Positions raw data: {positions}")
 
                                  # If we filtered by product_id, API might return the single object directly
                                  if isinstance(positions, dict):
@@ -254,12 +254,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      if action:
                          logger.info(f"SIGNAL: {action} - {reason}")
                          
-                         # Execute Action (Update State)
-                         price = float(closes.iloc[-1])
-                         strategy.update_position_state(action, current_time_ms, current_rsi, price)
-                         
                          # Execute Signal (Order + Alert)
-                         execute_strategy_signal(
+                         result = execute_strategy_signal(
                              client=client,
                              notifier=notifier,
                              symbol=symbol,
@@ -269,6 +265,16 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              reason=reason,
                              mode=mode
                          )
+                         
+                         # Check for successful execution and actual fill price
+                         exec_price = price
+                         if result and isinstance(result, dict):
+                             if result.get('success') and result.get('execution_price'):
+                                 exec_price = float(result['execution_price'])
+                                 logger.info(f"Using actual execution price for state update: {exec_price}")
+                         
+                         # Execute Action (Update State) with CORRECT PRICE
+                         strategy.update_position_state(action, current_time_ms, current_rsi, exec_price)
                 else:
                      logger.error(f"Unexpected candle data format: {df.columns}")
                      time.sleep(10)
@@ -277,6 +283,38 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 # Responsive Sleep (Align to next 10-minute mark)
                 current_ts = int(time.time())
                 sleep_seconds = 600 - (current_ts % 600)
+                
+                # --- FETCH LIVE POSITION FOR DASHBOARD ---
+                live_pos_data = None
+                try:
+                    # Resolve product ID first
+                    products = client.get_products()
+                    target_product = next((p for p in products if p.get('symbol') == symbol), None)
+                    
+                    if target_product:
+                        pid = target_product.get('id')
+                        # Use get_positions (plural) which now hits /v2/positions/margined
+                        all_positions = client.get_positions(product_id=pid)
+                        
+                        # Handle response structure: It returns a list
+                        if isinstance(all_positions, dict):
+                             all_positions = [all_positions]
+                             
+                        for p in all_positions:
+                            if isinstance(p, dict):
+                                 p_id = p.get('product_id')
+                                 if p_id and str(p_id) == str(pid):
+                                     live_pos_data = p
+                                     break
+                                 # If filtered by ID and only 1 result, take it
+                                 if len(all_positions) == 1:
+                                     live_pos_data = p
+                                     break
+                    else:
+                        logger.warning(f"Could not resolve product ID for {symbol} for dashboard.")
+
+                except Exception as e:
+                    logger.warning(f"Failed to fetch live dashboard position: {e}")
                 
                 # --- DASHBOARD OUTPUT ---
                 print("\n" + "="*80)
@@ -288,6 +326,22 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 print(f" Strategy:     {strategy_name.upper()}")
                 print(f" Status:       RUNNING ({mode.upper()})")
                 print(f" Position:     {pos_str}")
+                
+                if live_pos_data and float(live_pos_data.get('size', 0)) != 0:
+                    sz = float(live_pos_data.get('size', 0))
+                    ep = float(live_pos_data.get('entry_price', 0))
+                    pnl = float(live_pos_data.get('unrealized_pnl', 0))
+                    liq = float(live_pos_data.get('liquidation_price', 0))
+                    margin = float(live_pos_data.get('margin', 0))
+                    
+                    side_str = "LONG" if sz > 0 else "SHORT"
+                    print(f" Exchange Pos: {side_str} ({abs(sz)} @ ${ep:,.2f})")
+                    print(f" PnL (Unreal): {pnl:+.4f} USD")
+                    print(f" Margin Used:  ${margin:,.2f}")
+                    print(f" Liq Price:    ${liq:,.2f}")
+                else:
+                    print(f" Exchange Pos: FLAT")
+
                 print(f" Candle Type:  {'Heikin Ashi' if use_ha else 'Standard'}")
                 print("-" * 80)
                 if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
