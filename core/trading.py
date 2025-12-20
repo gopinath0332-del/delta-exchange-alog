@@ -72,6 +72,24 @@ def execute_strategy_signal(
             logger.warning(f"Unknown action: {action}")
             return
 
+        # Prevent duplicate entries if position already exists
+        if is_entry:
+            try:
+                current_positions = client.get_positions(product_id=product_id)
+                # Filter for non-zero size just in case
+                active_position = next((p for p in current_positions if float(p.get('size', 0)) != 0), None)
+                
+                if active_position:
+                    logger.warning(f"Skipping {action} for {symbol}: Active position already exists (Size: {active_position.get('size')}).")
+                    # Optional: Send status message or just log
+                    # notifier.send_status_message(f"Get Signal: {symbol}", f"Skipped {action} because a position already exists.")
+                    return
+            except Exception as e:
+                logger.error(f"Failed to check existing positions for {symbol}: {e}")
+                # Decide whether to proceed or abort. Safe bet is to abort if we can't verify state? 
+                # Or proceed with caution? Let's abort to be safe against double entry.
+                return
+
         # 3. Check Order Placement Flag
         enable_orders = os.getenv("ENABLE_ORDER_PLACEMENT", "false").lower() == "true"
         
@@ -107,6 +125,8 @@ def execute_strategy_signal(
             margin_used = notional_value / leverage
         else:
             # 7. Execute Order if Enabled
+            execution_price = None
+            
             if enable_orders:
                 logger.info(f"Placing {side.upper()} order for {order_size} contract(s) of {symbol}")
                 try:
@@ -117,10 +137,20 @@ def execute_strategy_signal(
                         order_type="market_order"
                     )
                     logger.info(f"Order placed successfully: {order.get('id')}")
+                    
+                    # Attempt to get fill price from response
+                    if order.get('avg_fill_price'):
+                        execution_price = float(order['avg_fill_price'])
+                        logger.info(f"Execution Price from response: {execution_price}")
+                    else:
+                        # Fallback: Fetch order details? Or just leave as None and use candle close
+                        # Usually market orders return fills immediately or we wait a split second
+                        pass
+
                 except Exception as e:
                     logger.error(f"Failed to place order: {e}")
                     notifier.send_error(f"Order Failed: {symbol}", str(e))
-                    return
+                    return {"success": False, "error": str(e)}
             else:
                  logger.info("Skipping actual order placement (ENABLE_ORDER_PLACEMENT is false).")
 
@@ -177,13 +207,19 @@ def execute_strategy_signal(
         notifier.send_trade_alert(
             symbol=symbol,
             side=action, # "ENTRY_LONG" etc.
-            price=price,
+            price=execution_price if execution_price else price,
             rsi=rsi,
             reason=reason + (" [PAPER]" if mode == "paper" else ""),
             margin_used=margin_used if is_entry else None,
             remaining_margin=remaining_margin
         )
+        
+        return {
+            "success": True,
+            "execution_price": execution_price
+        }
 
     except Exception as e:
         logger.exception("Strategy Execution Failed", error=str(e))
         notifier.send_error("Execution Failed", str(e))
+        return {"success": False, "error": str(e)}

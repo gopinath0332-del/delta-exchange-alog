@@ -451,15 +451,17 @@ class DeltaRestClient:
         """
         logger.debug("Fetching positions", product_id=product_id)
         
-        params = {}
-        if product_id:
-             params['product_id'] = product_id
-
-        # delta-rest-client v2 might not have get_positions, use direct request
+        # Use /v2/positions/margined for full details (margin, liq price, etc.)
+        # This endpoint accepts 'product_ids' as comma-separated string
         try:
-            response = self._make_auth_request("GET", "/v2/positions", params=params)
+            params = {}
+            if product_id:
+                params['product_ids'] = str(product_id)
+                
+            response = self._make_auth_request("GET", "/v2/positions/margined", params=params)
             return cast(List[Dict[str, Any]], response.get('result', []))
         except Exception:
+            # Fallback or re-raise
             raise
 
     def get_position(self, product_id: int) -> Dict[str, Any]:
