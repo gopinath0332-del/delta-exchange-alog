@@ -13,8 +13,8 @@ RestartSec=60
 EnvironmentFile=/home/pi/Apps/delta-exchange-alog/config/.env
 
 # Logging
-StandardOutput=append:/home/pi/Apps/delta-exchange-alog/logs/service.log
-StandardError=append:/home/pi/Apps/delta-exchange-alog/logs/service.error.log
+StandardOutput=append:/home/pi/Apps/delta-exchange-alog/logs/xrp.log
+StandardError=append:/home/pi/Apps/delta-exchange-alog/logs/xrp.error.log
 
 [Install]
 WantedBy=multi-user.target
