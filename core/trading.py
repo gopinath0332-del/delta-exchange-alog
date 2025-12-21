@@ -52,15 +52,12 @@ def execute_strategy_signal(
         leverage = 5   
         
         # Symbol Specific Settings
-        if "XRP" in symbol.upper():
-            order_size = 10
-            leverage = 5
-        elif "BTC" in symbol.upper():
-            order_size = 1
-            leverage = 5
-        elif "ETH" in symbol.upper():
-            order_size = 1
-            leverage = 5
+        # Load symbol-specific overrides from environment variables (e.g., ORDER_SIZE_XRP=10)
+        # This allows dynamic configuration without code changes for different assets.
+        # We extract the base asset (e.g., BTC from BTCUSD) to look up the key.
+        base_asset = symbol.upper().replace("USD", "").replace("USDT", "").replace("-", "").replace("/", "")
+        order_size = int(os.getenv(f"ORDER_SIZE_{base_asset}", str(order_size)))
+        leverage = int(os.getenv(f"LEVERAGE_{base_asset}", str(leverage)))
         side = None
         is_entry = False
         

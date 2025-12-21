@@ -1,10 +1,13 @@
 #!/bin/bash
 
 # Restart Delta Bot Services
-echo "Restarting Delta Bot Service..."
+echo "Restarting Service..."
 sudo systemctl restart delta-bot.service
 
-echo "Restarting Delta Bot ETH Service..."
+echo "Restarting ETH Service..."
 sudo systemctl restart delta-bot-eth.service
+
+echo "Restarting XRP Service..."
+sudo systemctl restart delta-bot-xrp.service
 
 echo "Services restarted."
