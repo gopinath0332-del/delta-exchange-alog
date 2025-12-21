@@ -11,6 +11,8 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 - **Multiple Timeframes**: 5m, 15m, 1h, 4h, 1d (configurable)
 - **Notifications**: Discord webhooks and Email alerts
 - **PDF Reports**: Professional trading reports with charts
+- **Premium Strategies**: Includes RS-50-EMA (XRPUSD) and Double-Dip RSI.
+- **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars.
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring
 
 ## Project Structure
@@ -116,6 +118,15 @@ EMAIL_RECIPIENTS=recipient@example.com
 # Logging
 LOG_LEVEL=INFO
 LOG_FILE=logs/trading.log
+LOG_MAX_BYTES=10485760
+LOG_BACKUP_COUNT=5
+
+# Symbol Specific Order Settings
+# Overrides default order size (1) and leverage (5)
+ORDER_SIZE_XRP=10
+LEVERAGE_XRP=5
+ORDER_SIZE_BTC=1
+LEVERAGE_BTC=5
 ```
 
 ### Trading Settings (settings.yaml)
@@ -179,6 +190,9 @@ python main.py backtest --strategy double-dip --symbol BTCUSD
 # Start live trading (paper mode)
 python main.py live --strategy double-dip --symbol BTCUSD --paper --candle-type heikin-ashi
 
+# Start Terminal for RS-50-EMA (XRPUSD)
+python run_terminal.py --strategy 4
+
 # Generate report
 python main.py report --backtest-id latest --output report.pdf
 ```
@@ -194,7 +208,9 @@ python main.py report --backtest-id latest --output report.pdf
 - [x] Configuration management
 - [x] Project structure
 - [x] Live trading engine (Terminal Based)
-- [x] Strategy framework (Double Dip RSI)
+- [x] Live trading engine (Terminal Based)
+- [x] Strategy framework (Double Dip RSI, CCI+EMA, RS-50-EMA)
+- [x] Asset-specific order configuration
 - [x] Notifications (Discord/Email)
 - [x] Terminal interface
 
