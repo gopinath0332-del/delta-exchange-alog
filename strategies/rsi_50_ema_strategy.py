@@ -88,9 +88,22 @@ class RSI50EMAStrategy:
         if df.empty:
             return None, ""
             
+        if len(df) < 2:
+            return None, ""
+
         # Get indicators
         rsi, ema = self.calculate_indicators(df)
-        close = df['close'].iloc[-1]
+        
+        # Use Last Closed Candle for Logic (Index -2) to match TV Backtest
+        # calculate_indicators already caches last_closed_ema/rsi
+        # We need the closed price at index -2
+        close_closed = df['close'].iloc[-2]
+        rsi_closed = self.last_closed_rsi
+        ema_closed = self.last_closed_ema
+        
+        # Determine if we should treat this as a signal that happened "just now" (at close of candle)
+        # In live run, this function is called on the developing candle.
+        # If the *previous* candle closed with a signal, we enter NOW (Market).
         
         action = None
         reason = ""
@@ -100,16 +113,47 @@ class RSI50EMAStrategy:
         # Entry Long
         # Condition: Close > EMA50 AND RSI > 40 AND Not in Position
         if self.current_position == 0:
-            if (close > ema) and (rsi > self.rsi_entry_level):
+            # Fresh Signal Check:
+            # Condition met NOW (Index -2) AND Condition NOT met BEFORE (Index -3)
+            # This prevents entering mid-trend on restart.
+            
+            # Need index -3 data
+            if len(df) >= 3:
+                close_prev = df['close'].iloc[-3]
+                # We need historical indicators. calculate_indicators only returns last.
+                # We need to peek into the series generated in calculate_indicators if we want efficiency,
+                # but currently calculate_indicators returns scalars.
+                # Let's simple re-calc or grab from run_backtest logic? 
+                # Better: Modify calculate_indicators to return series or handle this check inside check_signals by generating series locally.
+                pass
+
+            # Rerun indicators as series here for safety and lookback
+            ema_series = ta.trend.ema_indicator(df['close'], window=self.ema_length)
+            rsi_series = ta.momentum.rsi(df['close'], window=self.rsi_length)
+            
+            # Index -2 (Last Closed)
+            c_2 = df['close'].iloc[-2]
+            ema_2 = ema_series.iloc[-2]
+            rsi_2 = rsi_series.iloc[-2]
+            
+            # Index -3 (Previous to Last Closed)
+            c_3 = df['close'].iloc[-3]
+            ema_3 = ema_series.iloc[-3]
+            rsi_3 = rsi_series.iloc[-3]
+            
+            is_valid_now = (c_2 > ema_2) and (rsi_2 > self.rsi_entry_level)
+            was_valid_prev = (c_3 > ema_3) and (rsi_3 > self.rsi_entry_level)
+            
+            if is_valid_now and not was_valid_prev:
                 action = "ENTRY_LONG"
-                reason = f"Entry Signal: Close {close:.2f} > EMA {ema:.2f} & RSI {rsi:.2f} > {self.rsi_entry_level}"
+                reason = f"Fresh Entry Signal: Close {c_2:.2f} > EMA {ema_2:.2f} & RSI {rsi_2:.2f} > {self.rsi_entry_level} (Prev: {was_valid_prev})"
                 
         # Exit Long
         # Condition: Close < EMA50
         elif self.current_position == 1:
-            if close < ema:
+            if close_closed < ema_closed:
                 action = "EXIT_LONG"
-                reason = f"Exit Signal: Close {close:.2f} < EMA {ema:.2f}"
+                reason = f"Exit Signal (Closed Candle): Close {close_closed:.2f} < EMA {ema_closed:.2f}"
                 
         return action, reason
 
@@ -191,15 +235,23 @@ class RSI50EMAStrategy:
             # --- Logic ---
             action = None
             
+            # Use Index i-1 (Previous Closed Candle) for Signal
+            # We are currently at time i (Entry/Action Time)
+            # Conditions must be met at i-1
+            
+            prev_close = df['close'].iloc[i-1]
+            prev_ema = ema_series.iloc[i-1]
+            prev_rsi = rsi_series.iloc[i-1]
+            
             if self.current_position == 0:
-                if (close > ema) and (rsi > self.rsi_entry_level):
+                if (prev_close > prev_ema) and (prev_rsi > self.rsi_entry_level):
                     action = "ENTRY_LONG"
                     
             elif self.current_position == 1:
-                if close < ema:
+                if prev_close < prev_ema:
                     action = "EXIT_LONG"
             
             if action:
-                self.update_position_state(action, current_time_ms, rsi, close)
+                self.update_position_state(action, current_time_ms, prev_rsi, close)
                 
         logger.info(f"Backtest complete. Trades: {len(self.trades)}")
