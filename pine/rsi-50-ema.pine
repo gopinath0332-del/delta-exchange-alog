@@ -1,0 +1,41 @@
+//@version=5
+strategy("RSI + 50 EMA",
+     overlay = true,
+     pyramiding = 0,
+     default_qty_type = strategy.percent_of_equity,
+     default_qty_value = 100)
+
+// ───── Inputs ─────
+emaLen   = input.int(50, "EMA Length")
+rsiLen   = input.int(14, "RSI Length")
+rsiLevel = input.float(40.0, "RSI Entry Level")
+
+// Background options
+enableBg = input.bool(true, "Enable Position Background")
+longBg   = input.color(color.new(color.green, 85), "Long Background Color")
+
+// ───── Indicators ─────
+ema50 = ta.ema(close, emaLen)
+rsi   = ta.rsi(close, rsiLen)
+
+// ───── Plot EMA ─────
+plot(ema50, "EMA 50", color=color.orange, linewidth=2)
+
+// ───── Conditions ─────
+inLong     = strategy.position_size > 0
+longEntry  = close > ema50 and rsi > rsiLevel and not inLong
+longExit   = close < ema50 and inLong
+
+// ───── Orders ─────
+if longEntry
+    strategy.entry("Long", strategy.long)
+
+if longExit
+    strategy.close("Long")
+
+// ───── Background Coloring ─────
+bgcolor(enableBg and inLong ? longBg : na)
+
+// ───── Alerts ─────
+alertcondition(longEntry, title="Long Entry", message="Long Entry: Price above EMA50 and RSI > 50")
+alertcondition(longExit,  title="Long Exit",  message="Long Exit: Price closed below EMA50")

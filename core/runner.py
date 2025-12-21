@@ -37,6 +37,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         from strategies.cci_ema_strategy import CCIEMAStrategy
         strategy = CCIEMAStrategy()
         logger.info("Initialized CCIEMAStrategy")
+    elif strategy_name.lower() in ["rs-50-ema", "rsi-50-ema", "rsi50ema"]:
+        from strategies.rsi_50_ema_strategy import RSI50EMAStrategy
+        strategy = RSI50EMAStrategy()
+        logger.info("Initialized RSI50EMAStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
@@ -234,6 +238,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      
                      # Now process current live candle
                      current_time_ms = int(time.time() * 1000)
+                     price = float(closes.iloc[-1])
                      
                      if hasattr(strategy, 'calculate_indicators'):
                           # For CCI Strategy
@@ -356,6 +361,14 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     if hasattr(strategy, 'last_closed_cci'):
                          print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
                          print(f"     CCI:      {strategy.last_closed_cci:.2f}")
+                         print(f"     EMA:      {strategy.last_closed_ema:.2f}")
+                elif hasattr(strategy, 'last_rsi') and hasattr(strategy, 'last_ema'): # Check for RSI+EMA Strategy
+                    print(f"   Price:      ${closes.iloc[-1]:,.2f}")
+                    print(f"   RSI (14):   {strategy.last_rsi:.2f}")
+                    print(f"   EMA (50):   {strategy.last_ema:.2f}")
+                    if hasattr(strategy, 'last_closed_rsi'):
+                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         print(f"     RSI:      {strategy.last_closed_rsi:.2f}")
                          print(f"     EMA:      {strategy.last_closed_ema:.2f}")
                 
                 print("-" * 80)

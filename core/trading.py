@@ -48,8 +48,19 @@ def execute_strategy_signal(
         contract_value = float(product.get('contract_value', 1.0)) # Usually 0.001 BTC or similar
         
         # 2. Determine Order Params
-        order_size = 1 # Fixed 1 Lot
-        leverage = 5   # Fixed 5x
+        order_size = 1 
+        leverage = 5   
+        
+        # Symbol Specific Settings
+        if "XRP" in symbol.upper():
+            order_size = 10
+            leverage = 5
+        elif "BTC" in symbol.upper():
+            order_size = 1
+            leverage = 5
+        elif "ETH" in symbol.upper():
+            order_size = 1
+            leverage = 5
         side = None
         is_entry = False
         

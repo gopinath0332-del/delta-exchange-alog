@@ -58,6 +58,13 @@ def main():
             "symbol": "BTCUSD", 
             "monitor": "cci-ema",
             "desc": "Long Entry, Partial Exit at ATR Target, Final Exit on Reversal."
+        },
+        {
+            "id": 4,
+            "name": "XRPUSD RS-50-EMA Strategy (Heikin Ashi)", 
+            "symbol": "XRPUSD", 
+            "monitor": "rs-50-ema",
+            "desc": "Long Entry: Close > EMA50 & RSI > 40. Exit: Close < EMA50."
         }
     ]
 
