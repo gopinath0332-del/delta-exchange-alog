@@ -19,7 +19,8 @@ def execute_strategy_signal(
     price: float,
     rsi: float,
     reason: str,
-    mode: str = "live"
+    mode: str = "live",
+    strategy_name: Optional[str] = None
 ):
     """
     Execute a strategy signal: Place order and send alert.
@@ -33,6 +34,7 @@ def execute_strategy_signal(
         rsi: Current RSI
         reason: Signal Reason
         mode: Execution mode ('live' or 'paper')
+        strategy_name: Name of the strategy executing the signal
     """
     
     try:
@@ -212,15 +214,19 @@ def execute_strategy_signal(
                 logger.warning(f"Failed to fetch wallet details: {e}")
         
         # 6. Send Alert
-        notifier.send_trade_alert(
-            symbol=symbol,
-            side=action, # "ENTRY_LONG" etc.
-            price=execution_price if execution_price else price,
-            rsi=rsi,
-            reason=reason + (" [PAPER]" if mode == "paper" else ""),
-            margin_used=margin_used if is_entry else None,
-            remaining_margin=remaining_margin
-        )
+        try:
+            notifier.send_trade_alert(
+                symbol=symbol,
+                side=action, # "ENTRY_LONG" etc.
+                price=price if mode == "paper" else (float(order.get('avg_fill_price', price)) if order else price),
+                rsi=rsi,
+                reason=reason + (" [PAPER]" if mode == "paper" else ""),
+                margin_used=margin_used if is_entry else None,
+                remaining_margin=remaining_margin,
+                strategy_name=strategy_name
+            )
+        except Exception as e:
+            logger.error(f"Failed to send trade alert: {e}")
         
         return {
             "success": True,

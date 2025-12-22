@@ -67,7 +67,8 @@ class DiscordNotifier:
                         rsi: float, 
                         reason: str,
                         margin_used: Optional[float] = None,
-                        remaining_margin: Optional[float] = None):
+                        remaining_margin: Optional[float] = None,
+                        strategy_name: Optional[str] = None):
         """
         Send a formatted trade alert.
 
@@ -77,11 +78,18 @@ class DiscordNotifier:
             price: Entry price
             rsi: RSI value
             reason: Trigger reason
+            margin_used: Margin used directly for this trade
+            remaining_margin: Remaining wallet balance
+            strategy_name: Name of the strategy executing the trade
         """
         title = f"🚀 TRADING SIGNAL: {side} {symbol}"
         color = 5763719 if side.upper() == "LONG" else 15548997  # Green for Long, Red for Short
         
-        message = (
+        message = ""
+        if strategy_name:
+             message += f"**Strategy:** {strategy_name}\n"
+
+        message += (
             f"**Price:** ${price:,.2f}\n"
             f"**RSI:** {rsi:.2f}\n"
             f"**Reason:** {reason}\n"
