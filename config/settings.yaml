@@ -36,3 +36,25 @@ notifications:
 terminal:
   refresh_rate: 1 # seconds
   show_charts: true
+
+# Strategy Configuration
+strategies:
+  cci_ema:
+    cci_length: 30
+    ema_length: 50
+    atr_length: 14
+    atr_multiplier: 4.0
+
+  double_dip_rsi:
+    rsi_period: 14
+    long_entry_level: 50.0
+    long_exit_level: 40.0
+    short_entry_level: 35.0
+    short_exit_level: 35.0
+    require_prev_long_min_duration: true
+    min_days_long: 2
+
+  rsi_50_ema:
+    ema_length: 50
+    rsi_length: 14
+    rsi_entry_level: 40.0

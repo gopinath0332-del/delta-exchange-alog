@@ -3,6 +3,7 @@ from typing import Dict, Optional, Tuple
 
 import pandas as pd
 import ta
+from core.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -18,18 +19,22 @@ class DoubleDipRSIStrategy:
     """
     
     def __init__(self):
+        # Load Config
+        config = get_config()
+        cfg = config.settings.get("strategies", {}).get("double_dip_rsi", {})
+
         # Parameters
-        self.rsi_period = 14
-        self.long_entry_level = 50.0
-        self.long_exit_level = 40.0
-        self.short_entry_level = 35.0
-        self.short_exit_level = 35.0
+        self.rsi_period = cfg.get("rsi_period", 14)
+        self.long_entry_level = cfg.get("long_entry_level", 50.0)
+        self.long_exit_level = cfg.get("long_exit_level", 40.0)
+        self.short_entry_level = cfg.get("short_entry_level", 35.0)
+        self.short_exit_level = cfg.get("short_exit_level", 35.0)
         
         self.indicator_label = "RSI"
 
         # Duration Condition
-        self.require_prev_long_min_duration = True
-        self.min_days_long = 2
+        self.require_prev_long_min_duration = cfg.get("require_prev_long_min_duration", True)
+        self.min_days_long = cfg.get("min_days_long", 2)
         
         # State
         self.last_long_entry_time = None

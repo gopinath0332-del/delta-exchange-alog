@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Optional, Tuple, Any
 import pandas as pd
 import ta
+from core.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +21,14 @@ class RSI50EMAStrategy:
     """
     
     def __init__(self):
+        # Load Config
+        config = get_config()
+        cfg = config.settings.get("strategies", {}).get("rsi_50_ema", {})
+
         # Parameters
-        self.ema_length = 50
-        self.rsi_length = 14
-        self.rsi_entry_level = 40.0
+        self.ema_length = cfg.get("ema_length", 50)
+        self.rsi_length = cfg.get("rsi_length", 14)
+        self.rsi_entry_level = cfg.get("rsi_entry_level", 40.0)
         
         self.indicator_label = "RSI"
         
