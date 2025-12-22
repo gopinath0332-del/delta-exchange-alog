@@ -8,7 +8,7 @@ from core.logger import get_logger
 from core.config import Config
 from notifications.manager import NotificationManager
 from api.rest_client import DeltaRestClient
-from core.trading import execute_strategy_signal
+from core.trading import execute_strategy_signal, get_trade_config
 
 logger = get_logger(__name__)
 
@@ -68,9 +68,22 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     hostname = socket.gethostname()
 
     logger.info("Starting strategy loop... Press Ctrl+C to stop.")
+    
+    # Get Trade Configuration for startup alert
+    trade_config = get_trade_config(symbol)
+    enabled_str = "ENABLED" if trade_config['enabled'] else "DISABLED"
+    
+    start_msg = (
+        f"{symbol} {strategy_name} started on host: **{hostname}**\n"
+        f"Candle Type: {candle_type}\n"
+        f"Order Placement: **{enabled_str}**\n"
+        f"Order Size: {trade_config['order_size']}\n"
+        f"Leverage: {trade_config['leverage']}x"
+    )
+    
     notifier.send_status_message(
         f"Strategy Started (Terminal - {mode})", 
-        f"{symbol} {strategy_name} started on host: **{hostname}**\nCandle Type: {candle_type}"
+        start_msg
     )
     
     try:

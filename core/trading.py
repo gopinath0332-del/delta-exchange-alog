@@ -11,6 +11,43 @@ from notifications.manager import NotificationManager
 
 logger = get_logger(__name__)
 
+def get_trade_config(symbol: str):
+    """
+    Get trade configuration for a symbol from environment variables.
+    
+    Returns:
+        dict: {
+            "order_size": int,
+            "leverage": int,
+            "enabled": bool,
+            "base_asset": str
+        }
+    """
+    # 1. Determine Base Asset
+    base_asset = symbol.upper().replace("USD", "").replace("USDT", "").replace("-", "").replace("/", "").replace("_", "")
+    
+    # 2. Defaults
+    order_size = 1
+    leverage = 5
+    
+    # 3. Load overrides
+    try:
+        order_size = int(os.getenv(f"ORDER_SIZE_{base_asset}", str(order_size)))
+        leverage = int(os.getenv(f"LEVERAGE_{base_asset}", str(leverage)))
+    except ValueError:
+        logger.warning(f"Invalid integer configuration for {base_asset}, using defaults.")
+
+    # 4. Check Enable Flag
+    env_var_key = f"ENABLE_ORDER_PLACEMENT_{base_asset}"
+    enable_orders = os.getenv(env_var_key, "false").lower() == "true"
+    
+    return {
+        "order_size": order_size,
+        "leverage": leverage,
+        "enabled": enable_orders,
+        "base_asset": base_asset
+    }
+
 def execute_strategy_signal(
     client: DeltaRestClient,
     notifier: NotificationManager,
@@ -49,17 +86,13 @@ def execute_strategy_signal(
         product_id = product['id']
         contract_value = float(product.get('contract_value', 1.0)) # Usually 0.001 BTC or similar
         
-        # 2. Determine Order Params
-        order_size = 1 
-        leverage = 5   
+        # 2. Get Configuration
+        config = get_trade_config(symbol)
+        order_size = config['order_size']
+        leverage = config['leverage']
+        enable_orders = config['enabled']
+        base_asset = config['base_asset']
         
-        # Symbol Specific Settings
-        # Load symbol-specific overrides from environment variables (e.g., ORDER_SIZE_XRP=10)
-        # This allows dynamic configuration without code changes for different assets.
-        # We extract the base asset (e.g., BTC from BTCUSD) to look up the key.
-        base_asset = symbol.upper().replace("USD", "").replace("USDT", "").replace("-", "").replace("/", "")
-        order_size = int(os.getenv(f"ORDER_SIZE_{base_asset}", str(order_size)))
-        leverage = int(os.getenv(f"LEVERAGE_{base_asset}", str(leverage)))
         side = None
         is_entry = False
         
@@ -100,8 +133,7 @@ def execute_strategy_signal(
                 # Or proceed with caution? Let's abort to be safe against double entry.
                 return
 
-        # 3. Check Order Placement Flag
-        enable_orders = os.getenv("ENABLE_ORDER_PLACEMENT", "false").lower() == "true"
+        # 3. Check Order Placement Flag (Already loaded in config)
         
         # Disable order placement for Partial Exits (Alert Only) unless we strictly support split lots
         if "PARTIAL" in action:
@@ -110,7 +142,7 @@ def execute_strategy_signal(
              reason += " [PARTIAL - ALERT ONLY]"
         
         if not enable_orders:
-            logger.warning(f"Order placement disabled by configuration. Action: {action} on {symbol}")
+            logger.warning(f"Order placement disabled for {symbol} (Checked ENABLE_ORDER_PLACEMENT_{base_asset}). Action: {action}")
             reason += " [DISABLED]"
 
         # 4. Set Leverage (Only on Entry)
