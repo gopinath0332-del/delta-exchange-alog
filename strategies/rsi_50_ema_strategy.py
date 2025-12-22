@@ -206,6 +206,21 @@ class RSI50EMAStrategy:
             if self.current_position != 0:
                 self.current_position = 0
                 logger.info("Reconciled state to FLAT")
+                
+            # Ensure active_trade is closed if we are actually FLAT
+            if self.active_trade:
+                import time
+                current_timestamp = time.time() * 1000
+                import datetime
+                formatted_time = datetime.datetime.fromtimestamp(current_timestamp/1000).strftime('%d-%m-%y %H:%M')
+                
+                logger.info("Closing phantom active_trade via Reconciliation")
+                self.active_trade["exit_time"] = f"{formatted_time} (Reconciled)"
+                self.active_trade["exit_price"] = 0.0 # Unknown or fetch if possible, but 0 tells us it's special
+                self.active_trade["exit_rsi"] = 0.0
+                self.active_trade["status"] = "CLOSED (SYNC)"
+                self.trades.append(self.active_trade)
+                self.active_trade = None
 
     def run_backtest(self, df: pd.DataFrame):
         """Simple backtest loop."""
