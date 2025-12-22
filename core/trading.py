@@ -101,7 +101,13 @@ def execute_strategy_signal(
                 return
 
         # 3. Check Order Placement Flag
-        enable_orders = os.getenv("ENABLE_ORDER_PLACEMENT", "false").lower() == "true"
+        # Use base asset for consistency with other env vars (e.g., ORDER_SIZE_BTC, LEVERAGE_BTC)
+        # Re-derive base_asset here just to be safe if it wasn't defined above (though it is at line 60)
+        base_asset = symbol.upper().replace("USD", "").replace("USDT", "").replace("-", "").replace("/", "").replace("_", "")
+        env_var_key = f"ENABLE_ORDER_PLACEMENT_{base_asset}"
+        
+        # Strict check: Must be explicitly "true" to enable
+        enable_orders = os.getenv(env_var_key, "false").lower() == "true"
         
         # Disable order placement for Partial Exits (Alert Only) unless we strictly support split lots
         if "PARTIAL" in action:
@@ -110,7 +116,7 @@ def execute_strategy_signal(
              reason += " [PARTIAL - ALERT ONLY]"
         
         if not enable_orders:
-            logger.warning(f"Order placement disabled by configuration. Action: {action} on {symbol}")
+            logger.warning(f"Order placement disabled for {symbol} (Checked {env_var_key}). Action: {action}")
             reason += " [DISABLED]"
 
         # 4. Set Leverage (Only on Entry)
