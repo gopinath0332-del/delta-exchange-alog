@@ -54,7 +54,8 @@ class TestTradingExecution(unittest.TestCase):
             action="ENTRY_LONG",
             price=50000.0,
             rsi=55.0,
-            reason="Test Long"
+            reason="Test Long",
+            strategy_name="TestStrategy"
         )
         
         # Verify Leverage Set
@@ -82,6 +83,7 @@ class TestTradingExecution(unittest.TestCase):
         # Verify alert uses fill price? The code currently uses max(price, exec_price) logic or similar? 
         # Actually in my update: price=execution_price if execution_price else price
         self.assertEqual(args['price'], 50010.5)
+        self.assertEqual(args['strategy_name'], "TestStrategy")
         
         print("ENTRY_LONG Verified successfully.")
 

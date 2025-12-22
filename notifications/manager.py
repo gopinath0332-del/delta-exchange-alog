@@ -41,7 +41,8 @@ class NotificationManager:
                         rsi: float, 
                         reason: str,
                         margin_used: Optional[float] = None,
-                        remaining_margin: Optional[float] = None):
+                        remaining_margin: Optional[float] = None,
+                        strategy_name: Optional[str] = None):
         """
         Send trade alert to all enabled channels.
 
@@ -54,11 +55,11 @@ class NotificationManager:
         """
         # Send to Discord
         if self.discord:
-            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin)
+            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name)
             
         # Send to Email (if configured)
         if self.email:
-            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin)
+            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name)
             
         logger.info(f"Alert sent: {side} {symbol} @ {price} (RSI: {rsi:.2f})")
 

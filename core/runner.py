@@ -268,7 +268,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              price=price,
                              rsi=current_rsi if hasattr(strategy, 'calculate_rsi') else getattr(strategy, 'last_cci', 0.0),
                              reason=reason,
-                             mode=mode
+                             mode=mode,
+                             strategy_name=strategy_name
                          )
                          
                          # Check for successful execution and actual fill price

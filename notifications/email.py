@@ -106,18 +106,22 @@ class EmailNotifier:
                         rsi: float, 
                         reason: str,
                         margin_used: Optional[float] = None,
-                        remaining_margin: Optional[float] = None):
+                        remaining_margin: Optional[float] = None,
+                        strategy_name: Optional[str] = None):
         """
         Send a formatted trade alert email.
         """
         subject = f"Trading Alert: {side} {symbol}"
         
+        strategy_line = f"<li><strong>Strategy:</strong> {strategy_name}</li>" if strategy_name else ""
+
         # HTML Body
         body = f"""
         <html>
           <body>
             <h2>Trading Signal Detected</h2>
             <ul>
+              {strategy_line}
               <li><strong>Symbol:</strong> {symbol}</li>
               <li><strong>Side:</strong> <span style="color: {'green' if side == 'LONG' else 'red'}">{side}</span></li>
               <li><strong>Price:</strong> ${price:,.2f}</li>
