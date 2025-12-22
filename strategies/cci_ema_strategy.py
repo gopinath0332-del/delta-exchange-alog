@@ -178,13 +178,16 @@ class CCIEMAStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "entry_cci": cci,
+                "entry_cci": cci,
                 "status": "OPEN",
-                "logs": []
+                "logs": [],
+                "partial_exit": False
             }
             
         elif action == "EXIT_LONG_PARTIAL":
             self.partial_profit_taken = True
             if self.active_trade:
+                self.active_trade["partial_exit"] = True
                 self.active_trade["logs"].append(f"Partial exit at {price:.2f} ({format_time(current_time_ms)})")
                 
         elif action == "EXIT_LONG":

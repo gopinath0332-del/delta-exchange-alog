@@ -368,10 +368,12 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     print(f"   RSI (14):   {current_rsi:.2f}")
                     print(f"   Prev RSI:   {prev_rsi:.2f}")
                 elif hasattr(strategy, 'last_cci'): # Check for CCI Strategy
+                    cci_len = getattr(strategy, 'cci_length', 30)
+                    atr_len = getattr(strategy, 'atr_length', 14)
                     print(f"   Price:      ${closes.iloc[-1]:,.2f}")
-                    print(f"   CCI (20):   {strategy.last_cci:.2f} (Live)")
+                    print(f"   CCI ({cci_len}):   {strategy.last_cci:.2f} (Live)")
                     print(f"   EMA (50):   {strategy.last_ema:.2f}")
-                    print(f"   ATR (20):   {strategy.last_atr:.2f}")
+                    print(f"   ATR ({atr_len}):   {strategy.last_atr:.2f}")
                     if hasattr(strategy, 'last_closed_cci'):
                          print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
                          print(f"     CCI:      {strategy.last_closed_cci:.2f}")
@@ -443,7 +445,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     e_ind = get_ind_val(t, 'entry')
                     e_price = f"{float(t.get('entry_price', 0)):.2f}"
                     pts_str = get_points_str(t, closes.iloc[-1])
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {'OPEN':<10}")
+                    status = "OPEN (P)" if t.get('partial_exit') else "OPEN"
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {status:<10}")
                 
                 # Past trades (last 5, reversed)
                 recent_trades = strategy.trades[-5:] if strategy.trades else []
@@ -453,7 +456,12 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     e_price = f"{float(t.get('entry_price', 0)):.2f}"
                     x_price = f"{float(t.get('exit_price', 0)):.2f}"
                     pts_str = get_points_str(t)
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {t['exit_time']:<16} {x_price:<12} {x_ind:<10} {pts_str:<10} {t['status']:<10}")
+                    x_price = f"{float(t.get('exit_price', 0)):.2f}"
+                    pts_str = get_points_str(t)
+                    status = t['status']
+                    if t.get('partial_exit'):
+                         status += " (P)"
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {t['exit_time']:<16} {x_price:<12} {x_ind:<10} {pts_str:<10} {status:<10}")
                     
                 print("-" * 80)
                 print(f"sleeping for {sleep_seconds}s...")
