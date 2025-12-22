@@ -8,7 +8,7 @@ strategy(title = "MCX Gold 1H – CCI + 50 EMA + Partial Profit + BG",
 cciLength  = input.int(30, title="CCI Length")
 emaLength  = input.int(50, title="EMA Length")
 atrLength  = input.int(14, title="ATR Length")
-atrTarget  = input.float(1.0, title="ATR Multiplier for Partial Profit")
+atrTarget  = input.float(4.0, title="ATR Multiplier for Partial Profit")
 
 // Background inputs
 enableBg   = input.bool(true, title="Enable Position Background")

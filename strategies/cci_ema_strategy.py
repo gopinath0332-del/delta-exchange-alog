@@ -16,18 +16,18 @@ class CCIEMAStrategy:
     - Final Exit: CCI < 0 or Close < 50 EMA
     
     Parameters:
-    - CCI Length: 20
+    - CCI Length: 30
     - EMA Length: 50
-    - ATR Length: 20
-    - ATR Multiplier: 9
+    - ATR Length: 14
+    - ATR Multiplier: 4.0
     """
     
     def __init__(self):
         # Parameters
         self.cci_length = 30
         self.ema_length = 50
-        self.atr_length = 20
-        self.atr_multiplier = 9.0
+        self.atr_length = 14
+        self.atr_multiplier = 4.0
         
         self.indicator_label = "CCI"
         
