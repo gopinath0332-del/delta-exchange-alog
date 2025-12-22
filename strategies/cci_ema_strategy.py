@@ -3,6 +3,7 @@ from typing import Dict, Optional, Tuple, Any
 
 import pandas as pd
 import ta
+from core.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +24,15 @@ class CCIEMAStrategy:
     """
     
     def __init__(self):
+        # Load Config
+        config = get_config()
+        cfg = config.settings.get("strategies", {}).get("cci_ema", {})
+        
         # Parameters
-        self.cci_length = 30
-        self.ema_length = 50
-        self.atr_length = 14
-        self.atr_multiplier = 4.0
+        self.cci_length = cfg.get("cci_length", 30)
+        self.ema_length = cfg.get("ema_length", 50)
+        self.atr_length = cfg.get("atr_length", 14)
+        self.atr_multiplier = cfg.get("atr_multiplier", 4.0)
         
         self.indicator_label = "CCI"
         
