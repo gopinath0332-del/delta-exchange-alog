@@ -39,7 +39,7 @@ class RSI50EMAStrategy:
         self.trades = []
         self.active_trade = None
         
-    def calculate_indicators(self, df: pd.DataFrame) -> Tuple[float, float]:
+    def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float]:
         """
         Calculate RSI and EMA for the given dataframe.
         Expected columns: 'close'
@@ -48,6 +48,10 @@ class RSI50EMAStrategy:
             # Ensure we have enough data
             if len(df) < max(self.rsi_length, self.ema_length) + 1:
                 return 0.0, 0.0
+                
+            if current_time is None:
+                import time
+                current_time = time.time()
                 
             # EMA
             ema_series = ta.trend.ema_indicator(df['close'], window=self.ema_length)
@@ -62,14 +66,25 @@ class RSI50EMAStrategy:
             self.last_ema = current_ema
             self.last_rsi = current_rsi
             
-            # Cache Last Closed Candle (Index -2)
-            if len(df) >= 2:
+            # Dynamic Closed Candle Logic
+            last_candle_ts = df['time'].iloc[-1]
+            # Handle potential ms timestamp
+            if last_candle_ts > 1e11: last_candle_ts /= 1000
+            
+            diff = current_time - last_candle_ts
+            
+            # If diff >= 3600 (1h), the last candle IS the closed candle (new one hasn't appeared)
+            # If diff < 3600, the last candle is developing, so -2 is the closed one
+            closed_idx = -1 if diff >= 3600 else -2
+            
+            # Cache Last Closed Candle
+            if len(df) >= abs(closed_idx):
                 import datetime
-                ts = df['time'].iloc[-2]
-                if ts > 1e10: ts = ts / 1000 # Handle ms if needed
+                ts = df['time'].iloc[closed_idx]
+                if ts > 1e11: ts /= 1000
                 self.last_closed_time_str = datetime.datetime.fromtimestamp(ts).strftime('%H:%M')
-                self.last_closed_ema = ema_series.iloc[-2]
-                self.last_closed_rsi = rsi_series.iloc[-2]
+                self.last_closed_ema = ema_series.iloc[closed_idx]
+                self.last_closed_rsi = rsi_series.iloc[closed_idx]
             else:
                 self.last_closed_time_str = "-"
                 self.last_closed_ema = 0.0
@@ -91,13 +106,23 @@ class RSI50EMAStrategy:
         if len(df) < 2:
             return None, ""
 
-        # Get indicators
-        rsi, ema = self.calculate_indicators(df)
+        # Get indicators (Pass current time for dynamic logic)
+        current_time_s = current_time_ms / 1000.0
+        rsi, ema = self.calculate_indicators(df, current_time=current_time_s)
         
-        # Use Last Closed Candle for Logic (Index -2) to match TV Backtest
-        # calculate_indicators already caches last_closed_ema/rsi
-        # We need the closed price at index -2
-        close_closed = df['close'].iloc[-2]
+        # Determine which index to use for SIGNALS
+        # Same logic as calculate_indicators
+        last_candle_ts = df['time'].iloc[-1]
+        if last_candle_ts > 1e11: last_candle_ts /= 1000
+        
+        diff = current_time_s - last_candle_ts
+        closed_idx = -1 if diff >= 3600 else -2
+        
+        if closed_idx == -1:
+             logger.debug(f"Using Index -1 as Closed Candle (Diff: {diff:.0f}s)")
+        
+        # We need the closed price at the determined index
+        close_closed = df['close'].iloc[closed_idx]
         rsi_closed = self.last_closed_rsi
         ema_closed = self.last_closed_ema
         
@@ -114,32 +139,24 @@ class RSI50EMAStrategy:
         # Condition: Close > EMA50 AND RSI > 40 AND Not in Position
         if self.current_position == 0:
             # Fresh Signal Check:
-            # Condition met NOW (Index -2) AND Condition NOT met BEFORE (Index -3)
+            # Condition met NOW (closed_idx) AND Condition NOT met BEFORE (closed_idx - 1)
             # This prevents entering mid-trend on restart.
             
-            # Need index -3 data
-            if len(df) >= 3:
-                close_prev = df['close'].iloc[-3]
-                # We need historical indicators. calculate_indicators only returns last.
-                # We need to peek into the series generated in calculate_indicators if we want efficiency,
-                # but currently calculate_indicators returns scalars.
-                # Let's simple re-calc or grab from run_backtest logic? 
-                # Better: Modify calculate_indicators to return series or handle this check inside check_signals by generating series locally.
-                pass
+            prev_idx = closed_idx - 1
 
             # Rerun indicators as series here for safety and lookback
             ema_series = ta.trend.ema_indicator(df['close'], window=self.ema_length)
             rsi_series = ta.momentum.rsi(df['close'], window=self.rsi_length)
             
-            # Index -2 (Last Closed)
-            c_2 = df['close'].iloc[-2]
-            ema_2 = ema_series.iloc[-2]
-            rsi_2 = rsi_series.iloc[-2]
+            # Index [closed_idx] (Last Closed)
+            c_2 = df['close'].iloc[closed_idx]
+            ema_2 = ema_series.iloc[closed_idx]
+            rsi_2 = rsi_series.iloc[closed_idx]
             
-            # Index -3 (Previous to Last Closed)
-            c_3 = df['close'].iloc[-3]
-            ema_3 = ema_series.iloc[-3]
-            rsi_3 = rsi_series.iloc[-3]
+            # Index [prev_idx] (Previous to Last Closed)
+            c_3 = df['close'].iloc[prev_idx]
+            ema_3 = ema_series.iloc[prev_idx]
+            rsi_3 = rsi_series.iloc[prev_idx]
             
             is_valid_now = (c_2 > ema_2) and (rsi_2 > self.rsi_entry_level)
             was_valid_prev = (c_3 > ema_3) and (rsi_3 > self.rsi_entry_level)
