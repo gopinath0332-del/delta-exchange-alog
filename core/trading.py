@@ -108,8 +108,29 @@ def execute_strategy_signal(
             side = "buy" # Close Short = Buy
         elif action == "EXIT_LONG_PARTIAL":
             side = "sell"
-            # Partial exit logic handled via alert primarily for now
-            logger.info("Partial Exit Triggered")
+            # Fetch current position to calculate 50%
+            try:
+                current_positions = client.get_positions(product_id=product_id)
+                active_position = next((p for p in current_positions if float(p.get('size', 0)) != 0), None)
+                if active_position:
+                    current_size = abs(float(active_position['size']))
+                    # Calculate 50% size (integer)
+                    partial_size = int(current_size * 0.5)
+                    
+                    if partial_size > 0:
+                        order_size = partial_size
+                        logger.info(f"Partial Exit: Closing {order_size} lots (50% of {current_size})")
+                    else:
+                        logger.warning(f"Position size {current_size} too small to partial. Sending ALERT ONLY.")
+                        enable_orders = False
+                        reason += " [SIZE TOO SMALL]"
+                else:
+                    logger.warning("No active position found for partial exit. Sending ALERT ONLY.")
+                    enable_orders = False
+                    reason += " [NO POSITION]"
+            except Exception as e:
+                logger.error(f"Failed to fetch position for partial exit: {e}")
+                enable_orders = False
         
         if not side:
             logger.warning(f"Unknown action: {action}")
@@ -124,23 +145,11 @@ def execute_strategy_signal(
                 
                 if active_position:
                     logger.warning(f"Skipping {action} for {symbol}: Active position already exists (Size: {active_position.get('size')}).")
-                    # Optional: Send status message or just log
-                    # notifier.send_status_message(f"Get Signal: {symbol}", f"Skipped {action} because a position already exists.")
                     return
             except Exception as e:
                 logger.error(f"Failed to check existing positions for {symbol}: {e}")
-                # Decide whether to proceed or abort. Safe bet is to abort if we can't verify state? 
-                # Or proceed with caution? Let's abort to be safe against double entry.
                 return
 
-        # 3. Check Order Placement Flag (Already loaded in config)
-        
-        # Disable order placement for Partial Exits (Alert Only) unless we strictly support split lots
-        if "PARTIAL" in action:
-             logger.info(f"Partial exit action {action} - Sending ALERT ONLY (No Order).")
-             enable_orders = False
-             reason += " [PARTIAL - ALERT ONLY]"
-        
         if not enable_orders:
             logger.warning(f"Order placement disabled for {symbol} (Checked ENABLE_ORDER_PLACEMENT_{base_asset}). Action: {action}")
             reason += " [DISABLED]"
