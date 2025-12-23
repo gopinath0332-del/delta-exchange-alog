@@ -106,8 +106,12 @@ def execute_strategy_signal(
             side = "sell" # Close Long = Sell
         elif action == "EXIT_SHORT":
             side = "buy" # Close Short = Buy
-        elif action == "EXIT_LONG_PARTIAL":
-            side = "sell"
+        elif action == "EXIT_LONG_PARTIAL" or action == "EXIT_SHORT_PARTIAL":
+            # Determine side based on closing direction
+            # If EXIT_LONG_PARTIAL (Closing Long) -> CELL (sell)
+            # If EXIT_SHORT_PARTIAL (Closing Short) -> BUY
+            side = "sell" if action == "EXIT_LONG_PARTIAL" else "buy"
+
             # Fetch current position to calculate 50%
             try:
                 current_positions = client.get_positions(product_id=product_id)

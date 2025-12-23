@@ -179,7 +179,7 @@ class RSI50EMAStrategy:
                 
         return action, reason
 
-    def update_position_state(self, action: str, current_time_ms: float, indicators: Any = None, price: float = 0.0):
+    def update_position_state(self, action: str, current_time_ms: float, indicators: Any = None, price: float = 0.0, reason: str = ""):
         """Update internal state based on executed action."""
         import datetime
         
