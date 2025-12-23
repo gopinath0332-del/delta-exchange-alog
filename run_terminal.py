@@ -65,6 +65,13 @@ def main():
             "symbol": "XRPUSD", 
             "monitor": "rs-50-ema",
             "desc": "Long Entry: Close > EMA50 & RSI > 40. Exit: Close < EMA50."
+        },
+        {
+            "id": 5,
+            "name": "XRPUSD MACD PSAR 100EMA (Heikin Ashi)", 
+            "symbol": "XRPUSD", 
+            "monitor": "macd_psar_100ema",
+            "desc": "Long Only. Entry: Close>EMA100, MACD>0, Price>SAR. Exit: Price<SAR."
         }
     ]
 

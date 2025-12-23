@@ -1,6 +1,7 @@
 """Strategy Runner Module."""
 
 import time
+import math
 import pandas as pd
 from typing import Optional
 
@@ -27,6 +28,29 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     client = DeltaRestClient(config)
     notifier = NotificationManager(config)
     
+    # Resolve Product & Precision
+    logger.info(f"Resolving product details for {symbol}...")
+    try:
+        products_init = client.get_products()
+        target_prod_init = next((p for p in products_init if p.get('symbol') == symbol), None)
+    except Exception as e:
+        logger.warning(f"Failed to fetch initial products: {e}")
+        target_prod_init = None
+
+    p_decimals = 2 # Default
+    if target_prod_init and 'tick_size' in target_prod_init:
+        try:
+             ts = float(target_prod_init['tick_size'])
+             if ts < 1 and ts > 0:
+                 p_decimals = math.ceil(abs(math.log10(ts)))
+             elif ts >= 1:
+                 price_precision = 0 # No decimals for large ticks
+             # E.g. 0.1 -> 1, 0.01 -> 2, 0.0001 -> 4
+        except Exception as e:
+             logger.warning(f"Error calculating precision: {e}")
+    
+    logger.info(f"Using {p_decimals} decimal places for {symbol} (Tick Size: {target_prod_init.get('tick_size') if target_prod_init else '?'})")
+    
     # Initialize Strategy
     # Ideally we'd use a strategy factory, but for now we hardcode BTCUSD Double Dip
     if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
@@ -41,6 +65,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         from strategies.rsi_50_ema_strategy import RSI50EMAStrategy
         strategy = RSI50EMAStrategy()
         logger.info("Initialized RSI50EMAStrategy")
+    elif strategy_name.lower() in ["macd-psar-100ema", "macd_psar_100ema", "macdpsar"]:
+        from strategies.macd_psar_100ema_strategy import MACDPSAR100EMAStrategy
+        strategy = MACDPSAR100EMAStrategy()
+        logger.info("Initialized MACDPSAR100EMAStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
@@ -356,43 +384,50 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     margin = float(live_pos_data.get('margin', 0))
                     
                     side_str = "LONG" if sz > 0 else "SHORT"
-                    print(f" Exchange Pos: {side_str} ({abs(sz)} @ ${ep:,.2f})")
-                    print(f" PnL (Unreal): {pnl:+.4f} USD")
+                    print(f" Exchange Pos: {side_str} ({abs(sz)} @ ${ep:,.{p_decimals}f})")
+                    print(f" PnL (Unreal): {pnl:+.{p_decimals}f} USD")
                     print(f" Margin Used:  ${margin:,.2f}")
-                    print(f" Liq Price:    ${liq:,.2f}")
+                    print(f" Liq Price:    ${liq:,.{p_decimals}f}")
                 else:
                     print(f" Exchange Pos: FLAT")
 
                 print(f" Candle Type:  {'Heikin Ashi' if use_ha else 'Standard'}")
                 print("-" * 80)
                 if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
-                    print(f"   Price:      ${closes.iloc[-1]:,.2f}")
+                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
                     print(f"   RSI (14):   {getattr(strategy, 'last_rsi', 0.0):.2f}")
                     print(f"   ATR (14):   {getattr(strategy, 'last_atr', 0.0):.2f}")
                     if getattr(strategy, 'trailing_stop_level', None):
-                        print(f"   Trail Stop: ${strategy.trailing_stop_level:,.2f}")
+                        print(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
                     if getattr(strategy, 'next_partial_target', None):
-                        print(f"   Partial TP: ${strategy.next_partial_target:,.2f}")
+                        print(f"   Partial TP: ${strategy.next_partial_target:,.{p_decimals}f}")
 
                 elif hasattr(strategy, 'last_cci'): # Check for CCI Strategy
                     cci_len = getattr(strategy, 'cci_length', 30)
                     atr_len = getattr(strategy, 'atr_length', 14)
-                    print(f"   Price:      ${closes.iloc[-1]:,.2f}")
+                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
                     print(f"   CCI ({cci_len}):   {strategy.last_cci:.2f} (Live)")
-                    print(f"   EMA (50):   {strategy.last_ema:.2f}")
-                    print(f"   ATR ({atr_len}):   {strategy.last_atr:.2f}")
+                    print(f"   EMA (50):   {strategy.last_ema:.{p_decimals}f}")
+                    print(f"   ATR ({atr_len}):   {strategy.last_atr:.4f}")
                     if hasattr(strategy, 'last_closed_cci'):
                          print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
                          print(f"     CCI:      {strategy.last_closed_cci:.2f}")
-                         print(f"     EMA:      {strategy.last_closed_ema:.2f}")
+                         print(f"     EMA:      {strategy.last_closed_ema:.{p_decimals}f}")
                 elif hasattr(strategy, 'last_rsi') and hasattr(strategy, 'last_ema'): # Check for RSI+EMA Strategy
-                    print(f"   Price:      ${closes.iloc[-1]:,.2f}")
+                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
                     print(f"   RSI (14):   {strategy.last_rsi:.2f}")
-                    print(f"   EMA (50):   {strategy.last_ema:.2f}")
+                    print(f"   EMA (50):   {strategy.last_ema:.{p_decimals}f}")
                     if hasattr(strategy, 'last_closed_rsi'):
                          print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
                          print(f"     RSI:      {strategy.last_closed_rsi:.2f}")
-                         print(f"     EMA:      {strategy.last_closed_ema:.2f}")
+                         print(f"     EMA:      {strategy.last_closed_ema:.{p_decimals}f}")
+
+                elif hasattr(strategy, 'last_macd_line'): # Check for MACD PSAR Strategy
+                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    print(f"   MACD Fast:  {getattr(strategy, 'macd_fast', 14)} | Slow: {getattr(strategy, 'macd_slow', 26)} | Sig: {getattr(strategy, 'macd_signal', 9)}")
+                    print(f"   MACD Hist:  {strategy.last_hist:.4f}")
+                    print(f"   EMA ({getattr(strategy, 'ema_length', 100)}): {strategy.last_ema:.{p_decimals}f}")
+                    print(f"   PSAR:       {strategy.last_sar:.{p_decimals}f}")
                 
                 print("-" * 80)
                 
@@ -416,18 +451,18 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     try:
                         # Use pre-calculated points if available
                         if trade.get('points') is not None:
-                             return f"{float(trade['points']):+.2f}"
+                             return f"{float(trade['points']):+.{p_decimals}f}"
 
                         entry = float(trade.get('entry_price', 0))
                         # Fallback calculation if status matches known types
                         if 'OPEN' in trade['status'] and current_price:
                             current = float(current_price)
                             pts = current - entry if trade['type'] == 'LONG' else entry - current
-                            return f"{pts:+.2f}"
+                            return f"{pts:+.{p_decimals}f}"
                         elif 'CLOSED' in trade['status'] or 'PARTIAL' in trade['status']:
                             exit_p = float(trade.get('exit_price', 0))
                             pts = exit_p - entry if trade['type'] == 'LONG' else entry - exit_p
-                            return f"{pts:+.2f}"
+                            return f"{pts:+.{p_decimals}f}"
                         return "-"
                     except:
                         return "-"
@@ -455,7 +490,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 if strategy.active_trade:
                     t = strategy.active_trade
                     e_ind = get_ind_val(t, 'entry')
-                    e_price = f"{float(t.get('entry_price', 0)):.2f}"
+                    e_price = f"{float(t.get('entry_price', 0)):.{p_decimals}f}"
                     pts_str = get_points_str(t, closes.iloc[-1])
                     status = "OPEN (P)" if t.get('partial_exit') else "OPEN"
                     print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {status:<10}")
@@ -465,10 +500,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 for t in reversed(recent_trades):
                     e_ind = get_ind_val(t, 'entry')
                     x_ind = get_ind_val(t, 'exit')
-                    e_price = f"{float(t.get('entry_price', 0)):.2f}"
-                    x_price = f"{float(t.get('exit_price', 0)):.2f}"
-                    pts_str = get_points_str(t)
-                    x_price = f"{float(t.get('exit_price', 0)):.2f}"
+                    e_price = f"{float(t.get('entry_price', 0)):.{p_decimals}f}"
+                    x_price = f"{float(t.get('exit_price', 0)):.{p_decimals}f}"
                     pts_str = get_points_str(t)
                     status = t['status']
                     if t.get('partial_exit'):
