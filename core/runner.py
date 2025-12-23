@@ -44,7 +44,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
              if ts < 1 and ts > 0:
                  p_decimals = math.ceil(abs(math.log10(ts)))
              elif ts >= 1:
-                 price_precision = 0 # No decimals for large ticks
+                 p_decimals = 0 # No decimals for large ticks
              # E.g. 0.1 -> 1, 0.01 -> 2, 0.0001 -> 4
         except Exception as e:
              logger.warning(f"Error calculating precision: {e}")
@@ -227,7 +227,6 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                                      positions = client.get_positions()
 
                                  logger.info(f"Reconciliation: Fetched {len(positions)} positions.")
-                                 logger.info(f"Positions raw type: {type(positions)}")
                                  # logger.info(f"Positions raw data: {positions}")
 
                                  # If we filtered by product_id, API might return the single object directly
@@ -235,8 +234,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                                      logger.info("Positions returned as single dict object. Wrapping in list.")
                                      positions = [positions]
                                  
-                                 if positions and isinstance(positions, list):
-                                     logger.info(f"First position type: {type(positions[0])}")
+
                                  
                                  # Find position for this symbol/product
                                  # Try multiple keys for symbol match

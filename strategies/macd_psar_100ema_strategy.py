@@ -205,18 +205,66 @@ class MACDPSAR100EMAStrategy:
         
         if df.empty: return
         
-        # Indicators
+        # 1. Calculate Indicators ONCE
         df = self.calculate_indicators(df)
         
+        # Ensure columns exist
+        required_cols = ['macd_hist', 'ema', 'sar', 'time', 'close']
+        if not all(col in df.columns for col in required_cols):
+            logger.error(f"Indicators missing in backtest. Columns: {df.columns.tolist()}")
+            return
+
         start_idx = max(self.macd_slow, self.ema_length) + 1
+        
+        # 2. Iterate through dataframe (Linear Scan)
         for i in range(start_idx, len(df)):
-            subset = df.iloc[:i+1]
-            current_time = float(df['time'].iloc[i]) * 1000
-            current_price = float(df['close'].iloc[i])
+            row = df.iloc[i]
             
-            action, reason = self.check_signals(subset, current_time)
+            try:
+                current_time = float(row['time']) * 1000
+                current_close = float(row['close'])
+                current_ema = float(row['ema'])
+                current_sar = float(row['sar'])
+                current_hist = float(row['macd_hist'])
+                current_macd_line = float(row['macd_line'])
+                current_signal_line = float(row['signal_line'])
+            except (KeyError, ValueError, TypeError):
+                continue
+
+            # Update State (Required for update_position_state to log correct values)
+            self.last_ema = current_ema
+            self.last_sar = current_sar
+            self.last_hist = current_hist
+            self.last_macd_line = current_macd_line
+            self.last_signal_line = current_signal_line
+
+            action = None
+            reason = ""
+            
+            # --- LOGIC (Must match check_signals) ---
+            
+            # Long Entry: Close > EMA + Hist > 0 + Close > SAR
+            long_condition = (current_close > current_ema) and (current_hist > 0) and (current_close > current_sar)
+            
+            # Exit: Close < SAR
+            exit_condition = (current_close < current_sar)
+            
+            if self.current_position == 1: # Already Long
+                if exit_condition:
+                    action = "EXIT_LONG"
+                    reason = f"Close ({current_close:.2f}) < SAR ({current_sar:.2f})"
+                    
+            elif self.current_position == 0: # Flat
+                if long_condition:
+                    action = "ENTRY_LONG"
+                    # Reconstruct reason string for consistency
+                    parts = []
+                    parts.append(f"Close > EMA({current_ema:.2f})")
+                    parts.append(f"Hist({current_hist:.2f}) > 0")
+                    parts.append(f"Close > SAR({current_sar:.2f})")
+                    reason = " & ".join(parts)
             
             if action:
-                self.update_position_state(action, current_time, price=current_price, reason=reason)
+                self.update_position_state(action, current_time, price=current_close, reason=reason)
                 
         logger.info(f"Backtest complete. Trades: {len(self.trades)}")
