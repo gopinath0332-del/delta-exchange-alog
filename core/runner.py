@@ -254,20 +254,22 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      price = float(closes.iloc[-1])
                      
                      if hasattr(strategy, 'calculate_indicators'):
-                          # For CCI Strategy
-                          strategy.check_signals(df, current_time_ms)
-                          # Update dashboard cache? check_signals does it.
-                          # check_signals returns action/reason but for logging we might want values
-                          # The strategy instance stores last_cci etc.
-                          # But wait, check_signals returns (action, reason).
+                          # For CCI Strategy and Updated Double Dip RSI
+                          # Update indicators first (if not done inside check_signals, but check_signals usually does it)
+                          # We rely on check_signals to calculate and return action
                           action, reason = strategy.check_signals(df, current_time_ms)
-                          current_rsi = 0.0 # Not used for this strategy
-                          prev_rsi = 0.0
+                          
+                          # Extract latest values for logging/dashboard from strategy state
+                          current_rsi = getattr(strategy, 'last_rsi', 0.0)
+                          current_atr = getattr(strategy, 'last_atr', 0.0)
+                          prev_rsi = 0.0 # Not explicitly tracked unless strategy does it
                      else:
-                          # For Double Dip (Legacy style)
+                          # Legacy Fallback (should not be reached for Double Dip anymore)
                           current_rsi, prev_rsi = strategy.calculate_rsi(closes)
                           action, reason = strategy.check_signals(current_rsi, current_time_ms)
                           logger.info(f"Analysis: RSI={current_rsi:.2f} (Prev={prev_rsi:.2f}) | Action={action}")
+
+
                      
                      if action:
                          logger.info(f"SIGNAL: {action} - {reason}")
@@ -293,7 +295,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                                  logger.info(f"Using actual execution price for state update: {exec_price}")
                          
                          # Execute Action (Update State) with CORRECT PRICE
-                         strategy.update_position_state(action, current_time_ms, current_rsi, exec_price)
+                         strategy.update_position_state(action, current_time_ms, current_rsi, exec_price, reason=reason)
                 else:
                      logger.error(f"Unexpected candle data format: {df.columns}")
                      time.sleep(10)
@@ -365,8 +367,13 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 print("-" * 80)
                 if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
                     print(f"   Price:      ${closes.iloc[-1]:,.2f}")
-                    print(f"   RSI (14):   {current_rsi:.2f}")
-                    print(f"   Prev RSI:   {prev_rsi:.2f}")
+                    print(f"   RSI (14):   {getattr(strategy, 'last_rsi', 0.0):.2f}")
+                    print(f"   ATR (14):   {getattr(strategy, 'last_atr', 0.0):.2f}")
+                    if getattr(strategy, 'trailing_stop_level', None):
+                        print(f"   Trail Stop: ${strategy.trailing_stop_level:,.2f}")
+                    if getattr(strategy, 'next_partial_target', None):
+                        print(f"   Partial TP: ${strategy.next_partial_target:,.2f}")
+
                 elif hasattr(strategy, 'last_cci'): # Check for CCI Strategy
                     cci_len = getattr(strategy, 'cci_length', 30)
                     atr_len = getattr(strategy, 'atr_length', 14)
@@ -407,12 +414,17 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 # Helper to calc points
                 def get_points_str(trade, current_price=None):
                     try:
+                        # Use pre-calculated points if available
+                        if trade.get('points') is not None:
+                             return f"{float(trade['points']):+.2f}"
+
                         entry = float(trade.get('entry_price', 0))
-                        if trade['status'] == 'OPEN' and current_price:
+                        # Fallback calculation if status matches known types
+                        if 'OPEN' in trade['status'] and current_price:
                             current = float(current_price)
                             pts = current - entry if trade['type'] == 'LONG' else entry - current
                             return f"{pts:+.2f}"
-                        elif trade['status'] == 'CLOSED':
+                        elif 'CLOSED' in trade['status'] or 'PARTIAL' in trade['status']:
                             exit_p = float(trade.get('exit_price', 0))
                             pts = exit_p - entry if trade['type'] == 'LONG' else entry - exit_p
                             return f"{pts:+.2f}"

@@ -53,6 +53,10 @@ strategies:
     short_exit_level: 35.0
     require_prev_long_min_duration: true
     min_days_long: 2
+    atr_length: 14
+    atr_mult_tp: 4.0
+    trail_atr_mult: 3.0
+    partial_pct: 0.5
 
   rsi_50_ema:
     ema_length: 50
