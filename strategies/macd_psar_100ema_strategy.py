@@ -38,6 +38,7 @@ class MACDPSAR100EMAStrategy:
         self.last_sar = 0.0
         
         self.current_position = 0  # 1 for Long, 0 for Flat
+        self.indicator_label = "Hist" # Dashboard Label
         
         # Trade History
         self.trades = [] 
@@ -148,7 +149,8 @@ class MACDPSAR100EMAStrategy:
                 "type": "LONG",
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
-                "entry_macd_hist": self.last_hist, # Log MACD Hist
+                "entry_hist": self.last_hist, # Log MACD Hist for Dashboard
+                "entry_macd_hist": self.last_hist, # Keep for legacy/debug
                 "entry_ema": self.last_ema,
                 "exit_time": "-",
                 "exit_price": "-",
@@ -161,6 +163,7 @@ class MACDPSAR100EMAStrategy:
             if self.active_trade:
                 self.active_trade["exit_time"] = format_time(current_time_ms)
                 self.active_trade["exit_price"] = price
+                self.active_trade["exit_hist"] = self.last_hist # Log Exit Hist
                 self.active_trade["status"] = "CLOSED"
                 self.active_trade["points"] = price - float(self.active_trade['entry_price'])
                 self.trades.append(self.active_trade)
