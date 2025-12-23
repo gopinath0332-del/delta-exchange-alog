@@ -41,6 +41,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         from strategies.rsi_50_ema_strategy import RSI50EMAStrategy
         strategy = RSI50EMAStrategy()
         logger.info("Initialized RSI50EMAStrategy")
+    elif strategy_name.lower() in ["macd-psar-100ema", "macd_psar_100ema", "macdpsar"]:
+        from strategies.macd_psar_100ema_strategy import MACDPSAR100EMAStrategy
+        strategy = MACDPSAR100EMAStrategy()
+        logger.info("Initialized MACDPSAR100EMAStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
@@ -393,6 +397,13 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
                          print(f"     RSI:      {strategy.last_closed_rsi:.2f}")
                          print(f"     EMA:      {strategy.last_closed_ema:.2f}")
+
+                elif hasattr(strategy, 'last_macd_line'): # Check for MACD PSAR Strategy
+                    print(f"   Price:      ${closes.iloc[-1]:,.2f}")
+                    print(f"   MACD Fast:  {getattr(strategy, 'macd_fast', 14)} | Slow: {getattr(strategy, 'macd_slow', 26)} | Sig: {getattr(strategy, 'macd_signal', 9)}")
+                    print(f"   MACD Hist:  {strategy.last_hist:.4f}")
+                    print(f"   EMA ({getattr(strategy, 'ema_length', 100)}): {strategy.last_ema:.2f}")
+                    print(f"   PSAR:       {strategy.last_sar:.4f}")
                 
                 print("-" * 80)
                 

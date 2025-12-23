@@ -62,3 +62,12 @@ strategies:
     ema_length: 50
     rsi_length: 14
     rsi_entry_level: 40.0
+
+  macd_psar_100ema:
+    macd_fast: 14
+    macd_slow: 26
+    macd_signal: 9
+    ema_length: 100
+    sar_start: 0.005
+    sar_increment: 0.005
+    sar_max: 0.2

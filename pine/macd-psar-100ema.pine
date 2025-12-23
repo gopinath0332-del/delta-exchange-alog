@@ -1,0 +1,57 @@
+//@version=5
+strategy(title = "MACD + 50 EMA + PSAR Filtered Long Only (No Overlap)",overlay = true, pyramiding = 0,default_qty_type = strategy.percent_of_equity,default_qty_value = 100)
+
+// ───── Inputs ─────
+// MACD
+fastLen   = input.int(14, "MACD Fast Length")
+slowLen   = input.int(26, "MACD Slow Length")
+signalLen = input.int(9,  "MACD Signal Length")
+
+// EMA filter
+emaLen = input.int(100, "Trend EMA Length")
+
+// Parabolic SAR
+sarStart     = input.float(0.005, "SAR Start", step = 0.001)
+sarIncrement = input.float(0.005, "SAR Increment", step = 0.001)
+sarMax       = input.float(0.2,   "SAR Maximum", step = 0.01)
+
+// Background
+enableBg = input.bool(true, "Enable Background Highlight")
+bgColor  = input.color(color.new(color.green, 85), "Long Position BG Color")
+
+// ───── Calculations ─────
+[macdLine, signalLine, hist] = ta.macd(close, fastLen, slowLen, signalLen)
+ema50 = ta.ema(close, emaLen)
+sar   = ta.sar(sarStart, sarIncrement, sarMax)
+
+// ───── Conditions ─────
+// Entry: Above EMA + MACD histogram green + price above SAR
+longCondition = close > ema50 and hist > 0 and close > sar
+
+// Exit: Close below SAR
+exitCondition = close < sar
+
+inPosition = strategy.position_size > 0
+
+// ───── Strategy Logic ─────
+if (longCondition and not inPosition)
+    strategy.entry("Long", strategy.long)
+
+if (exitCondition and inPosition)
+    strategy.close("Long")
+
+// ───── Alerts ─────
+alertcondition(longCondition and not inPosition,
+     title = "Long Entry Alert",
+     message = "ENTER LONG: Close > EMA50, MACD hist green, and price above PSAR")
+
+alertcondition(exitCondition and inPosition,
+     title = "Long Exit Alert",
+     message = "EXIT LONG: Price closed below Parabolic SAR")
+
+// ───── Background ─────
+bgcolor(enableBg and inPosition ? bgColor : na)
+
+// ───── Plots ─────
+plot(ema50, title="EMA 50", color=color.orange)
+plot(sar, title="Parabolic SAR", style=plot.style_cross, color=color.red)
