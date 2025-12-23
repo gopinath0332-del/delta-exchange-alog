@@ -158,6 +158,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      use_ha = (candle_type.lower() == "heikin-ashi")
                      
                      if use_ha:
+                         logger.info(f"Calculating Heikin Ashi for {len(df)} candles...")
                          # Full Heikin Ashi Transformation
                          # HA_Close = (O + H + L + C) / 4
                          # HA_Open = (Prev_HA_Open + Prev_HA_Close) / 2
@@ -195,6 +196,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          # Replace original df with HA df for strategy use
                          df = df_ha
                          closes = df['close']
+                         logger.info("Heikin Ashi calculation complete.")
                      else:
                          closes = df['close'].astype(float)
 
@@ -203,6 +205,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          if len(df) > 1:
                              logger.info("Backtesting history for warmup...")
                              strategy.run_backtest(df.iloc[:-1])
+                             logger.info("Backtest warmup complete.")
 
                              # --- RECONCILIATION STEP ---
                              # After backtest, we might still be out of sync if a trade happened 
