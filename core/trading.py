@@ -170,6 +170,8 @@ def execute_strategy_signal(
                 # Continue anyway, might already be set
         
         # 5. Place Order (Market)
+        order = None  # Initialize to prevent UnboundLocalError when orders are disabled
+        
         if mode == "paper":
             logger.info(f"[PAPER] Simulating {side.upper()} order for {order_size} contract(s) of {symbol}")
             order = {"id": "PAPER_ORDER_ID"}
@@ -179,9 +181,10 @@ def execute_strategy_signal(
             notional_value = price * order_size * contract_value
             margin_used = notional_value / leverage
         else:
-            # 7. Execute Order if Enabled
+            # Initialize execution_price for live mode
             execution_price = None
             
+            # 7. Execute Order if Enabled
             if enable_orders:
                 logger.info(f"Placing {side.upper()} order for {order_size} contract(s) of {symbol}")
                 try:
@@ -207,7 +210,7 @@ def execute_strategy_signal(
                     notifier.send_error(f"Order Failed: {symbol}", str(e))
                     return {"success": False, "error": str(e)}
             else:
-                 logger.info("Skipping actual order placement (ENABLE_ORDER_PLACEMENT is false).")
+                logger.info("Skipping actual order placement (ENABLE_ORDER_PLACEMENT is false).")
 
             # 6. Calculate Margin (Estimated)
             # Do this BEFORE fetching wallet so we have it even if wallet fetch fails
