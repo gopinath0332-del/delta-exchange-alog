@@ -1,5 +1,7 @@
 """Notification manager."""
 
+import time
+import requests
 from typing import Optional
 
 from core.config import Config
@@ -76,19 +78,50 @@ class NotificationManager:
     def send_error(self, title: str, error: str):
         """Send error alert to error webhook (or main webhook if not configured)."""
         if self.discord_error:
-            self.discord_error.send_message(f"**Error:** {error}", title=f"⚠️ {title}", color=15158332) # Red
+            # Add ANSI red color to error text
+            colored_error = f"\u001b[0;31mError:\u001b[0m {error}"
+            formatted_message = f"```ansi\n{colored_error}\n```"
+            
+            # Send as embed
+            try:
+                embed = {
+                    "title": f"⚠️ {title}",
+                    "description": formatted_message,
+                    "color": 15158332,  # Red
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                }
+                
+                payload = {"embeds": [embed]}
+                
+                response = requests.post(self.discord_error.webhook_url, json=payload, timeout=5)
+                response.raise_for_status()
+                logger.debug("Discord error alert sent with color")
 
-    def send_status_message(self, title: str, message: str):
+            except requests.RequestException as e:
+                logger.error("Discord connection failed", error=str(e))
+            except Exception as e:
+                logger.error("Failed to send Discord error notification", error=str(e))
+
+    def send_status_message(self, title: str, message: str, order_placement_enabled: Optional[bool] = None):
         """
         Send status message to all enabled channels.
         
         Args:
             title: Message title
             message: Message content
+            order_placement_enabled: If provided, will color-code Discord message based on order placement status
         """
-        # Send to Discord (Blue color)
+        # Send to Discord with color support
         if self.discord:
-            self.discord.send_message(message, title=title, color=3447003)
+            # Use colored version if order_placement_enabled is provided
+            if hasattr(self.discord, 'send_status_message_with_color'):
+                self.discord.send_status_message_with_color(title, message, order_placement_enabled)
+            else:
+                # Fallback to regular message
+                color = 3447003  # Default Blue
+                if order_placement_enabled is not None:
+                    color = 5763719 if order_placement_enabled else 15548997
+                self.discord.send_message(message, title=title, color=color)
             
         # Send to Email
         if self.email:
