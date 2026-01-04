@@ -152,8 +152,8 @@ class MACDPSAR100EMAStrategy:
                 "entry_hist": self.last_hist, # Log MACD Hist for Dashboard
                 "entry_macd_hist": self.last_hist, # Keep for legacy/debug
                 "entry_ema": self.last_ema,
-                "exit_time": "-",
-                "exit_price": "-",
+                "exit_time": None,
+                "exit_price": None,
                 "status": "OPEN",
                 "points": None
             }
@@ -188,6 +188,9 @@ class MACDPSAR100EMAStrategy:
                     "type": "LONG",
                     "entry_time": format_time(current_ts) + " (Rec)",
                     "entry_price": entry_price,
+                    "entry_hist": self.last_hist,
+                    "exit_time": None,
+                    "exit_price": None,
                     "status": "OPEN",
                     "points": None
                 }
