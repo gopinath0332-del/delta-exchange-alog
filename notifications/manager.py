@@ -22,11 +22,21 @@ class NotificationManager:
         """
         self.config = config
         
-        # Initialize Discord
+        # Initialize Discord for regular alerts
         self.discord: Optional[DiscordNotifier] = None
         if config.discord_enabled and config.discord_webhook_url:
             self.discord = DiscordNotifier(config.discord_webhook_url)
             logger.info("Discord notifications enabled")
+        
+        # Initialize separate Discord for error alerts (if configured)
+        self.discord_error: Optional[DiscordNotifier] = None
+        if config.discord_enabled and config.discord_error_webhook_url:
+            self.discord_error = DiscordNotifier(config.discord_error_webhook_url)
+            logger.info("Discord error notifications enabled (separate webhook)")
+        elif config.discord_enabled and config.discord_webhook_url:
+            # Fallback to main webhook if error webhook not configured
+            self.discord_error = self.discord
+            logger.info("Discord error notifications will use main webhook")
             
         # Initialize Email
         self.email: Optional[EmailNotifier] = None
@@ -64,9 +74,9 @@ class NotificationManager:
         logger.info(f"Alert sent: {side} {symbol} @ {price} (RSI: {rsi:.2f})")
 
     def send_error(self, title: str, error: str):
-        """Send error alert."""
-        if self.discord:
-            self.discord.send_message(f"**Error:** {error}", title=f"⚠️ {title}", color=15158332) # Red
+        """Send error alert to error webhook (or main webhook if not configured)."""
+        if self.discord_error:
+            self.discord_error.send_message(f"**Error:** {error}", title=f"⚠️ {title}", color=15158332) # Red
 
     def send_status_message(self, title: str, message: str):
         """
