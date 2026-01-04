@@ -70,7 +70,7 @@ class DiscordNotifier:
                         remaining_margin: Optional[float] = None,
                         strategy_name: Optional[str] = None):
         """
-        Send a formatted trade alert.
+        Send a formatted trade alert with ANSI color codes.
 
         Args:
             symbol: Trading symbol (e.g. BTCUSD)
@@ -83,23 +83,99 @@ class DiscordNotifier:
             strategy_name: Name of the strategy executing the trade
         """
         title = f"🚀 TRADING SIGNAL: {side} {symbol}"
-        color = 5763719 if side.upper() == "LONG" else 15548997  # Green for Long, Red for Short
+        color = 5763719 if "LONG" in side.upper() else 15548997  # Green for Long, Red for Short
+        
+        # ANSI Color Codes
+        # \u001b[1;37m = Bold White
+        # \u001b[0;36m = Cyan
+        # \u001b[0;33m = Yellow
+        # \u001b[0;35m = Magenta
+        # \u001b[0;31m = Red
+        # \u001b[0m = Reset
         
         message = ""
         if strategy_name:
-             message += f"**Strategy:** {strategy_name}\n"
+             message += f"Strategy: \u001b[1;37m{strategy_name}\u001b[0m\n"
 
         message += (
-            f"**Price:** ${price:,.2f}\n"
-            f"**RSI:** {rsi:.2f}\n"
-            f"**Reason:** {reason}\n"
-            f"**Time:** {time.strftime('%H:%M:%S UTC')}"
+            f"Price: \u001b[0;36m${price:,.2f}\u001b[0m\n"
+            f"RSI: \u001b[0;33m{rsi:.2f}\u001b[0m\n"
         )
         
+        # Color-code [DISABLED] tag in reason if present
+        if "[DISABLED]" in reason:
+            reason = reason.replace("[DISABLED]", "\u001b[0;31m[DISABLED]\u001b[0m")
+        
+        message += f"Reason: {reason}\n"
+        message += f"Time: {time.strftime('%H:%M:%S UTC')}"
+        
         if margin_used is not None:
-            message += f"\n**Margin Used:** ${margin_used:,.2f}"
+            message += f"\nMargin Used: \u001b[0;35m${margin_used:,.2f}\u001b[0m"
             
         if remaining_margin is not None:
-            message += f"\n**Remaining Wallet:** ${remaining_margin:,.2f}"
+            message += f"\nRemaining Wallet: \u001b[0;36m${remaining_margin:,.2f}\u001b[0m"
         
-        self.send_message(message, title=title, color=color)
+        # Wrap in ANSI code block for Discord
+        formatted_message = f"```ansi\n{message}\n```"
+        
+        # Send as embed with color
+        try:
+            embed = {
+                "title": title,
+                "description": formatted_message,
+                "color": color,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            }
+            
+            payload = {"embeds": [embed]}
+            
+            response = requests.post(self.webhook_url, json=payload, timeout=5)
+            response.raise_for_status()
+            logger.debug("Discord trade alert sent with colors")
+
+        except requests.RequestException as e:
+            logger.error("Discord connection failed", error=str(e))
+        except Exception as e:
+            logger.error("Failed to send Discord notification", error=str(e))
+
+    def send_status_message_with_color(self, title: str, message: str, order_placement_enabled: Optional[bool] = None):
+        """
+        Send a status message with ANSI color codes for better formatting.
+        
+        Args:
+            title: Message title
+            message: Message content (can include ANSI color codes)
+            order_placement_enabled: If provided, will color-code the order placement status
+        """
+        if not self.webhook_url:
+            logger.warning("Discord webhook URL not configured")
+            return
+
+        try:
+            # Determine embed color based on order placement status
+            if order_placement_enabled is not None:
+                embed_color = 5763719 if order_placement_enabled else 15548997  # Green if enabled, Red if disabled
+            else:
+                embed_color = 3447003  # Default Blue
+            
+            # Format message with ANSI color codes
+            # Discord supports ANSI in code blocks with ```ansi
+            formatted_message = f"```ansi\n{message}\n```"
+            
+            embed = {
+                "title": title,
+                "description": formatted_message,
+                "color": embed_color,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            }
+            
+            payload = {"embeds": [embed]}
+            
+            response = requests.post(self.webhook_url, json=payload, timeout=5)
+            response.raise_for_status()
+            logger.debug("Discord status message sent with color")
+
+        except requests.RequestException as e:
+            logger.error("Discord connection failed", error=str(e))
+        except Exception as e:
+            logger.error("Failed to send Discord notification", error=str(e))
