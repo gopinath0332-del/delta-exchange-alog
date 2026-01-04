@@ -131,6 +131,7 @@ class Config:
     def _init_notification_config(self):
         """Initialize notification configuration."""
         self.discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
+        self.discord_error_webhook_url = os.getenv("DISCORD_ERROR_WEBHOOK_URL", "")  # Separate webhook for errors
         self.discord_enabled = os.getenv("DISCORD_ENABLED", "true").lower() == "true"
 
         self.email_enabled = os.getenv("EMAIL_ENABLED", "true").lower() == "true"
