@@ -183,7 +183,9 @@ class CCIEMAStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "entry_cci": cci,
-                "entry_cci": cci,
+                "exit_time": None,
+                "exit_price": None,
+                "exit_cci": None,
                 "status": "OPEN",
                 "logs": [],
                 "partial_exit": False

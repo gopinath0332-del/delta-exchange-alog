@@ -502,12 +502,16 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     e_ind = get_ind_val(t, 'entry')
                     x_ind = get_ind_val(t, 'exit')
                     e_price = f"{float(t.get('entry_price', 0)):.{p_decimals}f}"
-                    x_price = f"{float(t.get('exit_price', 0)):.{p_decimals}f}"
+                    # Handle None values for exit_price and exit_time
+                    exit_price_val = t.get('exit_price')
+                    x_price = f"{float(exit_price_val):.{p_decimals}f}" if exit_price_val is not None and exit_price_val != '-' else '-'
+                    exit_time_val = t.get('exit_time')
+                    x_time = str(exit_time_val) if exit_time_val is not None and exit_time_val != '-' else '-'
                     pts_str = get_points_str(t)
                     status = t['status']
                     if t.get('partial_exit'):
                          status += " (P)"
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {t['exit_time']:<16} {x_price:<12} {x_ind:<10} {pts_str:<10} {status:<10}")
+                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {x_time:<16} {x_price:<12} {x_ind:<10} {pts_str:<10} {status:<10}")
                     
                 print("-" * 80)
                 print(f"sleeping for {sleep_seconds}s...")

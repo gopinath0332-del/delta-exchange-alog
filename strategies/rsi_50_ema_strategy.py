@@ -202,6 +202,9 @@ class RSI50EMAStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "entry_rsi": rsi,
+                "exit_time": None,
+                "exit_price": None,
+                "exit_rsi": None,
                 "status": "OPEN",
                 "logs": []
             }

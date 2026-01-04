@@ -263,9 +263,9 @@ class DoubleDipRSIStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_rsi": current_rsi,
                 "entry_price": price,
-                "exit_time": "-",
-                "exit_rsi": "-",
-                "exit_price": "-",
+                "exit_time": None,
+                "exit_rsi": None,
+                "exit_price": None,
                 "status": "OPEN",
                 "partial_exit_done": False
             }
@@ -279,9 +279,9 @@ class DoubleDipRSIStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_rsi": current_rsi,
                 "entry_price": price,
-                "exit_time": "-",
-                "exit_rsi": "-",
-                "exit_price": "-",
+                "exit_time": None,
+                "exit_rsi": None,
+                "exit_price": None,
                 "status": "OPEN",
                 "partial_exit_done": False
             }
@@ -405,9 +405,9 @@ class DoubleDipRSIStrategy:
                     "entry_time": format_time(current_ts) + " (Rec)",
                     "entry_rsi": 0.0,
                     "entry_price": entry_price,
-                    "exit_time": "-",
-                    "exit_rsi": "-",
-                    "exit_price": "-",
+                    "exit_time": None,
+                    "exit_rsi": None,
+                    "exit_price": None,
                     "status": "OPEN",
                     "partial_exit_done": False # Assumption
                 }
