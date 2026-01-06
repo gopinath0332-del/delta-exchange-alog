@@ -170,7 +170,12 @@ class MACDPSAR100EMAStrategy:
                 self.active_trade = None
 
     def reconcile_position(self, size: float, entry_price: float):
-        """Reconcile state."""
+        """Reconcile state with exchange position.
+        
+        Args:
+            size: Position size from exchange (>0 for LONG, 0 for FLAT)
+            entry_price: Entry price from exchange
+        """
         import time
         import datetime
         def format_time(ts_ms):
@@ -184,21 +189,51 @@ class MACDPSAR100EMAStrategy:
             self.current_position = expected_pos
             
             if expected_pos == 1 and not self.active_trade:
-                self.active_trade = {
-                    "type": "LONG",
-                    "entry_time": format_time(current_ts) + " (Rec)",
-                    "entry_price": entry_price,
-                    "entry_hist": self.last_hist,
-                    "exit_time": None,
-                    "exit_price": None,
-                    "status": "OPEN",
-                    "points": None
-                }
+                # Exchange has position, but strategy doesn't
+                # FIRST: Check if backtest created an OPEN trade that should be the active trade
+                existing_open_trade = None
+                if self.trades:
+                    # Look for the last OPEN trade in history
+                    for trade in reversed(self.trades):
+                        if trade.get('status') == 'OPEN':
+                            existing_open_trade = trade
+                            break
+                
+                if existing_open_trade:
+                    # Restore the existing trade as active_trade
+                    self.trades.remove(existing_open_trade)
+                    self.active_trade = existing_open_trade
+                    logger.info(f"Restored existing OPEN trade from {existing_open_trade['entry_time']} as active_trade (entry_price: {existing_open_trade['entry_price']}, size: {size})")
+                else:
+                    # No existing trade found - create new reconciled trade
+                    self.active_trade = {
+                        "type": "LONG",
+                        "entry_time": format_time(current_ts) + " (Rec)",
+                        "entry_price": entry_price,
+                        "entry_hist": self.last_hist,
+                        "entry_macd_hist": self.last_hist,  # Match update_position_state structure
+                        "entry_ema": self.last_ema,  # Match update_position_state structure
+                        "exit_time": None,
+                        "exit_price": None,
+                        "status": "OPEN",
+                        "points": None
+                    }
+                    logger.info(f"Created new reconciled trade to LONG (entry_price: {entry_price}, size: {size})")
+                    
             elif expected_pos == 0 and self.active_trade:
+                # Exchange is FLAT but strategy has active trade
+                # This means position was closed while bot was off
+                # ONLY close if we're certain - check if this reconciliation was actually called with data
+                # If entry_price is 0, the reconciliation might just be defaulting to FLAT
+                # In this case, DON'T close - trust that the active_trade might be valid
+                
+                # Actually, if exchange returns size=0 explicitly, we should trust it
+                # Close the trade
                 self.active_trade["exit_time"] = format_time(current_ts) + " (Rec)"
                 self.active_trade["status"] = "CLOSED"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
+                logger.info("Reconciled state to FLAT - closed active trade (position was closed while bot was off)")
                 
     def run_backtest(self, df: pd.DataFrame):
         """Run backtest."""
