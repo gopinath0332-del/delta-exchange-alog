@@ -102,10 +102,27 @@ def execute_strategy_signal(
         elif action == "ENTRY_SHORT":
             side = "sell"
             is_entry = True
-        elif action == "EXIT_LONG":
-            side = "sell" # Close Long = Sell
-        elif action == "EXIT_SHORT":
-            side = "buy" # Close Short = Buy
+        elif action == "EXIT_LONG" or action == "EXIT_SHORT":
+            # For final exits, fetch actual position size from exchange
+            # to avoid selling more than what's actually held (e.g., after partial exits)
+            side = "sell" if action == "EXIT_LONG" else "buy"
+            
+            try:
+                current_positions = client.get_positions(product_id=product_id)
+                active_position = next((p for p in current_positions if float(p.get('size', 0)) != 0), None)
+                if active_position:
+                    current_size = abs(float(active_position['size']))
+                    order_size = int(current_size)
+                    logger.info(f"Final Exit: Closing {order_size} lots (actual position size)")
+                else:
+                    logger.warning("No active position found for final exit. Sending ALERT ONLY.")
+                    enable_orders = False
+                    reason += " [NO POSITION]"
+            except Exception as e:
+                logger.error(f"Failed to fetch position for final exit: {e}")
+                # Don't place order if we can't verify position
+                enable_orders = False
+                reason += " [POSITION FETCH FAILED]"
         elif action == "EXIT_LONG_PARTIAL" or action == "EXIT_SHORT_PARTIAL":
             # Determine side based on closing direction
             # If EXIT_LONG_PARTIAL (Closing Long) -> CELL (sell)
