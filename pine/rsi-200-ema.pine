@@ -1,0 +1,69 @@
+//@version=5
+strategy("RSI + EMA Long (Partial TP + ATR Trail + Alerts)", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, pyramiding=0)
+
+// --- Inputs ---
+rsiLength = input.int(17, title="RSI Length")
+emaLength = input.int(200, title="EMA Length")
+rsiEntryLevel = input.int(70, title="RSI Entry Level")
+rsiExitLevel = input.int(35, title="RSI Exit Level")
+
+// ATR Inputs
+atrLength = input.int(17, title="ATR Length")
+atrMultiplierTP = input.float(2.5, title="ATR Multiplier for TP (50%)")
+atrMultiplierTrail = input.float(2.5, title="ATR Multiplier for Trailing SL")
+
+// --- Indicators ---
+rsiValue = ta.rsi(close, rsiLength)
+emaValue = ta.ema(close, emaLength)
+atrValue = ta.atr(atrLength)
+
+// --- State Variables ---
+var float entryPrice = na
+var float tpLevel = na
+var float stopLossLevel = na
+
+// --- Logic ---
+longCondition = ta.crossover(rsiValue, rsiEntryLevel) and close > emaValue
+exitCondition = ta.crossunder(rsiValue, rsiExitLevel) or close < emaValue
+
+// --- Execution & Alerts ---
+
+// 1. Entry Logic
+if longCondition and strategy.position_size == 0
+    // 'alert_message' is sent if you use Webhooks
+    strategy.entry("Long", strategy.long, alert_message="Long Entry Triggered | Price: " + str.tostring(close))
+    // 'alert()' is for popups/app notifications
+    alert("Long Entry Triggered at " + str.tostring(close), alert.freq_once_per_bar_close)
+    
+    entryPrice := close
+    tpLevel := close + (atrValue * atrMultiplierTP)
+    stopLossLevel := close - (atrValue * atrMultiplierTrail)
+
+// 2. Trailing Stop Calculation
+if strategy.position_size > 0
+    newSL = close - (atrValue * atrMultiplierTrail)
+    if newSL > stopLossLevel
+        stopLossLevel := newSL
+
+// 3. Exit Logic
+
+// A) Partial Take Profit (50%)
+// The alert_message here triggers ONLY when the Limit order is actually filled
+if strategy.position_size > 0
+    strategy.exit("Partial TP", "Long", qty_percent=50, limit=tpLevel, alert_message="Partial TP Hit | Price: " + str.tostring(tpLevel))
+
+// B) Trailing Stop Exit (Manual check)
+if strategy.position_size > 0 and close < stopLossLevel
+    strategy.close("Long", comment="Trailing SL Hit", alert_message="Trailing SL Hit | Price: " + str.tostring(close))
+    alert("Trailing SL Hit at " + str.tostring(close), alert.freq_once_per_bar_close)
+
+// C) Standard Strategy Exit (RSI/EMA Break)
+if exitCondition
+    strategy.close("Long", comment="Trend Break Exit", alert_message="Trend Break Exit | Price: " + str.tostring(close))
+    alert("Trend Break Exit at " + str.tostring(close), alert.freq_once_per_bar_close)
+
+// --- Visuals ---
+plot(emaValue, color=color.blue, linewidth=2, title="50 EMA")
+bgcolor(strategy.position_size > 0 ? color.new(color.green, 90) : na, title="Position Active")
+plot(strategy.position_size > 0 ? stopLossLevel : na, style=plot.style_linebr, color=color.red, linewidth=2, title="ATR Trailing SL")
+plot(strategy.position_size > 0 ? tpLevel : na, style=plot.style_linebr, color=color.green, linewidth=2, title="ATR TP Level")
