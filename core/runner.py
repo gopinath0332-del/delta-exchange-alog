@@ -10,10 +10,11 @@ from core.config import Config
 from notifications.manager import NotificationManager
 from api.rest_client import DeltaRestClient
 from core.trading import execute_strategy_signal, get_trade_config
+from core.candle_aggregator import aggregate_candles_to_3h
 
 logger = get_logger(__name__)
 
-def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode: str, candle_type: str = "heikin-ashi"):
+def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode: str, candle_type: str = "heikin-ashi", timeframe: str = "1h"):
     """
     Run strategy in terminal mode with dashboard output.
     
@@ -23,6 +24,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         symbol: Trading symbol
         mode: 'live' or 'paper'
         candle_type: 'heikin-ashi' or 'standard'
+        timeframe: Candle timeframe (e.g., '1h', '3h', '4h')
     """
     # Initialize API and Notifications
     client = DeltaRestClient(config)
@@ -69,6 +71,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         from strategies.macd_psar_100ema_strategy import MACDPSAR100EMAStrategy
         strategy = MACDPSAR100EMAStrategy()
         logger.info("Initialized MACDPSAR100EMAStrategy")
+    elif strategy_name.lower() in ["rsi-200-ema", "rsi_200_ema", "rsi200ema"]:
+        from strategies.rsi_200_ema_strategy import RSI200EMAStrategy
+        strategy = RSI200EMAStrategy()
+        logger.info("Initialized RSI200EMAStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
@@ -131,10 +137,13 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 
                 # Fetch history
                 # Note: This relies on _make_direct_request. If this fails, we need to check API docs/auth.
+                # For 3h candles (180m), we fetch 1h and aggregate
+                fetch_resolution = "1h" if timeframe == "180m" else timeframe
+                
                 response = client._make_direct_request(
                     "/v2/history/candles", 
                     params={
-                        "resolution": "1h",
+                        "resolution": fetch_resolution,
                         "symbol": symbol,
                         "start": start_time,
                         "end": end_time
@@ -146,6 +155,12 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     logger.warning(f"No candle data fetched for {symbol}")
                     time.sleep(10)
                     continue
+                
+                # Aggregate 1h to 3h if needed
+                if timeframe == "180m":
+                    logger.info(f"Aggregating {len(candles)} 1h candles to 3h...")
+                    candles = aggregate_candles_to_3h(candles)
+                    logger.info(f"Aggregation complete: {len(candles)} 3h candles")
                 
                 # Parse
                 df = pd.DataFrame(candles)
@@ -434,6 +449,19 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     print(f"   MACD Hist:  {strategy.last_hist:.4f}")
                     print(f"   EMA ({getattr(strategy, 'ema_length', 100)}): {strategy.last_ema:.{p_decimals}f}")
                     print(f"   PSAR:       {strategy.last_sar:.{p_decimals}f}")
+                elif strategy_name.lower() in ["rsi-200-ema", "rsi_200_ema", "rsi200ema"]: # RSI-200-EMA Strategy
+                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    print(f"   RSI ({getattr(strategy, 'rsi_length', 17)}):   {strategy.last_rsi:.2f}")
+                    print(f"   EMA ({getattr(strategy, 'ema_length', 200)}):  {strategy.last_ema:.{p_decimals}f}")
+                    print(f"   ATR ({getattr(strategy, 'atr_length', 17)}):   {strategy.last_atr:.4f}")
+                    if getattr(strategy, 'tp_level', None):
+                        print(f"   TP Level:   ${strategy.tp_level:,.{p_decimals}f}")
+                    if getattr(strategy, 'trailing_stop_level', None):
+                        print(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
+                    if hasattr(strategy, 'last_closed_rsi'):
+                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         print(f"     RSI:      {strategy.last_closed_rsi:.2f}")
+                         print(f"     EMA:      {strategy.last_closed_ema:.{p_decimals}f}")
                 
                 print("-" * 80)
                 

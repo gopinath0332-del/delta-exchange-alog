@@ -72,6 +72,15 @@ def main():
             "symbol": "XRPUSD", 
             "monitor": "macd_psar_100ema",
             "desc": "Long Only. Entry: Close>EMA100, MACD>0, Price>SAR. Exit: Price<SAR."
+        },
+        {
+            "id": 6,
+            "name": "ETHUSD RSI-200-EMA (3H Standard)",
+            "symbol": "ETHUSD",
+            "monitor": "rsi_200_ema",
+            "timeframe": "180m",
+            "candle_type": "standard",
+            "desc": "Long Entry: RSI crossover 70 & Close>EMA200. Partial TP, ATR Trail Stop."
         }
     ]
 
@@ -119,7 +128,11 @@ def main():
         # Hardcoded for now as we only have one mode
         mode = "live" 
         
-        run_strategy_terminal(config, selected_strat['monitor'], selected_strat['symbol'], mode)
+        # Get timeframe and candle_type from strategy, default to 1h and heikin-ashi
+        timeframe = selected_strat.get('timeframe', '1h')
+        candle_type = selected_strat.get('candle_type', 'heikin-ashi')
+        
+        run_strategy_terminal(config, selected_strat['monitor'], selected_strat['symbol'], mode, candle_type, timeframe)
         
     except KeyboardInterrupt:
         print("\nExiting...")

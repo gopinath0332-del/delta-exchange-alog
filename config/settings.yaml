@@ -71,3 +71,13 @@ strategies:
     sar_start: 0.005
     sar_increment: 0.005
     sar_max: 0.2
+
+  rsi_200_ema:
+    rsi_length: 17
+    rsi_entry_level: 70
+    rsi_exit_level: 35
+    ema_length: 200
+    atr_length: 17
+    atr_multiplier_tp: 2.5
+    atr_multiplier_trail: 2.5
+    partial_pct: 0.5
