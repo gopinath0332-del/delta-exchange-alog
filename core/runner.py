@@ -128,12 +128,15 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     try:
         while True:
             try:
-                # 1. Fetch Data (1h candles)
-                # We need enough history for RSI(14). 
-                # Use configured lookback days.
+                # 1. Fetch Data (1h candles for aggregation to 3h)
+                # Check for strategy-specific historical days, otherwise use default
+                strategy_config = config.settings.get("strategies", {}).get(strategy_name.replace("-", "_").replace("rsi_200_ema", "rsi_200_ema"), {})
+                days_lookback = strategy_config.get("historical_days", getattr(config, 'default_historical_days', 30))
+                
                 end_time = int(time.time())
-                days_lookback = getattr(config, 'default_historical_days', 30)
                 start_time = end_time - (days_lookback * 24 * 3600) 
+                
+                logger.info(f"Fetching {days_lookback} days of historical data for {strategy_name}") 
                 
                 # Fetch history
                 # Note: This relies on _make_direct_request. If this fails, we need to check API docs/auth.
