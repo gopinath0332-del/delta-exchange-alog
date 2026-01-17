@@ -75,11 +75,11 @@ def main():
         },
         {
             "id": 6,
-            "name": "ETHUSD RSI-200-EMA (3H Standard)",
+            "name": "ETHUSD RSI-200-EMA (1H Heikin Ashi)",
             "symbol": "ETHUSD",
             "monitor": "rsi_200_ema",
-            "timeframe": "180m",
-            "candle_type": "standard",
+            "timeframe": "1h",
+            "candle_type": "heikin-ashi",
             "desc": "Long Entry: RSI crossover 70 & Close>EMA200. Partial TP, ATR Trail Stop."
         }
     ]
