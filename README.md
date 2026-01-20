@@ -6,14 +6,20 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 
 - **Multiple Trading Modes**: Backtesting, Paper Trading, and Live Trading
 - **Delta Exchange Integration**: Official `delta-rest-client` library with rate limiting
+- **Closed Candle Logic**: Standardized signal generation on confirmed candle closes (eliminates backtest vs. live discrepancies)
 - **Structured Logging**: Human-readable logs using `structlog`
 - **Modular Architecture**: Clean separation of concerns for easy extension
-- **Multiple Timeframes**: 5m, 15m, 1h, 4h, 1d (configurable)
-- **Notifications**: Discord webhooks and Email alerts
+- **Multiple Timeframes**: 5m, 15m, 1h, 3h, 4h, 1d (configurable)
+- **Notifications**: Discord webhooks and Email alerts with color-coded status messages
 - **PDF Reports**: Professional trading reports with charts
-- **Premium Strategies**: Includes RS-50-EMA (XRPUSD) and Double-Dip RSI.
-- **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars.
-- **Terminal Interface**: Robust CLI dashboard with live strategy monitoring
+- **Premium Strategies**: Multiple strategies with ATR-based trailing stops and partial exits
+  - Double-Dip RSI (BTCUSD) - Long/Short with RSI levels
+  - CCI-EMA (BTCUSD) - CCI crossover with 50 EMA filter
+  - RSI-50-EMA (XRPUSD) - RSI + EMA confirmation
+  - MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
+  - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
+- **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
+- **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
 
 ## Project Structure
 
@@ -21,10 +27,14 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 delta-exchange-alog/
 ├── config/              # Configuration files
 │   ├── .env.example    # Environment variables template
-│   └── settings.yaml   # Trading parameters
+│   └── settings.yaml   # Trading parameters and strategy configs
 ├── core/               # Core infrastructure
 │   ├── config.py       # Configuration management
 │   ├── logger.py       # Structured logging
+│   ├── runner.py       # Strategy execution engine
+│   ├── trading.py      # Order execution and trade management
+│   ├── candle_utils.py # Closed candle detection utilities (NEW)
+│   ├── candle_aggregator.py # Multi-timeframe candle aggregation
 │   └── exceptions.py   # Custom exceptions
 ├── api/                # Delta Exchange API integration
 │   ├── rest_client.py  # REST API wrapper
@@ -35,15 +45,21 @@ delta-exchange-alog/
 │   ├── fetcher.py      # Historical data fetcher
 │   ├── storage.py      # Data persistence
 │   └── preprocessor.py # Data processing
-├── strategies/         # Trading strategies
-│   ├── base.py         # Base strategy class
-│   ├── indicators.py   # Technical indicators
+├── strategies/         # Trading strategies (all use closed candle logic)
+│   ├── double_dip_rsi.py      # Double-Dip RSI strategy (BTCUSD)
+│   ├── cci_ema_strategy.py    # CCI + 50 EMA strategy (BTCUSD)
+│   ├── rsi_50_ema_strategy.py # RSI + 50 EMA strategy (XRPUSD)
+│   ├── macd_psar_100ema_strategy.py # MACD + PSAR + 100 EMA (XRPUSD)
+│   ├── rsi_200_ema_strategy.py # RSI + 200 EMA strategy (ETHUSD)
 │   └── examples/       # Example strategies
 ├── backtesting/        # Backtesting engine
 ├── trading/            # Live trading engine
 ├── notifications/      # Alert system
+│   ├── manager.py      # Notification orchestration
+│   └── discord.py      # Discord webhook integration
 ├── reporting/          # PDF report generation
 ├── terminal/           # Terminal interface
+├── service/            # Systemd service files for deployment
 └── tests/              # Unit and integration tests
 ```
 
@@ -152,6 +168,40 @@ risk_management:
   max_leverage: 10
 ```
 
+## Closed Candle Logic
+
+All trading strategies use **closed candle logic** for signal generation, ensuring consistency between backtesting and live trading.
+
+### How It Works
+
+- **Entry/Exit Signals**: Generated only after a candle completes (closes)
+- **Indicator Calculations**: Based on confirmed closed candle data
+- **Trailing Stops**: Level calculated from closed candle ATR, hit detection in real-time
+- **Timeframe Support**: Works across all timeframes (5m, 15m, 1h, 3h, 4h, 1d)
+
+### Benefits
+
+✅ **Backtest Alignment** - Live trading matches backtesting results exactly  
+✅ **No False Signals** - Eliminates premature entries from developing candle wicks  
+✅ **Stable Calculations** - ATR-based stops use confirmed values, not fluctuating mid-candle data  
+✅ **Real-Time Protection** - Trailing stops still protect positions immediately while using stable levels
+
+### Implementation
+
+```python
+from core.candle_utils import get_closed_candle_index
+
+# Determine closed candle index
+closed_idx = get_closed_candle_index(df, current_time_ms, timeframe)
+
+# Use closed candle for signal generation
+closed_candle = df.iloc[closed_idx]
+if closed_candle['rsi'] > 70:  # Signal based on confirmed data
+    enter_long()
+```
+
+All strategies automatically use this logic - no configuration needed!
+
 ## Usage
 
 ### Quick Start
@@ -208,19 +258,29 @@ python main.py report --backtest-id latest --output report.pdf
 - [x] Configuration management
 - [x] Project structure
 - [x] Live trading engine (Terminal Based)
-- [x] Live trading engine (Terminal Based)
-- [x] Strategy framework (Double Dip RSI, CCI+EMA, RS-50-EMA)
+- [x] **Closed Candle Logic Standardization** - All strategies use confirmed candle closes for signal generation
+- [x] **Candle Utilities Module** - Centralized closed candle detection for all timeframes
+- [x] Strategy framework with multiple implementations:
+  - [x] Double-Dip RSI (BTCUSD) - Long/Short with ATR-based TP and trailing stops
+  - [x] CCI-EMA (BTCUSD) - CCI crossover with EMA trend filter
+  - [x] RSI-50-EMA (XRPUSD) - RSI + EMA with fresh signal detection
+  - [x] MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
+  - [x] RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA and ATR-based exits
+- [x] **3-Hour Candle Aggregation** - Local candle aggregation for custom timeframes
+- [x] **Position Reconciliation** - Automatic sync with exchange on restart
+- [x] **ATR-based Risk Management** - Dynamic trailing stops and partial exits
 - [x] Asset-specific order configuration
-- [x] Notifications (Discord/Email)
-- [x] Terminal interface
+- [x] Notifications (Discord/Email) with color-coded status messages and error alerts
+- [x] Terminal interface with live position tracking and PnL display
 
 ### 🚧 In Progress
 
-- [ ] WebSocket client for live data
-- [ ] Data storage (SQLite/CSV)
-- [ ] Data preprocessing
-- [ ] Portfolio optimization
-- [ ] PDF report generation
+- [ ] WebSocket client for live data streaming
+- [ ] Advanced data storage (SQLite/CSV with historical replay)
+- [ ] Portfolio optimization and multi-strategy allocation
+- [ ] PDF report generation with performance analytics
+- [ ] Web dashboard UI
+- [ ] Backtesting engine enhancements (slippage modeling, realistic fill simulation)
 
 ## API Reference
 
@@ -302,12 +362,25 @@ For issues and questions:
 
 ## Roadmap
 
-- [ ] Advanced technical indicators (MACD, Bollinger Bands)
-- [ ] Multiple strategy support
+### Completed ✅
+
+- [x] Advanced technical indicators (MACD, RSI, CCI, EMA, PSAR, ATR)
+- [x] Multiple strategy support (5 strategies implemented)
+- [x] Closed candle logic standardization
+- [x] ATR-based risk management (trailing stops, partial exits)
+- [x] Position reconciliation on restart
+- [x] Color-coded Discord notifications
+
+### Planned 🎯
+
+- [ ] WebSocket live data streaming
 - [ ] Walk-forward analysis
-- [ ] Risk management dashboard
-- [ ] Mobile notifications
-- [ ] Cloud deployment support
+- [ ] Risk management dashboard (web UI)
+- [ ] Mobile notifications (Telegram, push notifications)
+- [ ] Cloud deployment support (Docker, Kubernetes)
+- [ ] Multi-strategy portfolio optimization
+- [ ] Advanced backtesting (Monte Carlo simulation, realistic slippage)
+- [ ] Performance analytics dashboard
 
 ## Disclaimer
 
