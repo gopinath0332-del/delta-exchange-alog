@@ -4,6 +4,7 @@ from typing import Dict, Optional, Tuple, Any
 import pandas as pd
 import ta
 from core.config import get_config
+from core.candle_utils import get_closed_candle_index
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,9 @@ class CCIEMAStrategy:
         self.atr_multiplier = cfg.get("atr_multiplier", 4.0)
         
         self.indicator_label = "CCI"
+        
+        # Timeframe (set by runner, defaults to 1h)
+        self.timeframe = "1h"
         
         # State
         self.current_position = 0  # 1 for Long, 0 for Flat
@@ -114,53 +118,71 @@ class CCIEMAStrategy:
 
     def check_signals(self, df: pd.DataFrame, current_time_ms: float) -> Tuple[str, str]:
         """
-        Check for entry/exit signals.
+        Check for entry/exit signals based on CLOSED candle data.
+        
+        Uses closed candle logic to match backtesting behavior and prevent
+        false signals from developing candles.
         """
         if df.empty:
             return None, ""
-            
-        # Get indicators
+        
+        # Get Closed Candle Index
+        closed_idx = get_closed_candle_index(df, current_time_ms, self.timeframe)
+        
+        # Get indicators for both closed and current candle
         cci, ema, atr = self.calculate_indicators(df)
-        close = df['close'].iloc[-1]
-        high = df['high'].iloc[-1] # For partial exit check
+        
+        # Get CLOSED candle data for signal generation
+        closed_candle = df.iloc[closed_idx]
+        closed_price = closed_candle['close']
+        
+        # Get current candle high for partial exit check (real-time)
+        current_high = df['high'].iloc[-1]
+        
+        # Recalculate indicators as series for crossover detection
+        cci_series = ta.trend.cci(df['high'], df['low'], df['close'], window=self.cci_length)
+        ema_series = ta.trend.ema_indicator(df['close'], window=self.ema_length)
+        
+        # Get closed candle indicator values
+        closed_cci = cci_series.iloc[closed_idx]
+        closed_ema = ema_series.iloc[closed_idx]
         
         action = None
         reason = ""
         
         # --- Logic ---
         
-        # Trend Filter: Close > EMA
-        trend_bullish = close > ema
+        # Trend Filter: Closed Price > EMA
+        trend_bullish = closed_price > closed_ema
         
         # Entry Long
-        # Condition: CCI CrossOver 0 AND Trend Bullish
-        # Note: We check if CCI > 0 and we are not in position. 
-        # Ideally check crossover, but absolute level > 0 is fine if we check state.
+        # Condition: CCI CrossOver 0 AND Trend Bullish (on closed candle)
         if self.current_position == 0:
-            # Requires previous CCI for crossover check
-            prev_cci = self.calculate_prev_cci(df) # Need to implement this helper or fetch directly
-            if prev_cci is not None:
+            # Get previous closed candle CCI for crossover check
+            prev_closed_idx = closed_idx - 1
+            if len(df) > abs(prev_closed_idx):
+                prev_cci = cci_series.iloc[prev_closed_idx]
                 # Crossover: Prev <= 0 AND Curr > 0
-                cci_cross = (prev_cci <= 0) and (cci > 0)
+                cci_cross = (prev_cci <= 0) and (closed_cci > 0)
                 if cci_cross and trend_bullish:
                     action = "ENTRY_LONG"
-                    reason = f"CCI Cross {prev_cci:.2f}->{cci:.2f} > 0 & Close {close:.2f} > EMA {ema:.2f}"
-                
+                    reason = f"CCI Cross {prev_cci:.2f}->{closed_cci:.2f} > 0 & Close {closed_price:.2f} > EMA {closed_ema:.2f} (Closed)"
+            
         # In Long Position
         elif self.current_position == 1:
-            # 1. Partial Profit Check
+            # 1. Partial Profit Check (uses current high for better fills)
             if not self.partial_profit_taken:
                 target_price = self.last_entry_price + (atr * self.atr_multiplier)
-                # Check if High hit the target
-                if high >= target_price:
+                # Check if current High hit the target (real-time check)
+                if current_high >= target_price:
                     action = "EXIT_LONG_PARTIAL"
-                    reason = f"Partial Profit: High {high:.2f} >= Target {target_price:.2f} (Entry {self.last_entry_price:.2f} + {self.atr_multiplier}x ATR {atr:.2f})"
+                    reason = f"Partial Profit: High {current_high:.2f} >= Target {target_price:.2f} (Entry {self.last_entry_price:.2f} + {self.atr_multiplier}x ATR {atr:.2f})"
             
-            # 2. Final Exit Check
-            # CCI CrossUnder 0 OR Close < EMA
-            if close < ema:
+            # 2. Final Exit Check (uses closed candle)
+            # Close < EMA
+            if closed_price < closed_ema:
                 action = "EXIT_LONG"
-                reason = f"Exit Signal: Close {close:.2f} < EMA {ema:.2f}"
+                reason = f"Exit Signal (Closed): Close {closed_price:.2f} < EMA {closed_ema:.2f}"
                 
         return action, reason
 
