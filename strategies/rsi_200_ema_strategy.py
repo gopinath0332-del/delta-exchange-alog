@@ -43,6 +43,9 @@ class RSI200EMAStrategy:
         
         self.indicator_label = "RSI"
         
+        # Timeframe (set by runner, defaults to 1h)
+        self.timeframe = "1h"
+        
         # State
         self.current_position = 0  # 1 for Long, 0 for Flat
         self.last_entry_price = 0.0

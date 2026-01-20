@@ -5,6 +5,7 @@ import pandas as pd
 import ta
 import numpy as np
 from core.config import get_config
+from core.candle_utils import get_closed_candle_index
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,9 @@ class DoubleDipRSIStrategy:
         self.partial_pct = cfg.get("partial_pct", 0.5)
         
         self.indicator_label = "RSI"
+        
+        # Timeframe (set by runner, defaults to 1h)
+        self.timeframe = "1h"
 
         # Duration Condition
         self.require_prev_long_min_duration = cfg.get("require_prev_long_min_duration", True)
@@ -88,11 +92,15 @@ class DoubleDipRSIStrategy:
 
     def check_signals(self, df: pd.DataFrame, current_time_ms: float) -> Tuple[str, str]:
         """
-        Check for entry/exit signals based on current market state.
+        Check for entry/exit signals based on CLOSED candle data.
+        
+        Uses closed candle logic to match backtesting behavior and prevent
+        false signals from developing candles. Trailing stops are checked
+        against current price for real-time protection.
         
         Args:
             df: DataFrame containing candles (with calculated indicators)
-            current_time_ms: Current timestamp
+            current_time_ms: Current timestamp in milliseconds
             
         Returns:
             Tuple[str, str]: (Action, Reason)
@@ -102,22 +110,35 @@ class DoubleDipRSIStrategy:
         
         if len(df) < 5 or 'rsi' not in df.columns:
             return None, ""
-            
-        current_candle = df.iloc[-1]
         
-        # Safe access to indicators
+        # 2. Get Closed Candle Index
+        closed_idx = get_closed_candle_index(df, current_time_ms, self.timeframe)
+        
+        # Get both closed and current candle data
+        closed_candle = df.iloc[closed_idx]
+        current_candle = df.iloc[-1]  # For trailing stop price checks only
+        
+        # Safe access to CLOSED candle indicators (for entry/exit signals)
         try:
-            current_rsi = float(current_candle['rsi'])
-            current_atr = float(current_candle['atr'])
-            current_price = float(current_candle['close'])
+            closed_rsi = float(closed_candle['rsi'])
+            closed_atr = float(closed_candle['atr'])
+            closed_price = float(closed_candle['close'])
+        except (KeyError, ValueError, TypeError):
+            logger.warning("Missing indicator data in closed candle")
+            return None, ""
+        
+        # Current candle data (for trailing stop hit detection)
+        try:
             current_high = float(current_candle['high'])
             current_low = float(current_candle['low'])
+            current_price = float(current_candle['close'])
         except (KeyError, ValueError, TypeError):
-             logger.warning("Missing indicator data in current candle")
-             return None, ""
-             
-        self.last_rsi = current_rsi
-        self.last_atr = current_atr
+            logger.warning("Missing price data in current candle")
+            return None, ""
+        
+        # Update dashboard values with closed candle data
+        self.last_rsi = closed_rsi
+        self.last_atr = closed_atr
         
         action = None
         reason = ""
@@ -129,29 +150,25 @@ class DoubleDipRSIStrategy:
         # ---------------------------------------------------------------------
         if self.current_position == 1: # ALREADY LONG
             # 1. Partial Exit Logic
-            # Target = Entry + (ATR * Mult)
+            # Target calculated from CLOSED candle ATR for stability
             entry_price = float(self.active_trade.get('entry_price', 0)) if self.active_trade else 0
             
             if entry_price > 0 and not self.active_trade.get('partial_exit_done'):
-                tp_target = entry_price + (current_atr * self.atr_mult_tp)
+                # Use CLOSED ATR for target calculation
+                tp_target = entry_price + (closed_atr * self.atr_mult_tp)
                 self.next_partial_target = tp_target
-                # Check if High hit TP (Conservative: use High)
+                # Check if current High hit TP (real-time check for better fills)
                 if current_high >= tp_target:
                     action = "EXIT_LONG_PARTIAL"
                     reason = f"Partial TP Hit: Price {current_high:.2f} >= {tp_target:.2f} (Entry: {entry_price:.2f} + {self.atr_mult_tp}*ATR)"
                     return action, reason # Priority Return
             
             # 2. Trailing Stop Logic
-            # Initial Trail = Entry - (ATR * Mult)? No, usually dynamic.
-            # Pine: longTrail = close - atr * trailAtrMult
-            # Logic: If price closes below trail? Or touches?
-            # Pine uses `stop=longTrail` which is continuous/touch based.
+            # Level calculated from CLOSED candle for stability
+            # Hit detection uses current price for real-time protection
             
-            # We need to track the TRAILING Stop level.
-            # Strategy: Always update trail to be `Close - (ATR*Mult)` BUT only move UP.
-            
-            # Calculate CURRENT potential trail
-            potential_trail = current_price - (current_atr * self.trail_atr_mult)
+            # Calculate potential trail from CLOSED candle data
+            potential_trail = closed_price - (closed_atr * self.trail_atr_mult)
             
             if self.trailing_stop_level is None:
                 self.trailing_stop_level = potential_trail
@@ -160,22 +177,23 @@ class DoubleDipRSIStrategy:
                 if potential_trail > self.trailing_stop_level:
                     self.trailing_stop_level = potential_trail
                     
-            # Check Hit: Low <= Trail
+            # Check Hit: Current Low <= Trail (real-time protection)
             if current_low <= self.trailing_stop_level:
                 action = "EXIT_LONG"
                 reason = f"Trailing Stop Hit: Low {current_low:.2f} <= {self.trailing_stop_level:.2f}"
                 return action, reason
                 
-            # 3. RSI Exit (Hard Stop)
-            if current_rsi < self.long_exit_level:
+            # 3. RSI Exit (Hard Stop) - uses CLOSED candle RSI
+            if closed_rsi < self.long_exit_level:
                 action = "EXIT_LONG"
-                reason = f"RSI Exit: {current_rsi:.2f} < {self.long_exit_level}"
+                reason = f"RSI Exit: {closed_rsi:.2f} < {self.long_exit_level}"
                 return action, reason
 
         elif self.current_position == 0: # FLAT (Check Entries)
-             if current_rsi > self.long_entry_level:
+             # Entry signal based on CLOSED candle RSI
+             if closed_rsi > self.long_entry_level:
                  action = "ENTRY_LONG"
-                 reason = f"RSI Entry: {current_rsi:.2f} > {self.long_entry_level}"
+                 reason = f"RSI Entry (Closed): {closed_rsi:.2f} > {self.long_entry_level}"
                  # Reset State
                  self.trailing_stop_level = None
                  self.next_partial_target = None 
@@ -186,20 +204,22 @@ class DoubleDipRSIStrategy:
         # ---------------------------------------------------------------------
         if self.current_position == -1: # ALREADY SHORT
             # 1. Partial Exit Logic
+            # Target calculated from CLOSED candle ATR
             entry_price = float(self.active_trade.get('entry_price', 0)) if self.active_trade else 0
             
             if entry_price > 0 and not self.active_trade.get('partial_exit_done'):
-                tp_target = entry_price - (current_atr * self.atr_mult_tp)
+                # Use CLOSED ATR for target calculation
+                tp_target = entry_price - (closed_atr * self.atr_mult_tp)
                 self.next_partial_target = tp_target
-                # Check if Low hit TP
+                # Check if current Low hit TP (real-time check)
                 if current_low <= tp_target:
                     action = "EXIT_SHORT_PARTIAL"
                     reason = f"Partial TP Hit: Price {current_low:.2f} <= {tp_target:.2f}"
                     return action, reason 
             
             # 2. Trailing Stop Logic
-            # Short Trail = Close + (ATR * Mult) (Only move DOWN)
-            potential_trail = current_price + (current_atr * self.trail_atr_mult)
+            # Level calculated from CLOSED candle, hit checked with current price
+            potential_trail = closed_price + (closed_atr * self.trail_atr_mult)
             
             if self.trailing_stop_level is None:
                 self.trailing_stop_level = potential_trail
@@ -208,22 +228,21 @@ class DoubleDipRSIStrategy:
                 if potential_trail < self.trailing_stop_level:
                     self.trailing_stop_level = potential_trail
             
-            # Check Hit: High >= Trail
+            # Check Hit: Current High >= Trail (real-time protection)
             if current_high >= self.trailing_stop_level:
                  action = "EXIT_SHORT"
                  reason = f"Trailing Stop Hit: High {current_high:.2f} >= {self.trailing_stop_level:.2f}"
                  return action, reason
 
-            # 3. RSI Exit
-            if current_rsi > self.short_exit_level:
+            # 3. RSI Exit - uses CLOSED candle RSI
+            if closed_rsi > self.short_exit_level:
                 action = "EXIT_SHORT"
-                reason = f"RSI Exit: {current_rsi:.2f} > {self.short_exit_level}"
+                reason = f"RSI Exit (Closed): {closed_rsi:.2f} > {self.short_exit_level}"
                 return action, reason
                 
         elif self.current_position == 0: # FLAT (Check Short Entry)
-            # Duration Check Logic (Existing)
-            # ... (Simplified for brevity as no changes requested to entry logic itself, keeping it)
-            if current_rsi < self.short_entry_level:
+            # Entry signal based on CLOSED candle RSI
+            if closed_rsi < self.short_entry_level:
                  # Check Duration
                  short_allowed = True
                  if self.require_prev_long_min_duration:
@@ -240,7 +259,7 @@ class DoubleDipRSIStrategy:
                           
                  if short_allowed:
                      action = "ENTRY_SHORT"
-                     reason = f"RSI Entry: {current_rsi:.2f} < {self.short_entry_level}"
+                     reason = f"RSI Entry (Closed): {closed_rsi:.2f} < {self.short_entry_level}"
                      self.trailing_stop_level = None
                      self.next_partial_target = None
                      return action, reason

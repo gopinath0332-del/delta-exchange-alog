@@ -58,22 +58,27 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
         from strategies.double_dip_rsi import DoubleDipRSIStrategy
         strategy = DoubleDipRSIStrategy()
+        strategy.timeframe = timeframe
         logger.info("Initialized DoubleDipRSIStrategy")
     elif strategy_name.lower() in ["cci-ema", "cciema"]:
         from strategies.cci_ema_strategy import CCIEMAStrategy
         strategy = CCIEMAStrategy()
+        strategy.timeframe = timeframe
         logger.info("Initialized CCIEMAStrategy")
     elif strategy_name.lower() in ["rs-50-ema", "rsi-50-ema", "rsi50ema"]:
         from strategies.rsi_50_ema_strategy import RSI50EMAStrategy
         strategy = RSI50EMAStrategy()
+        strategy.timeframe = timeframe
         logger.info("Initialized RSI50EMAStrategy")
     elif strategy_name.lower() in ["macd-psar-100ema", "macd_psar_100ema", "macdpsar"]:
         from strategies.macd_psar_100ema_strategy import MACDPSAR100EMAStrategy
         strategy = MACDPSAR100EMAStrategy()
+        strategy.timeframe = timeframe
         logger.info("Initialized MACDPSAR100EMAStrategy")
     elif strategy_name.lower() in ["rsi-200-ema", "rsi_200_ema", "rsi200ema"]:
         from strategies.rsi_200_ema_strategy import RSI200EMAStrategy
         strategy = RSI200EMAStrategy()
+        strategy.timeframe = timeframe
         logger.info("Initialized RSI200EMAStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")

@@ -4,6 +4,7 @@ import pandas as pd
 import ta
 import numpy as np
 from core.config import get_config
+from core.candle_utils import get_closed_candle_index
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,9 @@ class MACDPSAR100EMAStrategy:
         
         self.current_position = 0  # 1 for Long, 0 for Flat
         self.indicator_label = "Hist" # Dashboard Label
+        
+        # Timeframe (set by runner, defaults to 1h)
+        self.timeframe = "1h"
         
         # Trade History
         self.trades = [] 
@@ -81,28 +85,32 @@ class MACDPSAR100EMAStrategy:
         return df
 
     def check_signals(self, df: pd.DataFrame, current_time_ms: float) -> Tuple[str, str]:
-        """Check for entry/exit signals."""
+        """Check for entry/exit signals based on CLOSED candle data."""
         
         # 1. Update Indicators
         df = self.calculate_indicators(df)
         
         if len(df) < 5 or 'sar' not in df.columns:
             return None, ""
-            
-        current_candle = df.iloc[-1]
+        
+        # 2. Get Closed Candle Index
+        closed_idx = get_closed_candle_index(df, current_time_ms, self.timeframe)
+        
+        # Get CLOSED candle data for signal generation
+        closed_candle = df.iloc[closed_idx]
         
         try:
-            current_close = float(current_candle['close'])
-            current_ema = float(current_candle['ema'])
-            current_sar = float(current_candle['sar'])
-            current_hist = float(current_candle['macd_hist'])
+            closed_close = float(closed_candle['close'])
+            closed_ema = float(closed_candle['ema'])
+            closed_sar = float(closed_candle['sar'])
+            closed_hist = float(closed_candle['macd_hist'])
             
-            # Update State
-            self.last_ema = current_ema
-            self.last_sar = current_sar
-            self.last_hist = current_hist
-            self.last_macd_line = float(current_candle['macd_line'])
-            self.last_signal_line = float(current_candle['signal_line'])
+            # Update dashboard state with closed candle values
+            self.last_ema = closed_ema
+            self.last_sar = closed_sar
+            self.last_hist = closed_hist
+            self.last_macd_line = float(closed_candle['macd_line'])
+            self.last_signal_line = float(closed_candle['signal_line'])
             
         except (KeyError, ValueError, TypeError):
              return None, ""
@@ -110,29 +118,29 @@ class MACDPSAR100EMAStrategy:
         action = None
         reason = ""
         
-        # --- LOGIC ---
+        # --- LOGIC (Based on CLOSED candle) ---
         
         # Long Entry: Close > EMA + Hist > 0 + Close > SAR
-        long_condition = (current_close > current_ema) and (current_hist > 0) and (current_close > current_sar)
+        long_condition = (closed_close > closed_ema) and (closed_hist > 0) and (closed_close > closed_sar)
         
         # Exit: Close < SAR
-        exit_condition = (current_close < current_sar)
+        exit_condition = (closed_close < closed_sar)
         
         if self.current_position == 1: # Already Long
             if exit_condition:
                 action = "EXIT_LONG"
-                reason = f"Close ({current_close:.2f}) < SAR ({current_sar:.2f})"
+                reason = f"Close ({closed_close:.2f}) < SAR ({closed_sar:.2f}) (Closed)"
                 return action, reason
                 
         elif self.current_position == 0: # Flat
             if long_condition:
                 action = "ENTRY_LONG"
                 parts = []
-                if current_close > current_ema: parts.append(f"Close > EMA({current_ema:.2f})")
-                if current_hist > 0: parts.append(f"Hist({current_hist:.2f}) > 0")
-                if current_close > current_sar: parts.append(f"Close > SAR({current_sar:.2f})")
+                if closed_close > closed_ema: parts.append(f"Close > EMA({closed_ema:.2f})")
+                if closed_hist > 0: parts.append(f"Hist({closed_hist:.2f}) > 0")
+                if closed_close > closed_sar: parts.append(f"Close > SAR({closed_sar:.2f})")
                 
-                reason = " & ".join(parts)
+                reason = " & ".join(parts) + " (Closed)"
                 return action, reason
                 
         return None, ""
