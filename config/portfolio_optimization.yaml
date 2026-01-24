@@ -1,0 +1,104 @@
+# Portfolio Optimization Configuration
+
+portfolio:
+  enabled: false # Toggle portfolio mode on/off
+  total_capital: 10000 # Total capital available for portfolio
+  optimization_method: mean_variance # Options: mean_variance, risk_parity, max_div
+  risk_tolerance: moderate # Options: conservative, moderate, aggressive
+
+  # Portfolio Constraints
+  constraints:
+    max_single_strategy: 0.40 # Maximum 40% allocation to any single strategy
+    min_single_strategy: 0.05 # Minimum 5% allocation per strategy if included
+    max_correlation: 0.80 # Don't combine strategies with correlation > 0.80
+    min_strategies: 3 # Minimum number of strategies required in portfolio
+    max_strategies: 8 # Maximum number of concurrent strategies
+    cash_reserve: 0.05 # Keep 5% in cash for flexibility
+    max_leverage: 1.0 # Maximum leverage multiplier (1.0 = no leverage)
+
+  # Rebalancing Configuration
+  rebalancing:
+    frequency: weekly # Options: daily, weekly, monthly
+    threshold: 0.05 # Rebalance if any weight drifts > 5% from target
+    method: threshold # Options: periodic, threshold, performance_based, both
+
+  # Portfolio-Level Risk Management
+  risk_management:
+    portfolio_max_drawdown: -0.20 # Stop all trading if portfolio drawdown > 20%
+    strategy_max_drawdown: -0.15 # Reduce allocation if strategy drawdown > 15%
+    min_sharpe_ratio: 0.5 # Remove strategies with Sharpe < 0.5
+    lookback_period: 30 # Days for performance evaluation
+
+# Strategy Pool for Portfolio
+# Define which strategies are available for portfolio allocation
+strategies:
+  # Strategy 1: Double-Dip RSI on BTCUSD
+  - name: double_dip_rsi
+    symbol: BTCUSD
+    timeframe: 1h
+    candle_type: heikin-ashi
+    enabled: true
+    description: "Long/Short strategy with RSI levels and ATR-based stops"
+
+  # Strategy 2: RSI-200-EMA on ETHUSD
+  - name: rsi_200_ema
+    symbol: ETHUSD
+    timeframe: 3h
+    candle_type: heikin-ashi
+    enabled: true
+    description: "RSI crossover with 200 EMA trend filter and partial exits"
+
+  # Strategy 3: MACD-PSAR on XRPUSD
+  - name: macd_psar_100ema
+    symbol: XRPUSD
+    timeframe: 1h
+    candle_type: heikin-ashi
+    enabled: true
+    description: "MACD histogram with PSAR filter and 100 EMA"
+
+  # Strategy 4: CCI-EMA on BTCUSD
+  - name: cci_ema
+    symbol: BTCUSD
+    timeframe: 4h
+    candle_type: heikin-ashi
+    enabled: true
+    description: "CCI crossover with 50 EMA trend filter"
+
+  # Strategy 5: RSI-50-EMA on XRPUSD (alternative)
+  - name: rsi_50_ema
+    symbol: XRPUSD
+    timeframe: 1h
+    candle_type: standard
+    enabled: false # Disabled by default (may be highly correlated with other XRP strategies)
+    description: "RSI + 50 EMA with fresh signal detection"
+
+# Risk-Free Rate for Sharpe Ratio Calculation
+risk_free_rate: 0.02 # 2% annual risk-free rate
+
+# Performance Tracking
+performance:
+  database_path: data/portfolio_performance.db
+  update_frequency: 1h # How often to update performance metrics
+  min_history_days: 30 # Minimum days of history required for optimization
+
+# Optimization-Specific Settings
+optimization:
+  # Mean-Variance parameters
+  mean_variance:
+    risk_aversion: 0.5 # Risk aversion parameter (higher = more conservative)
+    target_return: null # Optional target return (null = maximize Sharpe)
+
+  # Risk Parity parameters
+  risk_parity:
+    volatility_lookback: 60 # Days to calculate volatility
+
+  # Maximum Diversification parameters
+  max_div:
+    correlation_lookback: 90 # Days to calculate correlations
+
+# Notifications
+notifications:
+  notify_on_rebalance: true
+  notify_on_allocation_change: true
+  notify_on_constraint_violation: true
+  notify_on_performance_milestone: true

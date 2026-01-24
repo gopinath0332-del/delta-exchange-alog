@@ -247,6 +247,40 @@ python run_terminal.py --strategy 4
 python main.py report --backtest-id latest --output report.pdf
 ```
 
+### Portfolio Optimization Mode
+
+Run multiple strategies simultaneously with optimal capital allocation:
+
+```bash
+# Optimize portfolio allocation
+python run_portfolio.py optimize
+
+# Run portfolio in paper mode
+python run_portfolio.py run --method mean_variance --mode paper
+
+# Run with risk parity allocation
+python run_portfolio.py run --method risk_parity --mode paper
+
+# View performance metrics
+python run_portfolio.py performance
+
+# Manual rebalancing
+python run_portfolio.py rebalance
+
+# Show current allocation
+python run_portfolio.py show-allocation
+```
+
+**Benefits of Portfolio Mode:**
+
+- **Diversification**: Spread risk across multiple strategies and assets
+- **Better Risk-Adjusted Returns**: Typically higher Sharpe ratio than single strategies
+- **Automatic Rebalancing**: Maintain optimal allocation as markets change
+- **Reduced Volatility**: Uncorrelated strategies smooth overall returns
+- **Risk Management**: Portfolio-level drawdown limits and per-strategy allocation controls
+
+See [`docs/portfolio-usage-guide.md`](docs/portfolio-usage-guide.md) for detailed configuration and usage.
+
 ## Development Status
 
 ### ✅ Completed
@@ -277,7 +311,14 @@ python main.py report --backtest-id latest --output report.pdf
 
 - [ ] WebSocket client for live data streaming
 - [ ] Advanced data storage (SQLite/CSV with historical replay)
-- [ ] Portfolio optimization and multi-strategy allocation
+- [x] **Portfolio optimization and multi-strategy allocation** ✨ NEW
+  - [x] Mean-Variance Optimization (Modern Portfolio Theory)
+  - [x] Risk Parity (Equal Risk Contribution)
+  - [x] Maximum Diversification
+  - [x] Automatic rebalancing (periodic, threshold-based)
+  - [x] Performance tracking and correlation analysis
+  - [x] Portfolio CLI (`run_portfolio.py`)
+  - [x] Risk metrics calculator (Sharpe, Sortino, Calmar, etc.)
 - [ ] PDF report generation with performance analytics
 - [ ] Web dashboard UI
 - [ ] Backtesting engine enhancements (slippage modeling, realistic fill simulation)
@@ -370,6 +411,12 @@ For issues and questions:
 - [x] ATR-based risk management (trailing stops, partial exits)
 - [x] Position reconciliation on restart
 - [x] Color-coded Discord notifications
+- [x] **Multi-strategy portfolio optimization** ✨
+  - [x] Mean-Variance Optimization
+  - [x] Risk Parity allocation
+  - [x] Maximum Diversification
+  - [x] Automatic rebalancing
+  - [x] Performance tracking & correlation analysis
 
 ### Planned 🎯
 
@@ -378,9 +425,9 @@ For issues and questions:
 - [ ] Risk management dashboard (web UI)
 - [ ] Mobile notifications (Telegram, push notifications)
 - [ ] Cloud deployment support (Docker, Kubernetes)
-- [ ] Multi-strategy portfolio optimization
 - [ ] Advanced backtesting (Monte Carlo simulation, realistic slippage)
 - [ ] Performance analytics dashboard
+- [ ] Black-Litterman optimization (enhanced portfolio allocation)
 
 ## Disclaimer
 
