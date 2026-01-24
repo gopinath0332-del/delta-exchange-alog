@@ -8,6 +8,7 @@ import os
 from core.logger import get_logger
 from api.rest_client import DeltaRestClient
 from notifications.manager import NotificationManager
+from core.firebase_journal import get_journal_service
 
 logger = get_logger(__name__)
 
@@ -279,6 +280,27 @@ def execute_strategy_signal(
                 logger.warning(f"Failed to fetch wallet details: {e}")
         
         # 6. Send Alert
+        # 7. Log to Firebase Trade Journal (on entry only)
+        firebase_trade_id = None
+        if is_entry and (mode != "paper" or mode == "paper"):
+            try:
+                journal = get_journal_service()
+                # Determine trade type: BUY for long, SELL for short
+                trade_type = "BUY" if action == "ENTRY_LONG" else "SELL"
+                actual_price = price if mode == "paper" else (float(order.get('avg_fill_price', price)) if order and order.get('avg_fill_price') else price)
+                
+                firebase_trade_id = journal.log_entry(
+                    symbol=symbol,
+                    trade_type=trade_type,
+                    entry_price=actual_price,
+                    quantity=order_size,
+                    strategy=strategy_name or "Unknown",
+                    contract="Perpetual"
+                )
+            except Exception as e:
+                logger.error(f"Failed to log trade to Firebase journal: {e}")
+        
+        # 8. Send Alert
         try:
             notifier.send_trade_alert(
                 symbol=symbol,
@@ -295,7 +317,8 @@ def execute_strategy_signal(
         
         return {
             "success": True,
-            "execution_price": execution_price
+            "execution_price": execution_price,
+            "firebase_trade_id": firebase_trade_id
         }
 
     except Exception as e:

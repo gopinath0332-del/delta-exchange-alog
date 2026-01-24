@@ -186,7 +186,7 @@ class CCIEMAStrategy:
                 
         return action, reason
 
-    def update_position_state(self, action: str, current_time_ms: float, indicators: dict = None, price: float = 0.0, reason: str = ""):
+    def update_position_state(self, action: str, current_time_ms: float, indicators: dict = None, price: float = 0.0, reason: str = "", firebase_trade_id: str = None):
         """Update internal state based on executed action."""
         import datetime
         
@@ -210,7 +210,8 @@ class CCIEMAStrategy:
                 "exit_cci": None,
                 "status": "OPEN",
                 "logs": [],
-                "partial_exit": False
+                "partial_exit": False,
+                "firebase_trade_id": firebase_trade_id  # Store Firebase trade ID
             }
             
         elif action == "EXIT_LONG_PARTIAL":
@@ -218,6 +219,25 @@ class CCIEMAStrategy:
             if self.active_trade:
                 self.active_trade["partial_exit"] = True
                 self.active_trade["logs"].append(f"Partial exit at {price:.2f} ({format_time(current_time_ms)})")
+                
+                # Update Firebase journal for partial exit
+                firebase_trade_id = self.active_trade.get("firebase_trade_id")
+                if firebase_trade_id:
+                    try:
+                        from core.firebase_journal import get_journal_service
+                        journal = get_journal_service()
+                        entry_price = self.active_trade["entry_price"]
+                        pnl_amount = price - entry_price
+                        pnl_percentage = (pnl_amount / entry_price) * 100
+                        journal.update_exit(
+                            trade_id=firebase_trade_id,
+                            exit_price=price,
+                            pnl_amount=pnl_amount,
+                            pnl_percentage=pnl_percentage,
+                            is_partial=True
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update Firebase journal on partial exit: {e}")
                 
         elif action == "EXIT_LONG":
             self.current_position = 0
@@ -228,6 +248,26 @@ class CCIEMAStrategy:
                 self.active_trade["exit_price"] = price
                 self.active_trade["exit_cci"] = cci
                 self.active_trade["status"] = "CLOSED"
+                
+                # Update Firebase journal on final exit
+                firebase_trade_id = self.active_trade.get("firebase_trade_id")
+                if firebase_trade_id:
+                    try:
+                        from core.firebase_journal import get_journal_service
+                        journal = get_journal_service()
+                        entry_price = self.active_trade["entry_price"]
+                        pnl_amount = price - entry_price
+                        pnl_percentage = (pnl_amount / entry_price) * 100
+                        journal.update_exit(
+                            trade_id=firebase_trade_id,
+                            exit_price=price,
+                            pnl_amount=pnl_amount,
+                            pnl_percentage=pnl_percentage,
+                            is_partial=False
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update Firebase journal on exit: {e}")
+                
                 self.trades.append(self.active_trade)
                 self.active_trade = None
 
