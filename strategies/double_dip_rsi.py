@@ -266,7 +266,7 @@ class DoubleDipRSIStrategy:
 
         return None, ""
 
-    def update_position_state(self, action: str, current_time_ms: float, current_rsi: float = 0.0, price: float = 0.0, reason: str = ""):
+    def update_position_state(self, action: str, current_time_ms: float, current_rsi: float = 0.0, price: float = 0.0, reason: str = "", firebase_trade_id: str = None):
         """Update internal state based on executed action."""
         import datetime
         
@@ -286,7 +286,8 @@ class DoubleDipRSIStrategy:
                 "exit_rsi": None,
                 "exit_price": None,
                 "status": "OPEN",
-                "partial_exit_done": False
+                "partial_exit_done": False,
+                "firebase_trade_id": firebase_trade_id  # Store Firebase trade ID
             }
             
         elif action == "ENTRY_SHORT":
@@ -302,13 +303,33 @@ class DoubleDipRSIStrategy:
                 "exit_rsi": None,
                 "exit_price": None,
                 "status": "OPEN",
-                "partial_exit_done": False
+                "partial_exit_done": False,
+                "firebase_trade_id": firebase_trade_id  # Store Firebase trade ID
             }
             
         elif action == "EXIT_LONG_PARTIAL":
             if self.active_trade:
                 self.active_trade['partial_exit_done'] = True
                 self.next_partial_target = None # Clear target after hit
+                
+                # Update Firebase journal for partial exit
+                firebase_trade_id = self.active_trade.get("firebase_trade_id")
+                if firebase_trade_id:
+                    try:
+                        from core.firebase_journal import get_journal_service
+                        journal = get_journal_service()
+                        entry_price = self.active_trade["entry_price"]
+                        pnl_amount = price - entry_price
+                        pnl_percentage = (pnl_amount / entry_price) * 100
+                        journal.update_exit(
+                            trade_id=firebase_trade_id,
+                            exit_price=price,
+                            pnl_amount=pnl_amount,
+                            pnl_percentage=pnl_percentage,
+                            is_partial=True
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update Firebase journal on partial exit: {e}")
                 
                 # Log a "Partial" record in history
                 partial_trade = self.active_trade.copy()
@@ -324,6 +345,25 @@ class DoubleDipRSIStrategy:
              if self.active_trade:
                 self.active_trade['partial_exit_done'] = True
                 self.next_partial_target = None # Clear target after hit
+                
+                # Update Firebase journal for partial exit
+                firebase_trade_id = self.active_trade.get("firebase_trade_id")
+                if firebase_trade_id:
+                    try:
+                        from core.firebase_journal import get_journal_service
+                        journal = get_journal_service()
+                        entry_price = self.active_trade["entry_price"]
+                        pnl_amount = entry_price - price  # For SHORT
+                        pnl_percentage = (pnl_amount / entry_price) * 100
+                        journal.update_exit(
+                            trade_id=firebase_trade_id,
+                            exit_price=price,
+                            pnl_amount=pnl_amount,
+                            pnl_percentage=pnl_percentage,
+                            is_partial=True
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update Firebase journal on partial exit: {e}")
                 
                 # Log a "Partial" record in history
                 partial_trade = self.active_trade.copy()
@@ -348,6 +388,24 @@ class DoubleDipRSIStrategy:
                 self.active_trade["exit_rsi"] = current_rsi
                 self.active_trade["exit_price"] = price
                 
+                # Update Firebase journal on final exit
+                firebase_trade_id = self.active_trade.get("firebase_trade_id")
+                if firebase_trade_id:
+                    try:
+                        from core.firebase_journal import get_journal_service
+                        journal = get_journal_service()
+                        entry_price = self.active_trade["entry_price"]
+                        pnl_amount = price - entry_price
+                        pnl_percentage = (pnl_amount / entry_price) * 100
+                        journal.update_exit(
+                            trade_id=firebase_trade_id,
+                            exit_price=price,
+                            pnl_amount=pnl_amount,
+                            pnl_percentage=pnl_percentage,
+                            is_partial=False
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update Firebase journal on exit: {e}")
                 
                 # Annotate Status
                 if self.active_trade.get('partial_exit_done'):
@@ -357,9 +415,6 @@ class DoubleDipRSIStrategy:
                 
                 # Calculate Points
                 entry = float(self.active_trade['entry_price'])
-                points = price - entry if self.current_position == 0 else entry - price # Wait, pos is 0 now. Logic: Long exit -> price - entry. Short exit -> entry - price.
-                # But we reset current_position BEFORE this block?
-                # Ah, we are in EXIT_LONG block, so it WAS Long.
                 points = price - entry
                 
                 self.active_trade["points"] = points
@@ -376,6 +431,25 @@ class DoubleDipRSIStrategy:
                 self.active_trade["exit_time"] = format_time(current_time_ms)
                 self.active_trade["exit_rsi"] = current_rsi
                 self.active_trade["exit_price"] = price
+                
+                # Update Firebase journal on final exit
+                firebase_trade_id = self.active_trade.get("firebase_trade_id")
+                if firebase_trade_id:
+                    try:
+                        from core.firebase_journal import get_journal_service
+                        journal = get_journal_service()
+                        entry_price = self.active_trade["entry_price"]
+                        pnl_amount = entry_price - price  # For SHORT
+                        pnl_percentage = (pnl_amount / entry_price) * 100
+                        journal.update_exit(
+                            trade_id=firebase_trade_id,
+                            exit_price=price,
+                            pnl_amount=pnl_amount,
+                            pnl_percentage=pnl_percentage,
+                            is_partial=False
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update Firebase journal on exit: {e}")
                 
                 # Annotate Status
                 if self.active_trade.get('partial_exit_done'):

@@ -182,7 +182,7 @@ class RSI50EMAStrategy:
                 
         return action, reason
 
-    def update_position_state(self, action: str, current_time_ms: float, indicators: Any = None, price: float = 0.0, reason: str = ""):
+    def update_position_state(self, action: str, current_time_ms: float, indicators: Any = None, price: float = 0.0, reason: str = "", firebase_trade_id: str = None):
         """Update internal state based on executed action."""
         import datetime
         
@@ -209,7 +209,8 @@ class RSI50EMAStrategy:
                 "exit_price": None,
                 "exit_rsi": None,
                 "status": "OPEN",
-                "logs": []
+                "logs": [],
+                "firebase_trade_id": firebase_trade_id  # Store Firebase trade ID
             }
             
         elif action == "EXIT_LONG":
@@ -220,6 +221,29 @@ class RSI50EMAStrategy:
                 self.active_trade["exit_price"] = price
                 self.active_trade["exit_rsi"] = rsi
                 self.active_trade["status"] = "CLOSED"
+                
+                # Update Firebase journal on exit
+                firebase_trade_id = self.active_trade.get("firebase_trade_id")
+                if firebase_trade_id:
+                    try:
+                        from core.firebase_journal import get_journal_service
+                        journal = get_journal_service()
+                        
+                        # Calculate PnL
+                        entry_price = self.active_trade["entry_price"]
+                        pnl_amount = price - entry_price  # For LONG
+                        pnl_percentage = (pnl_amount / entry_price) * 100
+                        
+                        journal.update_exit(
+                            trade_id=firebase_trade_id,
+                            exit_price=price,
+                            pnl_amount=pnl_amount,
+                            pnl_percentage=pnl_percentage,
+                            is_partial=False
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to update Firebase journal on exit: {e}")
+                
                 self.trades.append(self.active_trade)
                 self.active_trade = None
 
