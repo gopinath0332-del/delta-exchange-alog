@@ -18,6 +18,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - RSI-50-EMA (XRPUSD) - RSI + EMA confirmation
   - MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
+  - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
 
@@ -51,6 +52,7 @@ delta-exchange-alog/
 │   ├── rsi_50_ema_strategy.py # RSI + 50 EMA strategy (XRPUSD)
 │   ├── macd_psar_100ema_strategy.py # MACD + PSAR + 100 EMA (XRPUSD)
 │   ├── rsi_200_ema_strategy.py # RSI + 200 EMA strategy (ETHUSD)
+│   ├── rsi_supertrend_strategy.py # RSI + Supertrend strategy (RIVERUSD)
 │   └── examples/       # Example strategies
 ├── backtesting/        # Backtesting engine
 ├── trading/            # Live trading engine
@@ -168,6 +170,54 @@ risk_management:
   max_leverage: 10
 ```
 
+## Available Strategies
+
+### 1. EMA Crossover Strategy (BTCUSD)
+
+- **Timeframe**: 1 hour with Heikin Ashi candles
+- **Entry**: EMA crossover signals
+- **Exit**: Supertrend flip or partial TP/ATR trail stop
+- **Features**: Dynamic position sizing, partial profit taking
+
+### 2. RSI-200 EMA Strategy (ETHUSD)
+
+- **Timeframe**: 1 hour with Heikin Ashi candles
+- **Entry Long**: RSI crosses above 70 & close above EMA 200
+- **Exit**: Price closes below EMA 200 or partial TP/ATR trail stop
+- **Features**: Partial profit taking, ATR trailing stop
+
+### 3. RSI-Supertrend Strategy (RIVERUSD)
+
+- **Timeframe**: 1 hour with Standard candles
+- **Type**: Long-only strategy
+- **Entry**: RSI crosses above 50
+- **Exit**: Supertrend flips from bullish to bearish
+- **Indicators**:
+  - RSI (14 period)
+  - Supertrend (ATR Length: 10, Multiplier: 2.0)
+- **Features**:
+  - ATR calculated using RMA (Running Moving Average / Wilder's smoothing)
+  - Clean backtest with position tracking
+  - Dashboard with real-time P&L for open positions
+
+**Configuration** (`config/.env`):
+
+```env
+ORDER_SIZE_RIVERUSD=2
+LEVERAGE_RIVERUSD=5
+ENABLE_ORDER_PLACEMENT_RIVERUSD=false
+```
+
+**Strategy Parameters** (`config/settings.yaml`):
+
+```yaml
+rsi_supertrend:
+  rsi_length: 14
+  rsi_long_level: 50.0
+  atr_length: 10
+  atr_multiplier: 2.0
+```
+
 ## Closed Candle Logic
 
 All trading strategies use **closed candle logic** for signal generation, ensuring consistency between backtesting and live trading.
@@ -266,6 +316,7 @@ python main.py report --backtest-id latest --output report.pdf
   - [x] RSI-50-EMA (XRPUSD) - RSI + EMA with fresh signal detection
   - [x] MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - [x] RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA and ATR-based exits
+  - [x] RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit (RMA-based ATR)
 - [x] **3-Hour Candle Aggregation** - Local candle aggregation for custom timeframes
 - [x] **Position Reconciliation** - Automatic sync with exchange on restart
 - [x] **ATR-based Risk Management** - Dynamic trailing stops and partial exits

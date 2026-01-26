@@ -83,3 +83,8 @@ strategies:
     partial_pct: 0.5
     historical_days: 60 # Fetch 60 days for backtesting (480 3h candles)
 
+  rsi_supertrend:
+    rsi_length: 14
+    rsi_long_level: 50.0
+    atr_length: 10
+    atr_multiplier: 2.0
