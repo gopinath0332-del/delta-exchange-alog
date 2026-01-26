@@ -248,7 +248,7 @@ class RSI200EMAStrategy:
                 
         return action, reason
 
-    def update_position_state(self, action: str, current_time_ms: float, indicators: Any = None, price: float = 0.0, reason: str = "", firebase_trade_id: str = None):
+    def update_position_state(self, action: str, current_time_ms: float, indicators: Any = None, price: float = 0.0, reason: str = ""):
         """Update internal state based on executed action."""
         import datetime
         
@@ -276,8 +276,7 @@ class RSI200EMAStrategy:
                 "exit_rsi": None,
                 "status": "OPEN",
                 "partial_exit": False,
-                "logs": [],
-                "firebase_trade_id": firebase_trade_id  # Store Firebase trade ID
+                "logs": []
             }
             
         elif action == "PARTIAL_EXIT":
@@ -291,25 +290,6 @@ class RSI200EMAStrategy:
                 partial_trade["status"] = "PARTIAL"
                 partial_trade["points"] = price - partial_trade["entry_price"]
                 self.trades.append(partial_trade)
-                
-                # Update Firebase journal for partial exit
-                firebase_trade_id = self.active_trade.get("firebase_trade_id")
-                if firebase_trade_id:
-                    try:
-                        from core.firebase_journal import get_journal_service
-                        journal = get_journal_service()
-                        entry_price = self.active_trade["entry_price"]
-                        pnl_amount = price - entry_price
-                        pnl_percentage = (pnl_amount / entry_price) * 100
-                        journal.update_exit(
-                            trade_id=firebase_trade_id,
-                            exit_price=price,
-                            pnl_amount=pnl_amount,
-                            pnl_percentage=pnl_percentage,
-                            is_partial=True
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to update Firebase journal on partial exit: {e}")
                 
                 # Mark partial exit done
                 self.partial_exit_done = True
@@ -334,26 +314,6 @@ class RSI200EMAStrategy:
                     self.active_trade["status"] = "CLOSED"
                     
                 self.active_trade["points"] = price - self.active_trade["entry_price"]
-                
-                # Update Firebase journal on final exit
-                firebase_trade_id = self.active_trade.get("firebase_trade_id")
-                if firebase_trade_id:
-                    try:
-                        from core.firebase_journal import get_journal_service
-                        journal = get_journal_service()
-                        entry_price = self.active_trade["entry_price"]
-                        pnl_amount = price - entry_price
-                        pnl_percentage = (pnl_amount / entry_price) * 100
-                        journal.update_exit(
-                            trade_id=firebase_trade_id,
-                            exit_price=price,
-                            pnl_amount=pnl_amount,
-                            pnl_percentage=pnl_percentage,
-                            is_partial=False
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to update Firebase journal on exit: {e}")
-                
                 self.trades.append(self.active_trade)
                 self.active_trade = None
             
