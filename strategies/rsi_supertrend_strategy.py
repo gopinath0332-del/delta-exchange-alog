@@ -86,13 +86,20 @@ class RSISupertrendStrategy:
                 lc = abs(low[i] - close[i-1])
                 tr[i] = max(hl, hc, lc)
             
-            # Calculate ATR using SMA (Simple Moving Average)
+            # Calculate ATR using RMA (Running Moving Average / Wilder's smoothing)
+            # Pine Script's ta.supertrend() uses RMA, not SMA
+            # RMA formula: RMA[i] = (RMA[i-1] * (length - 1) + value[i]) / length
             atr = np.zeros(n)
-            for i in range(n):
-                if i < self.atr_length:
-                    atr[i] = np.mean(tr[:i+1])
-                else:
-                    atr[i] = np.mean(tr[i-self.atr_length+1:i+1])
+            # Initialize first ATR with SMA of first 'atr_length' values
+            atr[self.atr_length - 1] = np.mean(tr[:self.atr_length])
+            
+            # Calculate RMA for the rest
+            for i in range(self.atr_length, n):
+                atr[i] = (atr[i-1] * (self.atr_length - 1) + tr[i]) / self.atr_length
+            
+            # For values before atr_length, use expanding mean
+            for i in range(self.atr_length - 1):
+                atr[i] = np.mean(tr[:i+1])
             
             # Calculate HL2 (High + Low) / 2
             hl2 = (high + low) / 2.0
@@ -345,7 +352,6 @@ class RSISupertrendStrategy:
                 "status": "OPEN",
                 "logs": []
             }
-            logger.info("Position opened: LONG @ %.2f, RSI: %.2f", price, rsi)
             
         elif action == "EXIT_LONG":
             self.current_position = 0
@@ -363,7 +369,6 @@ class RSISupertrendStrategy:
                 
                 self.trades.append(self.active_trade)
                 self.active_trade = None
-                logger.info("Position closed: LONG @ %.2f, RSI: %.2f, Points: %+.2f", price, rsi, points)
 
     def reconcile_position(self, size: float, entry_price: float):
         """
@@ -383,20 +388,11 @@ class RSISupertrendStrategy:
                 self.current_position = 0
                 logger.info("Reconciled state to FLAT")
                 
-            # Ensure active_trade is closed if we are actually FLAT
-            if self.active_trade:
-                import time
-                current_timestamp = time.time() * 1000
-                import datetime
-                formatted_time = datetime.datetime.fromtimestamp(current_timestamp/1000).strftime('%d-%m-%y %H:%M')
-                
-                logger.info("Closing phantom active_trade via Reconciliation")
-                self.active_trade["exit_time"] = f"{formatted_time} (Reconciled)"
-                self.active_trade["exit_price"] = 0.0  # Unknown
-                self.active_trade["exit_rsi"] = 0.0
-                self.active_trade["status"] = "CLOSED (SYNC)"
-                self.trades.append(self.active_trade)
-                self.active_trade = None
+            # DO NOT close active_trade during reconciliation when FLAT
+            # The trade is still logically open from strategy perspective
+            # It will be properly closed when exit signal is triggered
+            # This prevents showing negative P&L in trade history
+
 
     def run_backtest(self, df: pd.DataFrame):
         """
@@ -416,13 +412,6 @@ class RSISupertrendStrategy:
         supertrend_series, direction_series = self.calculate_supertrend(df)
         
         min_required = max(self.rsi_length, self.atr_length) + 1
-        
-        logger.info("=" * 80)
-        logger.info("BACKTEST DEBUG - Checking for RSI crossovers above %.1f", self.rsi_long_level)
-        logger.info("Total candles in backtest: %d", len(df))
-        logger.info("=" * 80)
-        
-        crossover_count = 0
         
         for i in range(min_required, len(df)):
             current_time_s = df['time'].iloc[i]
@@ -452,65 +441,17 @@ class RSISupertrendStrategy:
             if self.current_position == 0:
                 is_crossover = (prev_prev_rsi <= self.rsi_long_level) and (prev_rsi > self.rsi_long_level)
                 
-                # Debug logging for crossover detection
                 if is_crossover:
-                    import datetime
-                    ts = df['time'].iloc[i]
-                    if ts > 1e11:
-                        ts /= 1000
-                    date_str = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')
-                    crossover_count += 1
-                    logger.info("CROSSOVER #%d detected at %s: RSI %.2f->%.2f (Threshold: %.1f)", 
-                               crossover_count, date_str, prev_prev_rsi, prev_rsi, self.rsi_long_level)
                     action = "ENTRY_LONG"
                     
             # Long Exit: Supertrend flip from bullish to bearish
             elif self.current_position == 1:
                 supertrend_flip = (prev_prev_direction < 0) and (prev_direction > 0)
                 
-                # Debug logging for exit detection
-                if prev_prev_direction < 0 or prev_direction > 0:
-                    import datetime
-                    ts = df['time'].iloc[i]
-                    if ts > 1e11:
-                        ts /= 1000
-                    date_str = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')
-                    logger.info("EXIT CHECK at %s: prev_prev_dir=%d, prev_dir=%d, flip=%s", 
-                               date_str, prev_prev_direction, prev_direction, supertrend_flip)
-                
                 if supertrend_flip:
-                    import datetime
-                    ts = df['time'].iloc[i]
-                    if ts > 1e11:
-                        ts /= 1000
-                    date_str = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')
-                    logger.info("EXIT signal at %s: Supertrend flipped BULL->BEAR", date_str)
                     action = "EXIT_LONG"
             
             if action:
                 self.update_position_state(action, current_time_ms, prev_rsi, close)
                 
-        logger.info("=" * 80)
-        logger.info("Backtest complete. Detected %d crossovers, Executed %d trades", crossover_count, len(self.trades))
-        
-        # Debug: Show Supertrend direction changes around Jan 6
-        logger.info("Checking Supertrend direction changes around Jan 6...")
-        for i in range(len(df)):
-            import datetime
-            ts = df['time'].iloc[i]
-            if ts > 1e11:
-                ts /= 1000
-            date_str = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
-            
-            if '2026-01-06' in date_str or '2026-01-07' in date_str:
-                if i > 0:
-                    curr_dir = direction_series.iloc[i]
-                    prev_dir = direction_series.iloc[i-1]
-                    if curr_dir != prev_dir:
-                        time_str = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M')
-                        logger.info("DIRECTION CHANGE at %s: %s -> %s", 
-                                   time_str, 
-                                   "BULL" if prev_dir < 0 else "BEAR",
-                                   "BULL" if curr_dir < 0 else "BEAR")
-        
-        logger.info("=" * 80)
+        logger.info("Backtest complete. Trades: %d", len(self.trades))
