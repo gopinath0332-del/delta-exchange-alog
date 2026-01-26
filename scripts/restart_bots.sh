@@ -10,4 +10,7 @@ sudo systemctl restart delta-bot-eth.service
 echo "Restarting XRP Service..."
 sudo systemctl restart delta-bot-xrp.service
 
+echo "Restarting River Service..."
+sudo systemctl restart delta-bot-river.service
+
 echo "Services restarted."
