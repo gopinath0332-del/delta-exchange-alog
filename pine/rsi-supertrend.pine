@@ -1,0 +1,91 @@
+//@version=5
+strategy("RSI with Supertrend",
+     overlay=true,
+     pyramiding=0,
+     default_qty_type=strategy.percent_of_equity,
+     default_qty_value=100)
+
+// ───── Inputs ─────
+tradeMode    = input.string("BOTH", "Trade Mode", options=["LONG", "SHORT", "BOTH"])
+
+rsiLen        = input.int(14, "RSI Length")
+rsiSrc        = input.source(close, "RSI Source")
+rsiLongLevel  = input.float(50.0, "RSI Long Entry Level", minval=0, maxval=100)
+rsiShortLevel = input.float(35.0, "RSI Short Entry Level", minval=0, maxval=100)
+
+minLongBars   = input.int(32, "Min Previous Long Duration (Candles)", minval=1)
+
+atrLen  = input.int(10, "Supertrend ATR Length")
+atrMult = input.float(2.0, "Supertrend Multiplier")
+
+// Background inputs
+enableBg   = input.bool(true, "Enable Position Background")
+longBgCol  = input.color(color.new(color.green, 85), "Long Background Color")
+shortBgCol = input.color(color.new(color.red, 85), "Short Background Color")
+
+// ───── Derived mode flags ─────
+allowLong  = tradeMode == "LONG" or tradeMode == "BOTH"
+allowShort = tradeMode == "SHORT" or tradeMode == "BOTH"
+
+// ───── Indicators ─────
+rsi = ta.rsi(rsiSrc, rsiLen)
+
+// Supertrend: dir < 0 = bullish, dir > 0 = bearish
+[st, dir] = ta.supertrend(atrMult, atrLen)
+
+// ───── Track previous long duration in bars ─────
+var int longEntryBar = na
+var int lastLongBars = na
+
+// Track if a short is allowed after last long
+var bool shortAllowed = false
+
+// When a long opens, store entry bar and allow future short
+if (strategy.position_size > 0 and strategy.position_size[1] == 0)
+    longEntryBar := bar_index
+    shortAllowed := true
+
+// When a long closes, compute duration
+if (strategy.position_size == 0 and strategy.position_size[1] > 0)
+    lastLongBars := bar_index - longEntryBar
+
+// When a short opens, consume allowance
+if (strategy.position_size < 0 and strategy.position_size[1] == 0)
+    shortAllowed := false
+
+// Was previous long long enough?
+prevLongOk = not na(lastLongBars) and lastLongBars >= minLongBars
+
+// ───── Conditions ─────
+// Long entry: RSI crosses above level
+longEntry = allowLong and ta.crossover(rsi, rsiLongLevel)
+
+// Long exit: Supertrend flips bullish → bearish
+longExit = dir > 0 and dir[1] < 0
+
+// Short entry: RSI crosses below level AND previous long ≥ min bars AND only once
+shortEntry = allowShort and ta.crossunder(rsi, rsiShortLevel) and prevLongOk and shortAllowed
+
+// Short exit: Supertrend flips bearish → bullish
+shortExit = dir < 0 and dir[1] > 0
+
+// ───── Orders (No Overlap) ─────
+if (longEntry and strategy.position_size == 0)
+    strategy.entry("Long", strategy.long)
+
+if (shortEntry and strategy.position_size == 0)
+    strategy.entry("Short", strategy.short)
+
+if (longExit and strategy.position_size > 0)
+    strategy.close("Long")
+
+if (shortExit and strategy.position_size < 0)
+    strategy.close("Short")
+
+// ───── Plots ─────
+plot(st, color = dir < 0 ? color.green : color.red, title="Supertrend")
+// hline(rsiLongLevel, "RSI Long Level", color=color.gray)
+// hline(rsiShortLevel, "RSI Short Level", color=color.gray)
+
+// ───── Background when in position ─────
+bgcolor(enableBg ? (strategy.position_size > 0 ? longBgCol : strategy.position_size < 0 ? shortBgCol : na) : na)

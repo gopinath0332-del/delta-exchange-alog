@@ -81,6 +81,15 @@ def main():
             "timeframe": "1h",
             "candle_type": "heikin-ashi",
             "desc": "Long Entry: RSI crossover 70 & Close>EMA200. Partial TP, ATR Trail Stop."
+        },
+        {
+            "id": 7,
+            "name": "RIVERUSD RSI-Supertrend (1H Standard)",
+            "symbol": "RIVERUSD",
+            "monitor": "rsi-supertrend",
+            "timeframe": "1h",
+            "candle_type": "standard",
+            "desc": "Long-only with RSI crossover entry and Supertrend exit."
         }
     ]
 
