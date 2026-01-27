@@ -1,0 +1,178 @@
+
+//@version=4
+strategy("Gold Both directions", overlay=true, pyramiding=0)
+
+// ───── INPUTS ─────
+enter_period = input(20, minval=1, title="Enter Channel")
+exit_period  = input(10, minval=1, title="Exit Channel")
+
+mode = input("Both", title="Trade Mode", options=["Long", "Short", "Both"])
+allowLong  = mode == "Long"  or mode == "Both"
+allowShort = mode == "Short" or mode == "Both"
+
+// ATR / Risk
+atrmultTP     = input(1.0, title="ATR TP Multiplier")
+atrmultTrail  = input(2.0, title="ATR Trailing SL Multiplier")
+atrperiod     = input(20, title="ATR Period")
+
+// NEW: Partial TP toggle
+enablePartialTP = input(true, title="Enable 50% Partial Take Profit")
+
+// Duration filter
+barsPerDay  = input(24, title="Bars per Day (1H = 24)")
+minLongDays = input(2, title="Minimum Long Duration (Days)")
+minLongBars = barsPerDay * minLongDays
+
+// Background
+enableBg       = input(true, title="Enable Position Background")
+longBaseColor  = input(color.green, title="Long BG Color")
+shortBaseColor = input(color.red, title="Short BG Color")
+transp         = input(85, title="Transparency", minval=0, maxval=100)
+
+longBg  = color.new(longBaseColor, transp)
+shortBg = color.new(shortBaseColor, transp)
+
+// ───── ATR CALCULATIONS ─────
+atr = ema(tr(true), atrperiod)
+
+upper = highest(enter_period)
+lower = lowest(exit_period)
+
+plot(upper, color=color.green)
+plot(lower, color=color.red)
+
+// ───── CONDITIONS ─────
+breakUp   = close >= upper[1]
+breakDown = close <= lower[1]
+
+longStopChannel  = close <= lower[1]
+shortStopChannel = close >= upper[1]
+
+// ───── TRACK LONG DURATION ─────
+var int longEntryBar = na
+var int lastLongBars = 0
+
+if strategy.position_size > 0 and strategy.position_size[1] <= 0
+    longEntryBar := bar_index
+
+if strategy.position_size == 0 and strategy.position_size[1] > 0
+    lastLongBars := bar_index - longEntryBar
+
+longHeldEnough = lastLongBars >= minLongBars
+
+// =====================================================================
+//                 50% PARTIAL TAKE-PROFIT (1 × ATR)
+// =====================================================================
+longTP  = strategy.position_avg_price + atr * atrmultTP
+shortTP = strategy.position_avg_price - atr * atrmultTP
+
+// Place partial exits ONLY if enabled
+if enablePartialTP
+    strategy.exit("BUY_TP_50",  from_entry="BUY",  qty_percent=50, limit=longTP)
+    strategy.exit("SELL_TP_50", from_entry="SELL", qty_percent=50, limit=shortTP)
+
+// =====================================================================
+//               ATR TRAILING STOP WITH SEPARATE MULTIPLIER
+// =====================================================================
+var float longTrail  = na
+var float shortTrail = na
+
+// Reset trailing when flat BEFORE plotting
+if strategy.position_size == 0
+    longTrail := na
+    shortTrail := na
+
+// update trailing stop for long
+if strategy.position_size > 0
+    newTrail = close - atr * atrmultTrail
+    longTrail := na(longTrail) ? newTrail : max(longTrail, newTrail)
+
+// update trailing stop for short
+if strategy.position_size < 0
+    newTrail = close + atr * atrmultTrail
+    shortTrail := na(shortTrail) ? newTrail : min(shortTrail, newTrail)
+
+longTrailHit  = strategy.position_size > 0 and close <= longTrail
+shortTrailHit = strategy.position_size < 0 and close >= shortTrail
+
+// =====================================================================
+//               CLEAN TRAILING LINE PLOTTING (ONLY IN POSITION)
+// =====================================================================
+longTrail_pos  = strategy.position_size > 0 ? longTrail  : na
+shortTrail_pos = strategy.position_size < 0 ? shortTrail : na
+
+// Plot TP lines only when partial TP is enabled
+plot(enablePartialTP and strategy.position_size > 0 ? longTP  : na, "Long TP",  color=color.blue,   linewidth=2, style=plot.style_linebr)
+plot(enablePartialTP and strategy.position_size < 0 ? shortTP : na, "Short TP", color=color.orange, linewidth=2, style=plot.style_linebr)
+
+plot(longTrail_pos,  "Long Trailing SL",  color=color.red,    linewidth=2, style=plot.style_linebr)
+plot(shortTrail_pos, "Short Trailing SL", color=color.green,  linewidth=2, style=plot.style_linebr)
+
+// =====================================================================
+//                               ALERTS
+// =====================================================================
+// --- per-position alert state flags ---
+var bool longTPAlerted  = false
+var bool shortTPAlerted = false
+
+// Reset TP alert flags on flat or new entries
+isNewLong  = strategy.position_size > 0 and strategy.position_size[1] <= 0
+isNewShort = strategy.position_size < 0 and strategy.position_size[1] >= 0
+wentFlat   = strategy.position_size == 0 and strategy.position_size[1] != 0
+
+if isNewLong or isNewShort or wentFlat
+    longTPAlerted  := false
+    shortTPAlerted := false
+
+// TP alerts (fire only once per position) — only if partial TP enabled
+if enablePartialTP and strategy.position_size > 0 and not longTPAlerted and high >= longTP
+    alert("LONG TAKE PROFIT HIT (50% closed)", alert.freq_once_per_bar_close)
+    longTPAlerted := true
+
+if enablePartialTP and strategy.position_size < 0 and not shortTPAlerted and low <= shortTP
+    alert("SHORT TAKE PROFIT HIT (50% closed)", alert.freq_once_per_bar_close)
+    shortTPAlerted := true
+
+// Trailing SL alerts
+if longTrailHit
+    alert("LONG TRAILING STOP HIT (Remaining closed)", alert.freq_once_per_bar_close)
+
+if shortTrailHit
+    alert("SHORT TRAILING STOP HIT (Remaining closed)", alert.freq_once_per_bar_close)
+
+// =====================================================================
+//                            ENTRY / EXIT LOGIC
+// =====================================================================
+// LONG ENTRY
+if allowLong and breakUp and strategy.position_size <= 0
+    strategy.close("SELL")
+    strategy.entry("BUY", strategy.long)
+    alert("BUY", alert.freq_once_per_bar_close)
+
+// LONG EXIT (Channel or Trailing)
+if strategy.position_size > 0 and (breakDown or longStopChannel or longTrailHit)
+    strategy.close("BUY")
+    alert("EXIT BUY", alert.freq_once_per_bar_close)
+
+// SHORT ENTRY
+if allowShort and breakDown and longHeldEnough and strategy.position_size == 0
+    strategy.entry("SELL", strategy.short)
+    alert("SELL (Long > 2 Days)", alert.freq_once_per_bar_close)
+
+// SHORT EXIT (Channel or Trailing)
+if strategy.position_size < 0 and (breakUp or shortStopChannel or shortTrailHit)
+    strategy.close("SELL")
+    alert("EXIT SELL", alert.freq_once_per_bar_close)
+
+// =====================================================================
+//                              BACKGROUND COLOR
+// =====================================================================
+inLong  = strategy.position_size > 0
+inShort = strategy.position_size < 0
+
+bgColor =
+     enableBg and inLong  ? longBg  :
+     enableBg and inShort ? shortBg :
+     na
+
+bgcolor(bgColor)

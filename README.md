@@ -19,6 +19,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
   - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
+  - Donchian Channel (RIVERUSD) - Long-only breakout with ATR trailing stop
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
 
@@ -53,6 +54,7 @@ delta-exchange-alog/
 │   ├── macd_psar_100ema_strategy.py # MACD + PSAR + 100 EMA (XRPUSD)
 │   ├── rsi_200_ema_strategy.py # RSI + 200 EMA strategy (ETHUSD)
 │   ├── rsi_supertrend_strategy.py # RSI + Supertrend strategy (RIVERUSD)
+│   ├── donchian_strategy.py   # Donchian Channel strategy (RIVERUSD)
 │   └── examples/       # Example strategies
 ├── backtesting/        # Backtesting engine
 ├── trading/            # Live trading engine
@@ -221,6 +223,48 @@ rsi_supertrend:
   atr_multiplier: 2.0
 ```
 
+### 4. Donchian Channel Strategy (RIVERUSD)
+
+- **Timeframe**: 1 hour with Heikin Ashi candles
+- **Type**: Long-only breakout strategy
+- **Entry**: Price breaks above upper Donchian channel (20-period highest high)
+- **Exit**: Price breaks below lower Donchian channel (10-period lowest low) OR trailing stop hit
+- **Indicators**:
+  - Upper Channel (20-period highest high)
+  - Lower Channel (10-period lowest low)
+  - ATR (16 period, EMA-based)
+- **Features**:
+  - ATR trailing stop (2× ATR below current price)
+  - Optional partial TP (50% exit at 4× ATR, disabled by default)
+  - Dynamic trailing stop that ratchets up with price
+  - Closed candle logic for breakout confirmation
+
+**Configuration** (`config/.env`):
+
+```env
+ORDER_SIZE_RIVER=4
+LEVERAGE_RIVER=5
+ENABLE_ORDER_PLACEMENT_RIVER=true
+```
+
+> [!NOTE]
+> Environment variables use `RIVER` as the base asset name (not `RIVERUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
+
+**Strategy Parameters** (`config/settings.yaml`):
+
+```yaml
+donchian_channel:
+  enter_period: 20 # Enter channel (highest high period)
+  exit_period: 10 # Exit channel (lowest low period)
+  atr_period: 16 # ATR calculation period
+  atr_mult_tp: 4.0 # ATR multiplier for take profit
+  atr_mult_trail: 2.0 # ATR multiplier for trailing stop
+  enable_partial_tp: false # Disable partial TP by default
+  partial_pct: 0.5 # 50% partial exit when enabled
+  bars_per_day: 24 # For 1H timeframe
+  min_long_days: 2 # Minimum long duration (tracking only)
+```
+
 ## Closed Candle Logic
 
 All trading strategies use **closed candle logic** for signal generation, ensuring consistency between backtesting and live trading.
@@ -320,6 +364,7 @@ python main.py report --backtest-id latest --output report.pdf
   - [x] MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - [x] RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA and ATR-based exits
   - [x] RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit (RMA-based ATR)
+  - [x] Donchian Channel (RIVERUSD) - Long-only breakout with ATR trailing stop
 - [x] **3-Hour Candle Aggregation** - Local candle aggregation for custom timeframes
 - [x] **Position Reconciliation** - Automatic sync with exchange on restart
 - [x] **ATR-based Risk Management** - Dynamic trailing stops and partial exits
@@ -418,8 +463,8 @@ For issues and questions:
 
 ### Completed ✅
 
-- [x] Advanced technical indicators (MACD, RSI, CCI, EMA, PSAR, ATR)
-- [x] Multiple strategy support (5 strategies implemented)
+- [x] Advanced technical indicators (MACD, RSI, CCI, EMA, PSAR, ATR, Donchian Channels)
+- [x] Multiple strategy support (7 strategies implemented)
 - [x] Closed candle logic standardization
 - [x] ATR-based risk management (trailing stops, partial exits)
 - [x] Position reconciliation on restart
