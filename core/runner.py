@@ -85,6 +85,11 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         strategy = RSISupertrendStrategy()
         strategy.timeframe = timeframe
         logger.info("Initialized RSISupertrendStrategy")
+    elif strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
+        from strategies.donchian_strategy import DonchianChannelStrategy
+        strategy = DonchianChannelStrategy()
+        strategy.timeframe = timeframe
+        logger.info("Initialized DonchianChannelStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
@@ -483,6 +488,19 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})") 
                          print(f"     RSI:      {strategy.last_closed_rsi:.2f}")
                          print(f"     ST:       ${strategy.last_closed_supertrend:.{p_decimals}f} ({'BULL' if strategy.last_closed_supertrend_dir < 0 else 'BEAR'})")
+                elif strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]: # Donchian Channel Strategy
+                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    print(f"   Upper Ch ({getattr(strategy, 'enter_period', 20)}): ${strategy.last_upper_channel:.{p_decimals}f}")
+                    print(f"   Lower Ch ({getattr(strategy, 'exit_period', 10)}):  ${strategy.last_lower_channel:.{p_decimals}f}")
+                    print(f"   ATR ({getattr(strategy, 'atr_period', 16)}):     {strategy.last_atr:.4f}")
+                    if getattr(strategy, 'tp_level', None):
+                        print(f"   TP Level:   ${strategy.tp_level:,.{p_decimals}f}")
+                    if getattr(strategy, 'trailing_stop_level', None):
+                        print(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
+                    if hasattr(strategy, 'last_closed_upper'):
+                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         print(f"     Upper:    ${strategy.last_closed_upper:.{p_decimals}f}")
+                         print(f"     Lower:    ${strategy.last_closed_lower:.{p_decimals}f}")
                 
                 print("-" * 80)
                 
