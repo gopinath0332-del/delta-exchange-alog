@@ -203,10 +203,13 @@ risk_management:
 **Configuration** (`config/.env`):
 
 ```env
-ORDER_SIZE_RIVERUSD=2
-LEVERAGE_RIVERUSD=5
-ENABLE_ORDER_PLACEMENT_RIVERUSD=false
+ORDER_SIZE_RIVER=4
+LEVERAGE_RIVER=5
+ENABLE_ORDER_PLACEMENT_RIVER=true
 ```
+
+> [!NOTE]
+> Environment variables use `RIVER` as the base asset name (not `RIVERUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
 
 **Strategy Parameters** (`config/settings.yaml`):
 
