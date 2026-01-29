@@ -95,6 +95,7 @@ def execute_strategy_signal(
         
         side = None
         is_entry = False
+        active_position = None  # Store position data for PnL/fees extraction
         
         if action == "ENTRY_LONG":
             side = "buy"
@@ -114,6 +115,7 @@ def execute_strategy_signal(
                     current_size = abs(float(active_position['size']))
                     order_size = int(current_size)
                     logger.info(f"Final Exit: Closing {order_size} lots (actual position size)")
+                    logger.info(f"Position data for PnL: {active_position}")
                 else:
                     logger.warning("No active position found for final exit. Sending ALERT ONLY.")
                     enable_orders = False
@@ -287,7 +289,29 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.error(f"Failed to fetch wallet details: {e}", exc_info=True)
         
-        # 6. Send Alert
+        # 7. Extract PnL and Fees (for exit signals)
+        pnl = None
+        funding_charges = None
+        trading_fees = None
+        
+        if not is_entry and active_position:
+            try:
+                # Extract unrealized PnL (will be realized after exit)
+                pnl = float(active_position.get('unrealized_pnl', 0.0))
+                
+                # Extract commission/trading fees
+                trading_fees = float(active_position.get('commission', 0.0))
+                
+                # Note: Funding charges might be in a separate field
+                # Check if there's a funding-specific field, otherwise leave as None
+                # Common fields: 'funding_pnl', 'funding', 'funding_payment'
+                funding_charges = float(active_position.get('funding_pnl', 0.0))
+                
+                logger.info(f"Exit metrics - PnL: ${pnl:+,.2f}, Fees: ${trading_fees:,.4f}, Funding: ${funding_charges:+,.4f}")
+            except Exception as e:
+                logger.warning(f"Failed to extract PnL/fees from position: {e}")
+        
+        # 8. Send Alert
         try:
             notifier.send_trade_alert(
                 symbol=symbol,
@@ -297,7 +321,10 @@ def execute_strategy_signal(
                 reason=reason + (" [PAPER]" if mode == "paper" else ""),
                 margin_used=margin_used if is_entry else None,
                 remaining_margin=remaining_margin,
-                strategy_name=strategy_name
+                strategy_name=strategy_name,
+                pnl=pnl,
+                funding_charges=funding_charges,
+                trading_fees=trading_fees
             )
         except Exception as e:
             logger.error(f"Failed to send trade alert: {e}")

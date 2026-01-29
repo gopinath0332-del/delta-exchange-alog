@@ -131,7 +131,6 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     try:
         logger.info("Fetching wallet balance for startup message...")
         wallet_data = client.get_wallet_balance()
-        logger.info(f"Wallet API response: {wallet_data}")
         
         # Get the collateral currency
         # Delta Exchange uses 'USD' as the symbol (not USDT)

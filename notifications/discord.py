@@ -68,7 +68,10 @@ class DiscordNotifier:
                         reason: str,
                         margin_used: Optional[float] = None,
                         remaining_margin: Optional[float] = None,
-                        strategy_name: Optional[str] = None):
+                        strategy_name: Optional[str] = None,
+                        pnl: Optional[float] = None,
+                        funding_charges: Optional[float] = None,
+                        trading_fees: Optional[float] = None):
         """
         Send a formatted trade alert with ANSI color codes.
 
@@ -81,6 +84,9 @@ class DiscordNotifier:
             margin_used: Margin used directly for this trade
             remaining_margin: Remaining wallet balance
             strategy_name: Name of the strategy executing the trade
+            pnl: Realized profit/loss (for exit signals)
+            funding_charges: Total funding fees paid/received
+            trading_fees: Commission/trading fees
         """
         title = f"🚀 TRADING SIGNAL: {side} {symbol}"
         color = 5763719 if "LONG" in side.upper() else 15548997  # Green for Long, Red for Short
@@ -111,6 +117,19 @@ class DiscordNotifier:
         
         if margin_used is not None:
             message += f"\nMargin Used: \u001b[0;35m${margin_used:,.2f}\u001b[0m"
+        
+        # Show PnL, funding, and fees only for exit signals
+        if "EXIT" in side.upper():
+            if pnl is not None:
+                # Color code: green for profit, red for loss
+                pnl_color = "0;32" if pnl >= 0 else "0;31"
+                message += f"\nP&L: \u001b[{pnl_color}m${pnl:+,.2f}\u001b[0m"
+            
+            if funding_charges is not None:
+                message += f"\nFunding: ${funding_charges:+,.4f}"
+            
+            if trading_fees is not None:
+                message += f"\nFees: ${trading_fees:,.4f}"
             
         if remaining_margin is not None:
             message += f"\nRemaining Wallet: \u001b[0;36m${remaining_margin:,.2f}\u001b[0m"
