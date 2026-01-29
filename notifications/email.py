@@ -107,7 +107,10 @@ class EmailNotifier:
                         reason: str,
                         margin_used: Optional[float] = None,
                         remaining_margin: Optional[float] = None,
-                        strategy_name: Optional[str] = None):
+                        strategy_name: Optional[str] = None,
+                        pnl: Optional[float] = None,
+                        funding_charges: Optional[float] = None,
+                        trading_fees: Optional[float] = None):
         """
         Send a formatted trade alert email.
         """
