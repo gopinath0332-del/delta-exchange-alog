@@ -126,12 +126,76 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     # \u001b[0;32m = Green, \u001b[0;31m = Red, \u001b[0m = Reset
     ansi_enabled_str = f"\u001b[0;32m{enabled_str}\u001b[0m" if trade_config['enabled'] else f"\u001b[0;31m{enabled_str}\u001b[0m"
     
+    # Fetch wallet balance for startup message
+    wallet_balance_str = "N/A"
+    try:
+        logger.info("Fetching wallet balance for startup message...")
+        wallet_data = client.get_wallet_balance()
+        logger.info(f"Wallet API response: {wallet_data}")
+        
+        # Get the collateral currency
+        # Delta Exchange uses 'USD' as the symbol (not USDT)
+        collateral_currency = "USD"
+        
+        balance_obj = {}
+        if isinstance(wallet_data, list):
+            # Log all available assets
+            available_assets = [b.get('asset_symbol', 'unknown') for b in wallet_data]
+            logger.info(f"Available assets in wallet (list): {available_assets}")
+            balance_obj = next((b for b in wallet_data if b.get('asset_symbol') == collateral_currency), {})
+        elif isinstance(wallet_data, dict):
+            data_source = wallet_data.get('result', wallet_data)
+            if isinstance(data_source, list):
+                # Log all available assets
+                available_assets = [b.get('asset_symbol', 'unknown') for b in data_source]
+                logger.info(f"Available assets in wallet (dict->list): {available_assets}")
+                balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency), {})
+            elif isinstance(data_source, dict):
+                # Log all keys in the dict
+                logger.info(f"Wallet data keys: {list(data_source.keys())}")
+                if data_source.get('asset_symbol') == collateral_currency:
+                    balance_obj = data_source
+                else:
+                    balance_obj = data_source.get(collateral_currency, {})
+        
+        if balance_obj:
+            available_balance = float(balance_obj.get('available_balance', 0.0))
+            wallet_balance_str = f"${available_balance:,.2f}"
+            logger.info(f"Startup wallet balance: {wallet_balance_str}")
+        else:
+            # Try fallback to USDT if USD not found
+            collateral_currency_fallback = "USDT"
+            if isinstance(wallet_data, dict):
+                data_source = wallet_data.get('result', wallet_data)
+                if isinstance(data_source, list):
+                    balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency_fallback), {})
+                    if balance_obj:
+                        available_balance = float(balance_obj.get('available_balance', 0.0))
+                        wallet_balance_str = f"${available_balance:,.2f}"
+                        logger.info(f"Startup wallet balance ({collateral_currency_fallback}): {wallet_balance_str}")
+            
+            if not balance_obj:
+                logger.warning(f"Could not find {collateral_currency} or {collateral_currency_fallback} balance in wallet data")
+                # Try to find ANY balance as fallback
+            if isinstance(wallet_data, dict):
+                data_source = wallet_data.get('result', wallet_data)
+                if isinstance(data_source, list) and len(data_source) > 0:
+                    # Use first available balance
+                    first_balance = data_source[0]
+                    asset_sym = first_balance.get('asset_symbol', 'Unknown')
+                    available_balance = float(first_balance.get('available_balance', 0.0))
+                    wallet_balance_str = f"${available_balance:,.2f} ({asset_sym})"
+                    logger.info(f"Using first available balance: {wallet_balance_str}")
+    except Exception as e:
+        logger.warning(f"Failed to fetch wallet balance for startup: {e}")
+    
     start_msg = (
         f"{symbol} {strategy_name} started on host: {hostname}\n"
         f"Candle Type: {candle_type}\n"
         f"Order Placement: {ansi_enabled_str}\n"
         f"Order Size: {trade_config['order_size']}\n"
-        f"Leverage: {trade_config['leverage']}x"
+        f"Leverage: {trade_config['leverage']}x\n"
+        f"Wallet Balance: \u001b[0;36m{wallet_balance_str}\u001b[0m"
     )
     
     notifier.send_status_message(

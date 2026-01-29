@@ -431,13 +431,15 @@ class DeltaRestClient:
 
     def get_wallet_balance(self) -> Dict[str, Any]:
         """
-        Get wallet balance.
+        Get wallet balance for all assets.
 
         Returns:
-            Wallet balance information
+            Wallet balance information for all assets
         """
         logger.debug("Fetching wallet balance")
-        response = self._make_request(self.client.get_balances)
+        # Use authenticated endpoint directly since get_balances requires asset_id
+        # The /v2/wallet/balances endpoint returns all balances
+        response = self._make_auth_request("GET", "/v2/wallet/balances")
         return cast(Dict[str, Any], response)
 
     def get_positions(self, product_id: Optional[int] = None) -> List[Dict[str, Any]]:

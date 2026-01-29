@@ -241,12 +241,13 @@ def execute_strategy_signal(
 
             # 6. Fetch Wallet Balance (For Alert)
             remaining_margin = 0.0
+            logger.info("Attempting to fetch wallet balance for notification...")
             try:
                 wallet_data = client.get_wallet_balance()
-                logger.debug(f"Raw wallet data: {wallet_data}")
+                logger.info(f"Raw wallet data: {wallet_data}")
                 
-                collateral_currency = product.get('settling_asset', {}).get('symbol') or 'USDT'
-                logger.debug(f"Looking for collateral currency: {collateral_currency}")
+                collateral_currency = product.get('settling_asset', {}).get('symbol') or 'USD'
+                logger.info(f"Looking for collateral currency: {collateral_currency}")
 
                 balance_obj = {}
                 
@@ -269,6 +270,14 @@ def execute_strategy_signal(
 
                 if not balance_obj:
                     logger.warning(f"Could not find wallet balance for {collateral_currency} in response")
+                    # Log available assets to help debug
+                    if isinstance(wallet_data, dict):
+                        data_source = wallet_data.get('result', wallet_data)
+                        if isinstance(data_source, list):
+                            available_assets = [b.get('asset_symbol', 'unknown') for b in data_source]
+                            logger.warning(f"Available assets in response: {available_assets}")
+                else:
+                    logger.info(f"Found balance object: {balance_obj}")
 
                 # Parse fields
                 available_balance = float(balance_obj.get('available_balance', 0.0))
@@ -276,7 +285,7 @@ def execute_strategy_signal(
                 logger.info(f"Fetched wallet balance for {collateral_currency}: {remaining_margin}")
 
             except Exception as e:
-                logger.warning(f"Failed to fetch wallet details: {e}")
+                logger.error(f"Failed to fetch wallet details: {e}", exc_info=True)
         
         # 6. Send Alert
         try:
