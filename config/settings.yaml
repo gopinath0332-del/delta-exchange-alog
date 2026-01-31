@@ -99,3 +99,9 @@ strategies:
     partial_pct: 0.5 # 50% partial exit when enabled
     bars_per_day: 24 # For 1H timeframe
     min_long_days: 2 # Minimum long duration (tracking only)
+
+# Firestore Configuration (for trade journaling)
+firestore:
+  enabled: true # Enable/disable trade journaling to Firestore
+  service_account_path: "config/firestore-service-account.json" # Path to Admin SDK service account key
+  collection_name: "trades" # Firestore collection name for trade data

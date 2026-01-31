@@ -88,3 +88,8 @@ Thumbs.db
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Firebase Admin SDK Service Account (contains private key - DO NOT COMMIT)
+config/*firebase-adminsdk*.json
+config/firestore-service-account.json
+**/firestore-service-account.json

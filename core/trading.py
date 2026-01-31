@@ -8,6 +8,7 @@ import os
 from core.logger import get_logger
 from api.rest_client import DeltaRestClient
 from notifications.manager import NotificationManager
+from core.firestore_client import journal_trade  # For trade journaling to Firestore
 
 logger = get_logger(__name__)
 
@@ -328,6 +329,56 @@ def execute_strategy_signal(
             )
         except Exception as e:
             logger.error(f"Failed to send trade alert: {e}")
+        
+        # 9. Journal Trade to Firestore
+        # This happens after successful execution and notification
+        # Determine entry_price and exit_price based on trade type
+        entry_price_for_journal = None
+        exit_price_for_journal = None
+        
+        # Get execution price (actual fill price from exchange)
+        actual_execution_price = None
+        if order and not mode == "paper":
+            actual_execution_price = float(order.get('avg_fill_price', 0)) if order.get('avg_fill_price') else None
+        
+        if is_entry:
+            # For entries, the execution price becomes the entry price
+            entry_price_for_journal = actual_execution_price or price
+        else:
+            # For exits, the execution price becomes the exit price
+            exit_price_for_journal = actual_execution_price or price
+            # Try to get entry price from active_position if available
+            if active_position:
+                entry_price_for_journal = float(active_position.get('entry_price', 0.0)) or None
+        
+        try:
+            journal_trade(
+                symbol=symbol,
+                action=action,
+                side=side,
+                price=price,  # Candle close price
+                order_size=order_size,
+                leverage=leverage,
+                mode=mode,
+                strategy_name=strategy_name,
+                rsi=rsi,
+                reason=reason,
+                is_entry=is_entry,
+                is_partial_exit=("PARTIAL" in action),
+                entry_price=entry_price_for_journal,
+                exit_price=exit_price_for_journal,
+                execution_price=actual_execution_price or price,
+                pnl=pnl,
+                funding_charges=funding_charges,
+                trading_fees=trading_fees,
+                margin_used=margin_used,
+                remaining_margin=remaining_margin,
+                product_id=product_id,
+                order_id=order.get('id') if order else None
+            )
+        except Exception as e:
+            # Log error but don't fail the trade execution
+            logger.error(f"Failed to journal trade to Firestore: {e}", exc_info=True)
         
         return {
             "success": True,

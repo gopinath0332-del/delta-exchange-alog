@@ -147,7 +147,61 @@ ORDER_SIZE_XRP=10
 LEVERAGE_XRP=5
 ORDER_SIZE_BTC=1
 LEVERAGE_BTC=5
+
+# Firestore Trade Journaling (optional)
+# See Firebase Admin SDK setup below
+FIREBASE_PROJECT_ID=crypto-journal-b2298
 ```
+
+### Firestore Trade Journaling (Optional)
+
+All trades are automatically journaled to Google Cloud Firestore for historical analysis and performance tracking.
+
+#### Setup
+
+1. **Firebase Console**:
+   - Go to [Firebase Console](https://console.firebase.google.com/)
+   - Select your project (or create a new one)
+   - Navigate to **Project Settings** → **Service Accounts**
+   - Click **"Generate New Private Key"** → Download the JSON file
+   - Save it to `config/[your-service-account-file].json`
+
+2. **Configuration** (`config/settings.yaml`):
+
+```yaml
+firestore:
+  enabled: true # Enable/disable trade journaling
+  service_account_path: "config/your-firebase-adminsdk-file.json"
+  collection_name: "trades" # Firestore collection name
+```
+
+3. **Install Firebase Admin SDK**:
+
+```bash
+pip install firebase-admin
+```
+
+#### Trade Data Schema
+
+Each trade is stored with comprehensive data:
+
+- **Metadata**: `timestamp`, `symbol`, `strategy_name`, `mode` (live/paper)
+- **Action**: `action` (ENTRY_LONG, EXIT_LONG, etc.), `side` (buy/sell)
+- **Pricing**: `price` (candle close), `entry_price`, `exit_price`, `execution_price`
+- **Position**: `order_size`, `leverage`, `is_entry`, `is_partial_exit`
+- **Financials**: `pnl`, `funding_charges`, `trading_fees`, `margin_used`, `remaining_margin`
+- **Indicators**: `rsi`, `reason` (trade trigger)
+- **Exchange**: `product_id`, `order_id`
+
+#### Viewing Your Trades
+
+1. Go to [Firebase Console](https://console.firebase.google.com/)
+2. Navigate to **Firestore Database**
+3. Select the `trades` collection
+4. View individual trade documents with timestamps and all trade data
+
+> [!NOTE]
+> Firestore journaling failures are logged but will never interrupt trade execution. The service degrades gracefully if Firestore is unavailable.
 
 ### Trading Settings (settings.yaml)
 

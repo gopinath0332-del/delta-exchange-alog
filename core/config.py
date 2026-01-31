@@ -99,6 +99,7 @@ class Config:
         self._init_database_config()
         self._init_logging_config()
         self._init_trading_config()
+        self._init_firestore_config()  # Initialize Firestore for trade journaling
 
         logger.info("Configuration initialized successfully")
 
@@ -196,6 +197,44 @@ class Config:
 
         # Data fetching
         self.default_historical_days = int(os.getenv("DEFAULT_HISTORICAL_DAYS", "30"))
+
+    def _init_firestore_config(self):
+        """Initialize Firestore configuration for trade journaling."""
+        from core.firestore_client import initialize_firestore
+        
+        # Load Firestore settings from YAML
+        firestore_settings = self.settings.get("firestore", {})
+        
+        # Store Firestore configuration
+        self.firestore_enabled = firestore_settings.get("enabled", True)
+        self.firestore_service_account_path = firestore_settings.get(
+            "service_account_path", 
+            "config/firestore-service-account.json"
+        )
+        self.firestore_collection_name = firestore_settings.get("collection_name", "trades")
+        
+        # Initialize Firestore client
+        if self.firestore_enabled:
+            # Convert relative path to absolute
+            if not os.path.isabs(self.firestore_service_account_path):
+                self.firestore_service_account_path = os.path.join(
+                    self.project_root, 
+                    self.firestore_service_account_path
+                )
+            
+            success = initialize_firestore(
+                service_account_path=self.firestore_service_account_path,
+                collection_name=self.firestore_collection_name,
+                enabled=self.firestore_enabled
+            )
+            
+            if success:
+                logger.info("Firestore trade journaling initialized", 
+                           collection=self.firestore_collection_name)
+            else:
+                logger.warning("Firestore trade journaling disabled due to initialization failure")
+        else:
+            logger.info("Firestore trade journaling is disabled in configuration")
 
     def is_testnet(self) -> bool:
         """Check if running in testnet mode."""
