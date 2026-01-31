@@ -80,6 +80,7 @@ def journal_trade(
     order_size: int,
     leverage: int,
     mode: str,
+    trade_id: Optional[str] = None,  # Links entry and exit trades together
     strategy_name: Optional[str] = None,
     rsi: Optional[float] = None,
     reason: Optional[str] = None,
@@ -112,6 +113,7 @@ def journal_trade(
         order_size: Number of contracts
         leverage: Leverage used
         mode: Execution mode ('live' or 'paper')
+        trade_id: Unique ID linking entry and exit of the same trade (optional)
         strategy_name: Name of the strategy (e.g., 'Double Dip RSI')
         rsi: RSI value at trade time
         reason: Trade reason/trigger
@@ -145,57 +147,114 @@ def journal_trade(
         return None
     
     try:
-        # Build trade document
-        trade_doc = {
-            # Metadata
-            "timestamp": datetime.utcnow(),  # Firestore will auto-convert to Timestamp
-            "symbol": symbol,
-            "strategy_name": strategy_name or "Unknown",
-            "mode": mode,
-            
-            # Action details
-            "action": action,
-            "side": side,
-            "price": price,
-            "order_size": order_size,
-            "leverage": leverage,
-            
-            # Entry/Exit classification
-            "is_entry": is_entry,
-            "is_partial_exit": is_partial_exit,
-            "entry_price": entry_price,
-            "exit_price": exit_price,
-            
-            # Financial metrics (mostly for exits)
-            "pnl": pnl,
-            "funding_charges": funding_charges,
-            "trading_fees": trading_fees,
-            "margin_used": margin_used,
-            "remaining_margin": remaining_margin,
-            
-            # Technical indicators
-            "rsi": rsi,
-            "reason": reason,
-            
-            # Exchange data
-            "product_id": product_id,
-            "order_id": order_id,
-            "execution_price": execution_price or price,
-        }
+        # Determine trade status based on action
+        if is_entry:
+            status = "OPEN"
+        elif is_partial_exit:
+            status = "PARTIAL_CLOSED"
+        else:
+            status = "CLOSED"
         
-        # Add any additional fields from kwargs
-        trade_doc.update(kwargs)
-        
-        # Remove None values to keep documents clean
-        trade_doc = {k: v for k, v in trade_doc.items() if v is not None}
-        
-        # Add document to Firestore (auto-generated ID)
-        doc_ref = _firestore_client.collection(_firestore_collection).add(trade_doc)
-        doc_id = doc_ref[1].id
-        
-        logger.info(f"✓ Trade journaled to Firestore: {doc_id} | {symbol} {action} @ ${price:,.2f}")
-        
-        return doc_id
+        if is_entry:
+            # **ENTRY: Create a new trade document**
+            # Use trade_id as the document ID for easy updates later
+            if not trade_id:
+                logger.warning("No trade_id provided for entry, skipping journal")
+                return None
+            
+            trade_doc = {
+                # Trade identification
+                "trade_id": trade_id,
+                "status": status,  # OPEN, PARTIAL_CLOSED, or CLOSED
+                
+                # Entry metadata
+                "entry_timestamp": datetime.utcnow(),
+                "symbol": symbol,
+                "strategy_name": strategy_name or "Unknown",
+                "mode": mode,
+                
+                # Entry details
+                "entry_action": action,
+                "entry_side": side,
+                "entry_price": entry_price,
+                "entry_execution_price": execution_price or price,
+                "order_size": order_size,
+                "leverage": leverage,
+                
+                # Entry metrics
+                "entry_rsi": rsi,
+                "entry_reason": reason,
+                "margin_used": margin_used,
+                
+                # Exchange data
+                "product_id": product_id,
+                "entry_order_id": order_id,
+                
+                # Fields to be populated on exit
+                "exit_timestamp": None,
+                "exit_action": None,
+                "exit_side": None,
+                "exit_price": None,
+                "exit_execution_price": None,
+                "exit_rsi": None,
+                "exit_reason": None,
+                "pnl": None,
+                "funding_charges": None,
+                "trading_fees": None,
+                "remaining_margin": remaining_margin,
+                "exit_order_id": None,
+            }
+            
+            # Add any additional fields from kwargs
+            trade_doc.update(kwargs)
+            
+            # Remove None values to keep documents clean
+            trade_doc = {k: v for k, v in trade_doc.items() if v is not None}
+            
+            # Create document with trade_id as the document ID
+            doc_ref = _firestore_client.collection(_firestore_collection).document(trade_id)
+            doc_ref.set(trade_doc)
+            
+            logger.info(f"✓ Trade OPENED in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f}")
+            
+            return trade_id
+            
+        else:
+            # **EXIT: Update existing trade document**
+            if not trade_id:
+                logger.warning("No trade_id provided for exit, cannot update trade document")
+                return None
+            
+            # Prepare update data
+            update_data = {
+                "status": status,  # PARTIAL_CLOSED or CLOSED
+                "exit_timestamp": datetime.utcnow(),
+                "exit_action": action,
+                "exit_side": side,
+                "exit_price": exit_price,
+                "exit_execution_price": execution_price or price,
+                "exit_rsi": rsi,
+                "exit_reason": reason,
+                "pnl": pnl,
+                "funding_charges": funding_charges,
+                "trading_fees": trading_fees,
+                "remaining_margin": remaining_margin,
+                "exit_order_id": order_id,
+            }
+            
+            # Add any additional fields from kwargs
+            update_data.update(kwargs)
+            
+            # Remove None values
+            update_data = {k: v for k, v in update_data.items() if v is not None}
+            
+            # Update the existing document
+            doc_ref = _firestore_client.collection(_firestore_collection).document(trade_id)
+            doc_ref.update(update_data)
+            
+            logger.info(f"✓ Trade {status} in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f} | PnL: ${pnl:+,.2f}" if pnl else f"✓ Trade {status} in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f}")
+            
+            return trade_id
         
     except Exception as e:
         # Log error but don't raise - we don't want to interrupt trade execution

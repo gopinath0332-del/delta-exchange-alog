@@ -5,6 +5,8 @@ Handles order placement, leverage setting, and margin calculations.
 
 from typing import Optional
 import os
+import uuid
+from datetime import datetime
 from core.logger import get_logger
 from api.rest_client import DeltaRestClient
 from notifications.manager import NotificationManager
@@ -341,15 +343,31 @@ def execute_strategy_signal(
         if order and not mode == "paper":
             actual_execution_price = float(order.get('avg_fill_price', 0)) if order.get('avg_fill_price') else None
         
+        # Generate or retrieve trade_id to link entry and exit
+        trade_id = None
+        
         if is_entry:
             # For entries, the execution price becomes the entry price
             entry_price_for_journal = actual_execution_price or price
+            # Generate a unique trade_id for this new trade
+            timestamp_str = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+            trade_id = f"{symbol}_{strategy_name or 'unknown'}_{timestamp_str}_{uuid.uuid4().hex[:8]}"
+            logger.info(f"Generated trade_id for entry: {trade_id}")
         else:
             # For exits, the execution price becomes the exit price
             exit_price_for_journal = actual_execution_price or price
             # Try to get entry price from active_position if available
             if active_position:
                 entry_price_for_journal = float(active_position.get('entry_price', 0.0)) or None
+            
+            # Try to get trade_id from order metadata or generate a fallback
+            # Note: Ideally this should be stored with the position in strategy state
+            # For now, we'll create a consistent ID based on symbol and entry price
+            if active_position and active_position.get('entry_price'):
+                # Create a consistent trade_id based on entry details
+                # This is a fallback; ideally strategies should store trade_id
+                entry_ts = active_position.get('created_at', '')  # If available
+                trade_id = f"{symbol}_{strategy_name or 'unknown'}_{entry_ts}" if entry_ts else None
         
         try:
             journal_trade(
@@ -360,6 +378,7 @@ def execute_strategy_signal(
                 order_size=order_size,
                 leverage=leverage,
                 mode=mode,
+                trade_id=trade_id,  # Links entry and exit together
                 strategy_name=strategy_name,
                 rsi=rsi,
                 reason=reason,
