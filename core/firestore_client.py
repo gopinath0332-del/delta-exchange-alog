@@ -225,10 +225,45 @@ def journal_trade(
                 logger.warning("No trade_id provided for exit, cannot update trade document")
                 return None
             
+            # First, get the existing document to calculate days_held
+            exit_timestamp = datetime.utcnow()
+            days_held = None
+            pnl_percentage = None
+            
+            try:
+                doc_ref = _firestore_client.collection(_firestore_collection).document(trade_id)
+                existing_doc = doc_ref.get()
+                
+                if existing_doc.exists:
+                    doc_data = existing_doc.to_dict()
+                    entry_timestamp_raw = doc_data.get('entry_timestamp')
+                    
+                    # Calculate days_held
+                    if entry_timestamp_raw:
+                        # Convert Firestore timestamp to UTC datetime
+                        if hasattr(entry_timestamp_raw, 'timestamp'):
+                            # It's a Firestore Timestamp object, convert to UTC datetime
+                            entry_timestamp = datetime.utcfromtimestamp(entry_timestamp_raw.timestamp())
+                        else:
+                            entry_timestamp = entry_timestamp_raw
+                        
+                        time_diff = exit_timestamp - entry_timestamp
+                        days_held = round(time_diff.total_seconds() / 86400, 2)  # Convert to days with 2 decimals
+                    
+                    # Calculate pnl_percentage
+                    # Formula: ((exit_price - entry_price) / entry_price) * 100 * leverage
+                    if entry_price and exit_price:
+                        price_change_pct = ((exit_price - entry_price) / entry_price) * 100
+                        # For leveraged positions, multiply by leverage
+                        pnl_percentage = round(price_change_pct * leverage, 2)
+                    
+            except Exception as e:
+                logger.warning(f"Failed to calculate derived fields: {e}")
+            
             # Prepare update data
             update_data = {
                 "status": status,  # PARTIAL_CLOSED or CLOSED
-                "exit_timestamp": datetime.utcnow(),
+                "exit_timestamp": exit_timestamp,
                 "exit_action": action,
                 "exit_side": side,
                 "exit_price": exit_price,
@@ -236,6 +271,8 @@ def journal_trade(
                 "exit_rsi": rsi,
                 "exit_reason": reason,
                 "pnl": pnl,
+                "pnl_percentage": pnl_percentage,  # Calculated field
+                "days_held": days_held,  # Calculated field
                 "funding_charges": funding_charges,
                 "trading_fees": trading_fees,
                 "remaining_margin": remaining_margin,
