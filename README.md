@@ -7,6 +7,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 - **Multiple Trading Modes**: Backtesting, Paper Trading, and Live Trading
 - **Delta Exchange Integration**: Official `delta-rest-client` library with rate limiting
 - **Closed Candle Logic**: Standardized signal generation on confirmed candle closes (eliminates backtest vs. live discrepancies)
+- **Firestore Trade Journaling**: Comprehensive trade tracking with auto-calculated analytics (PnL %, days held, status tracking)
 - **Structured Logging**: Human-readable logs using `structlog`
 - **Modular Architecture**: Clean separation of concerns for easy extension
 - **Multiple Timeframes**: 5m, 15m, 1h, 3h, 4h, 1d (configurable)
@@ -35,7 +36,8 @@ delta-exchange-alog/
 │   ├── logger.py       # Structured logging
 │   ├── runner.py       # Strategy execution engine
 │   ├── trading.py      # Order execution and trade management
-│   ├── candle_utils.py # Closed candle detection utilities (NEW)
+│   ├── firestore_client.py # Firestore trade journaling (NEW)
+│   ├── candle_utils.py # Closed candle detection utilities
 │   ├── candle_aggregator.py # Multi-timeframe candle aggregation
 │   └── exceptions.py   # Custom exceptions
 ├── api/                # Delta Exchange API integration
@@ -181,17 +183,106 @@ firestore:
 pip install firebase-admin
 ```
 
-#### Trade Data Schema
+#### Trade Data Model
 
-Each trade is stored with comprehensive data:
+**Single-Document Per Trade**: Each trade is represented by ONE document that evolves through its lifecycle (entry → exit), not separate documents for entry and exit.
 
-- **Metadata**: `timestamp`, `symbol`, `strategy_name`, `mode` (live/paper)
-- **Action**: `action` (ENTRY_LONG, EXIT_LONG, etc.), `side` (buy/sell)
-- **Pricing**: `price` (candle close), `entry_price`, `exit_price`, `execution_price`
-- **Position**: `order_size`, `leverage`, `is_entry`, `is_partial_exit`
-- **Financials**: `pnl`, `funding_charges`, `trading_fees`, `margin_used`, `remaining_margin`
-- **Indicators**: `rsi`, `reason` (trade trigger)
-- **Exchange**: `product_id`, `order_id`
+**Document ID**: Uses `trade_id` (format: `{symbol}_{strategy}_{timestamp}_{uuid}`)
+
+**Status Lifecycle**:
+
+- `OPEN`: Trade entered, position is open
+- `PARTIAL_CLOSED`: Partial exit executed
+- `CLOSED`: Trade fully closed
+
+#### Complete Trade Document Schema
+
+```javascript
+{
+  // Document ID = trade_id
+  "trade_id": "BTCUSD_Double Dip RSI_20260131073858_be807a48",
+  "status": "CLOSED",  // OPEN → PARTIAL_CLOSED → CLOSED
+
+  // Core Information
+  "symbol": "BTCUSD",
+  "strategy_name": "Double Dip RSI",
+  "mode": "live",  // or "paper"
+  "product_id": 1,
+  "order_size": 2,
+  "leverage": 5,
+
+  // Entry Data (created on entry)
+  "entry_timestamp": Timestamp(2026, 1, 31, 7, 38, 59),
+  "entry_action": "ENTRY_LONG",
+  "entry_side": "buy",
+  "entry_price": 95500.00,
+  "entry_execution_price": 95508.50,
+  "entry_rsi": 56.80,
+  "entry_reason": "RSI crossover above 50",
+  "entry_order_id": "ORD123",
+  "margin_used": 38200.00,
+
+  // Exit Data (populated on exit)
+  "exit_timestamp": Timestamp(2026, 1, 31, 8, 15, 23),
+  "exit_action": "EXIT_LONG",
+  "exit_side": "sell",
+  "exit_price": 97800.00,
+  "exit_execution_price": 97792.25,
+  "exit_rsi": 41.20,
+  "exit_reason": "Profit target hit",
+  "exit_order_id": "ORD124",
+
+  // Financial Metrics
+  "pnl": 4584.50,
+  "pnl_percentage": 50.00,  // Auto-calculated: ((exit-entry)/entry * 100) * leverage
+  "funding_charges": -15.75,
+  "trading_fees": 28.90,
+  "remaining_margin": 16339.85,
+
+  // Analytics (Auto-calculated)
+  "days_held": 0.46  // Auto-calculated: (exit_timestamp - entry_timestamp) in days
+}
+```
+
+**Key Features**:
+
+- ✅ **One Document Per Trade**: Clean data model without duplicates
+- ✅ **Auto-Calculated Fields**: `pnl_percentage` and `days_held` automatically computed
+- ✅ **Status Tracking**: Easy filtering by OPEN/CLOSED trades
+- ✅ **Complete Trade Journey**: All entry and exit data in one place
+
+#### Querying Your Trades
+
+**Get All Open Positions**:
+
+```javascript
+db.collection("trades")
+  .where("status", "==", "OPEN")
+  .where("mode", "==", "live")
+  .get();
+```
+
+**Calculate Total PnL**:
+
+```javascript
+db.collection("trades")
+  .where("status", "==", "CLOSED")
+  .where("mode", "==", "live")
+  .get()
+  .then((snapshot) => {
+    let totalPnL = 0;
+    snapshot.forEach((doc) => (totalPnL += doc.data().pnl || 0));
+    console.log("Total PnL:", totalPnL);
+  });
+```
+
+**Get Trade by ID**:
+
+```javascript
+db.collection("trades")
+  .doc("BTCUSD_Double Dip RSI_20260131073858_be807a48")
+  .get();
+```
 
 #### Viewing Your Trades
 
