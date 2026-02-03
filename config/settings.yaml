@@ -90,6 +90,7 @@ strategies:
     atr_multiplier: 2.0
 
   donchian_channel:
+    trade_mode: "Both" # "Long", "Short", "Both"
     enter_period: 20 # Enter channel (highest high period)
     exit_period: 10 # Exit channel (lowest low period)
     atr_period: 16 # ATR calculation period
@@ -98,7 +99,7 @@ strategies:
     enable_partial_tp: false # Disable partial TP as per screenshot
     partial_pct: 0.5 # 50% partial exit when enabled
     bars_per_day: 24 # For 1H timeframe
-    min_long_days: 2 # Minimum long duration (tracking only)
+    min_long_days: 0 # Minimum long duration (tracking only)
 
 # Firestore Configuration (for trade journaling)
 firestore:

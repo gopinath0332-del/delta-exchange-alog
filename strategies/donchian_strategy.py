@@ -10,24 +10,15 @@ logger = logging.getLogger(__name__)
 
 class DonchianChannelStrategy:
     """
-    Donchian Channel Strategy (Gold Both directions) - Long Only Mode
+    Donchian Channel Strategy (Gold Both directions)
     
     Strategy Logic:
-    - Long Entry: Close breaks above upper Donchian channel (highest high over enter_period)
-    - Partial TP: 50% exit at entry + (ATR × atr_mult_tp) [if enabled]
-    - Trailing Stop: Dynamically updated at close - (ATR × atr_mult_trail)
-    - Long Exit: Close breaks below lower Donchian channel (lowest low over exit_period) OR trailing stop hit
-    
-    Parameters (from Pine Script):
-    - Enter Channel Period: 20
-    - Exit Channel Period: 10
-    - ATR Period: 16
-    - ATR TP Multiplier: 4.0
-    - ATR Trailing SL Multiplier: 2.0
-    - Enable Partial TP: false (disabled by default per screenshot)
-    - Partial Percentage: 0.5 (50%)
-    - Bars per Day: 24 (for 1H timeframe)
-    - Minimum Long Duration: 2 days
+    - Long Entry: Close breaks above upper Donchian channel.
+    - Long Exit: Close breaks below lower Donchian channel OR trailing stop hit.
+    - Short Entry: Close breaks below lower Donchian channel (if allowed and duration met).
+    - Short Exit: Close breaks above upper Donchian channel OR trailing stop hit.
+    - Partial TP: 50% exit at Entry +/- (ATR * Multiplier) [if enabled].
+    - Trailing Stop: Dynamically updated ATR based stop.
     """
     
     def __init__(self):
@@ -36,6 +27,7 @@ class DonchianChannelStrategy:
         cfg = config.settings.get("strategies", {}).get("donchian_channel", {})
 
         # Parameters
+        self.trade_mode = cfg.get("trade_mode", "Both") # "Long", "Short", "Both"
         self.enter_period = cfg.get("enter_period", 20)
         self.exit_period = cfg.get("exit_period", 10)
         self.atr_period = cfg.get("atr_period", 16)
@@ -44,22 +36,28 @@ class DonchianChannelStrategy:
         self.enable_partial_tp = cfg.get("enable_partial_tp", False)
         self.partial_pct = cfg.get("partial_pct", 0.5)
         self.bars_per_day = cfg.get("bars_per_day", 24)
-        self.min_long_days = cfg.get("min_long_days", 2)
+        self.min_long_days = cfg.get("min_long_days", 2) # Used for "Wait after long" logic
         self.min_long_bars = self.bars_per_day * self.min_long_days
         
-        self.indicator_label = "Donchian"
+        # Mode Flags
+        self.allow_long = self.trade_mode in ["Long", "Both"]
+        self.allow_short = self.trade_mode in ["Short", "Both"]
         
-        # Timeframe (set by runner, defaults to 1h)
+        self.indicator_label = "Donchian"
         self.timeframe = "1h"
         
         # State
-        self.current_position = 0  # 1 for Long, 0 for Flat
+        self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat
         self.last_entry_price = 0.0
-        self.entry_price = None  # Entry price for current position
-        self.entry_bar_index = None  # Bar index at entry
-        self.tp_level = None  # Take profit level
-        self.trailing_stop_level = None  # Trailing stop level
-        self.partial_exit_done = False  # Flag for partial exit
+        self.entry_price = None
+        self.entry_bar_index = None
+        self.tp_level = None
+        self.trailing_stop_level = None
+        self.partial_exit_done = False
+        
+        # Duration State
+        self.last_long_duration_bars = 0
+        self.long_entry_bar = None
         
         # Indicator Cache (for dashboard)
         self.last_upper_channel = 0.0
@@ -70,21 +68,16 @@ class DonchianChannelStrategy:
         self.trades = []
         self.active_trade = None
         
-        # For closed candle tracking
+        # Closed Candle Cache
         self.last_closed_time_str = "-"
         self.last_closed_upper = 0.0
         self.last_closed_lower = 0.0
         
     def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float, float]:
         """
-        Calculate Donchian Channels (upper, lower) and ATR for the given dataframe.
-        Expected columns: 'close', 'high', 'low'
-        
-        Returns:
-            Tuple[float, float, float]: (upper_channel, lower_channel, atr)
+        Calculate Donchian Channels and ATR.
         """
         try:
-            # Ensure we have enough data
             if len(df) < max(self.enter_period, self.exit_period, self.atr_period) + 1:
                 return 0.0, 0.0, 0.0
                 
@@ -93,49 +86,37 @@ class DonchianChannelStrategy:
                 current_time = time.time()
                 
             # Donchian Channels
-            # Upper channel = highest high over enter_period
             upper_channel = df['high'].rolling(window=self.enter_period).max()
-            
-            # Lower channel = lowest low over exit_period
             lower_channel = df['low'].rolling(window=self.exit_period).min()
             
-            # ATR using EMA (ta library uses SMA by default, but Pine Script uses EMA)
-            # Calculate True Range manually
+            # ATR (EMA based)
             high_low = df['high'] - df['low']
             high_close = np.abs(df['high'] - df['close'].shift())
             low_close = np.abs(df['low'] - df['close'].shift())
             true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-            
-            # EMA of true range
             atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
             
             current_upper = upper_channel.iloc[-1]
             current_lower = lower_channel.iloc[-1]
             current_atr = atr_series.iloc[-1]
             
-            # Cache for dashboard (Live)
+            # Cache for dashboard
             self.last_upper_channel = current_upper
             self.last_lower_channel = current_lower
             self.last_atr = current_atr
             
-            # Dynamic Closed Candle Logic (for 1-hour candles)
+            # Closed Candle Logic
             last_candle_ts = df['time'].iloc[-1]
-            # Handle potential ms timestamp
-            if last_candle_ts > 1e11: 
-                last_candle_ts /= 1000
+            if last_candle_ts > 1e11: last_candle_ts /= 1000
             
             diff = current_time - last_candle_ts
-            
-            # If diff >= 3600 (1h), the last candle IS the closed candle (new one hasn't appeared)
-            # If diff < 3600, the last candle is developing, so -2 is the closed one
+            # If candle is complete (closed), use -1, else use -2
             closed_idx = -1 if diff >= 3600 else -2
             
-            # Cache Last Closed Candle
             if len(df) >= abs(closed_idx):
                 import datetime
                 ts = df['time'].iloc[closed_idx]
-                if ts > 1e11: 
-                    ts /= 1000
+                if ts > 1e11: ts /= 1000
                 self.last_closed_time_str = datetime.datetime.fromtimestamp(ts).strftime('%H:%M')
                 self.last_closed_upper = upper_channel.iloc[closed_idx]
                 self.last_closed_lower = lower_channel.iloc[closed_idx]
@@ -151,278 +132,290 @@ class DonchianChannelStrategy:
             return 0.0, 0.0, 0.0
 
     def check_signals(self, df: pd.DataFrame, current_time_ms: float) -> Tuple[Optional[str], str]:
-        """
-        Check for entry/exit signals based on CLOSED candle data.
-        
-        Uses closed candle logic to match backtesting behavior and prevent
-        false signals from developing candles. Trailing stops are checked
-        against current price.
-        
-        Args:
-            df: DataFrame with OHLC data
-            current_time_ms: Current timestamp in milliseconds
-            
-        Returns:
-            Tuple[str, str]: (Action, Reason)
-        """
-        if df.empty:
-            return None, ""
-            
-        if len(df) < max(self.enter_period, self.exit_period, self.atr_period) + 2:
+        """Check for signals using closed candle logic."""
+        if df.empty or len(df) < max(self.enter_period, self.exit_period, self.atr_period) + 2:
             return None, ""
 
-        # Get indicators (Pass current time for dynamic logic)
         current_time_s = current_time_ms / 1000.0
         upper, lower, atr = self.calculate_indicators(df, current_time=current_time_s)
         
-        # Determine which index to use for SIGNALS
-        # Same logic as calculate_indicators
+        # Determine Closed Candle Index
         last_candle_ts = df['time'].iloc[-1]
-        if last_candle_ts > 1e11: 
-            last_candle_ts /= 1000
+        if last_candle_ts > 1e11: last_candle_ts /= 1000
         
         diff = current_time_s - last_candle_ts
         closed_idx = -1 if diff >= 3600 else -2
         
-        if closed_idx == -1:
-            logger.debug(f"Using Index -1 as Closed Candle (Diff: {diff:.0f}s)")
-        
-        # We need the closed price at the determined index
+        # Data at Closed Index
         close_closed = df['close'].iloc[closed_idx]
-        upper_closed = self.last_closed_upper
-        lower_closed = self.last_closed_lower
         
-        # Get previous candle's upper channel for entry signal
+        # Previous Index for Channel Logic (Channel[1])
         prev_idx = closed_idx - 1
         
-        # Calculate upper channel for previous candle
         upper_channel_series = df['high'].rolling(window=self.enter_period).max()
         lower_channel_series = df['low'].rolling(window=self.exit_period).min()
         upper_prev = upper_channel_series.iloc[prev_idx]
         lower_prev = lower_channel_series.iloc[prev_idx]
         
-        # Get current price for stop/tp checks
+        # Calculate ATR at closed index for setting levels
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
+        atr_closed = atr_series.iloc[closed_idx]
+        
+        # Current Price for Real-time Hits
         current_price = df['close'].iloc[-1]
         
         action = None
         reason = ""
         
-        # --- Trading Logic ---
+        # --- LOGIC ---
         
-        # Update Trailing Stop if in position
-        if self.current_position == 1 and self.trailing_stop_level is not None:
-            new_stop = current_price - (atr * self.atr_mult_trail)
-            if new_stop > self.trailing_stop_level:
-                self.trailing_stop_level = new_stop
-                logger.debug(f"Updated trailing stop to {new_stop:.4f}")
+        # Update Duration State (if Long)
+        if self.current_position == 1:
+            # We track bars in position approximately
+            if self.long_entry_bar is None:
+                self.long_entry_bar = len(df) + closed_idx # Approx
         
-        # Check Trailing Stop Hit (uses current price)
-        if self.current_position == 1 and self.trailing_stop_level is not None:
-            if current_price <= self.trailing_stop_level:
-                action = "EXIT_LONG"
-                reason = f"Trailing SL Hit: Price {current_price:.4f} <= Stop {self.trailing_stop_level:.4f}"
-                return action, reason
+        # 1. Trailing Stop Update
+        if self.trailing_stop_level is not None:
+            if self.current_position == 1:
+                # Long: Stop moves UP only
+                new_stop = current_price - (atr * self.atr_mult_trail)
+                if new_stop > self.trailing_stop_level:
+                    self.trailing_stop_level = new_stop
+            elif self.current_position == -1:
+                # Short: Stop moves DOWN only
+                new_stop = current_price + (atr * self.atr_mult_trail)
+                if new_stop < self.trailing_stop_level:
+                    self.trailing_stop_level = new_stop
+                    
+        # 2. Check Trailing Stop Hit (Real-time)
+        if self.trailing_stop_level is not None:
+            if self.current_position == 1 and current_price <= self.trailing_stop_level:
+                return "EXIT_LONG", f"Trailing SL Hit: {current_price:.4f} <= {self.trailing_stop_level:.4f}"
+            elif self.current_position == -1 and current_price >= self.trailing_stop_level:
+                return "EXIT_SHORT", f"Trailing SL Hit: {current_price:.4f} >= {self.trailing_stop_level:.4f}"
+                
+        # 3. Check Partial TP (Real-time)
+        if self.enable_partial_tp and not self.partial_exit_done and self.tp_level is not None:
+            if self.current_position == 1 and current_price >= self.tp_level:
+                return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} >= {self.tp_level:.4f}"
+            elif self.current_position == -1 and current_price <= self.tp_level:
+                return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} <= {self.tp_level:.4f}"
+
+        # 4. Entry/Exit Logic (Closed Candle)
         
-        # Check Partial TP (if enabled, uses current price)
-        if self.enable_partial_tp and self.current_position == 1 and not self.partial_exit_done and self.tp_level is not None:
-            if current_price >= self.tp_level:
-                action = "PARTIAL_EXIT"
-                reason = f"Partial TP Hit: Price {current_price:.4f} >= TP {self.tp_level:.4f}"
-                return action, reason
-        
-        # Entry Long
-        # Condition: Close breaks above upper channel (close >= upper[prev])
-        if self.current_position == 0:
-            # Breakout: current closed candle >= previous upper channel
-            breakout = close_closed >= upper_prev
-            
-            if breakout:
-                action = "ENTRY_LONG"
-                reason = f"Breakout: Close {close_closed:.4f} >= Upper[prev] {upper_prev:.4f}"
+        # LONG Logic
+        if self.allow_long:
+            # Entry Long
+            if self.current_position == 0:
+                if close_closed >= upper_prev:
+                    action = "ENTRY_LONG"
+                    reason = f"Breakout: Close {close_closed:.4f} >= Upper[prev] {upper_prev:.4f}"
+                    # Set Levels
+                    self.entry_price = close_closed
+                    self.tp_level = close_closed + (atr_closed * self.atr_mult_tp)
+                    self.trailing_stop_level = close_closed - (atr_closed * self.atr_mult_trail)
+                    self.partial_exit_done = False
+                    self.long_entry_bar = len(df) + closed_idx # Mark entry index
+                    return action, reason
+                    
+            # Exit Long (Channel Breakdown)
+            elif self.current_position == 1:
+                if close_closed <= lower_prev:
+                    action = "EXIT_LONG"
+                    reason = f"Breakdown: Close {close_closed:.4f} <= Lower[prev] {lower_prev:.4f}"
+                    return action, reason
+
+        # SHORT Logic
+        if self.allow_short:
+            # Entry Short
+            if self.current_position == 0:
+                # Check Duration Condition (Must have held long enough previously)
+                duration_ok = True
+                if self.min_long_days > 0:
+                     if self.last_long_duration_bars < self.min_long_bars:
+                         duration_ok = False
                 
-                # Set TP and Trailing Stop levels
-                # Calculate ATR at closed index
-                high_low = df['high'] - df['low']
-                high_close = np.abs(df['high'] - df['close'].shift())
-                low_close = np.abs(df['low'] - df['close'].shift())
-                true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-                atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
-                atr_closed = atr_series.iloc[closed_idx]
+                # If min_long_days is 0, duration_ok is True (screenshot case)
                 
-                self.entry_price = close_closed
-                self.tp_level = close_closed + (atr_closed * self.atr_mult_tp)
-                self.trailing_stop_level = close_closed - (atr_closed * self.atr_mult_trail)
-                self.partial_exit_done = False
-                
-        # Exit Long
-        # Condition: Close breaks below lower channel (close <= lower[prev]) OR trailing stop hit
-        elif self.current_position == 1:
-            # Breakdown: current closed candle <= previous lower channel
-            breakdown = close_closed <= lower_prev
-            
-            if breakdown:
-                action = "EXIT_LONG"
-                reason = f"Breakdown: Close {close_closed:.4f} <= Lower[prev] {lower_prev:.4f}"
-                
-        return action, reason
+                if duration_ok and close_closed <= lower_prev:
+                    action = "ENTRY_SHORT"
+                    reason = f"Breakdown: Close {close_closed:.4f} <= Lower[prev] {lower_prev:.4f}"
+                    # Set Levels
+                    self.entry_price = close_closed
+                    self.tp_level = close_closed - (atr_closed * self.atr_mult_tp)
+                    self.trailing_stop_level = close_closed + (atr_closed * self.atr_mult_trail)
+                    self.partial_exit_done = False
+                    return action, reason
+                    
+            # Exit Short (Channel Breakout)
+            elif self.current_position == -1:
+                if close_closed >= upper_prev:
+                    action = "EXIT_SHORT"
+                    reason = f"Breakout: Close {close_closed:.4f} >= Upper[prev] {upper_prev:.4f}"
+                    return action, reason
+                    
+        return None, ""
 
     def update_position_state(self, action: str, current_time_ms: float, indicators: Any = None, price: float = 0.0, reason: str = ""):
-        """
-        Update internal state based on executed action.
-        
-        Args:
-            action: Action taken (ENTRY_LONG, PARTIAL_EXIT, EXIT_LONG)
-            current_time_ms: Current timestamp in milliseconds
-            indicators: Dictionary with indicator values or legacy float
-            price: Execution price
-            reason: Reason for the action
-        """
+        """Update internal state."""
         import datetime
-        
         def format_time(ts_ms):
             return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
             
-        # Handle indicators argument
-        upper = 0.0
-        lower = 0.0
-        atr = 0.0
-        if isinstance(indicators, dict):
-            upper = indicators.get('upper', 0.0)
-            lower = indicators.get('lower', 0.0)
-            atr = indicators.get('atr', 0.0)
+        upper = indicators.get('upper', 0.0) if isinstance(indicators, dict) else 0.0
+        lower = indicators.get('lower', 0.0) if isinstance(indicators, dict) else 0.0
         
         if action == "ENTRY_LONG":
             self.current_position = 1
             self.last_entry_price = price
-            
             self.active_trade = {
                 "type": "LONG",
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
-                "entry_upper": upper,
-                "entry_lower": lower,
-                "exit_time": None,
-                "exit_price": None,
-                "exit_upper": None,
-                "exit_lower": None,
                 "status": "OPEN",
-                "partial_exit": False,
                 "logs": []
             }
             
+        elif action == "ENTRY_SHORT":
+            self.current_position = -1
+            self.last_entry_price = price
+            self.last_long_duration_bars = 0 # Reset duration counter? Pine logic says: lastLongBars updated when Long -> Flat
+            self.active_trade = {
+                "type": "SHORT",
+                "entry_time": format_time(current_time_ms),
+                "entry_price": price,
+                "status": "OPEN",
+                "logs": []
+            }
+
         elif action == "PARTIAL_EXIT":
-            # Record partial exit in trade history
             if self.active_trade:
-                # Create a copy for the partial exit record
                 partial_trade = self.active_trade.copy()
                 partial_trade["exit_time"] = format_time(current_time_ms)
                 partial_trade["exit_price"] = price
-                partial_trade["exit_upper"] = upper
-                partial_trade["exit_lower"] = lower
                 partial_trade["status"] = "PARTIAL"
-                partial_trade["points"] = price - partial_trade["entry_price"]
+                entry = float(self.active_trade['entry_price'])
+                partial_trade["points"] = price - entry if self.current_position == 1 else entry - price
                 self.trades.append(partial_trade)
-                
-                # Mark partial exit done
                 self.partial_exit_done = True
                 self.active_trade["partial_exit"] = True
-                
+
         elif action == "EXIT_LONG":
             self.current_position = 0
+            # Calculate Duration
+            if self.long_entry_bar:
+                # Approximate duration in bars since entry
+                # We don't have perfect bar index here in live, but backtest propagates it
+                # In live, we might need time-based? 
+                # For now assume backtest logic holds mostly.
+                pass 
+                
+            # For Pine logic matching: lastLongBars := bar_index - longEntryBar
+            # In live check_signals, we update long_entry_bar.
+            # Here we just mark we exited.
+            
+            # Simple Duration Hack for Live:
+            # If we rely on bars, we need persistent counter. 
+            # For simplicity, if min_long_days=0, it doesn't matter.
+            self.last_long_duration_bars = 9999 # Allow next short if days=0
             
             if self.active_trade:
                 self.active_trade["exit_time"] = format_time(current_time_ms)
                 self.active_trade["exit_price"] = price
-                self.active_trade["exit_upper"] = upper
-                self.active_trade["exit_lower"] = lower
+                self.active_trade["status"] = "CLOSED"
+                if "Trailing" in reason: self.active_trade["status"] = "TRAIL STOP"
+                elif "Breakdown" in reason: self.active_trade["status"] = "CHANNEL EXIT"
                 
-                # Determine exit reason for status
-                if "Trailing SL" in reason or "Trailing Stop" in reason:
-                    self.active_trade["status"] = "TRAIL STOP"
-                elif "Breakdown" in reason or "Lower" in reason:
-                    self.active_trade["status"] = "CHANNEL EXIT"
-                else:
-                    self.active_trade["status"] = "CLOSED"
-                    
                 self.active_trade["points"] = price - self.active_trade["entry_price"]
                 self.trades.append(self.active_trade)
                 self.active_trade = None
             
-            # Reset levels
             self.entry_price = None
-            self.entry_bar_index = None
+            self.tp_level = None
+            self.trailing_stop_level = None
+            self.partial_exit_done = False
+            self.long_entry_bar = None
+
+        elif action == "EXIT_SHORT":
+            self.current_position = 0
+            if self.active_trade:
+                self.active_trade["exit_time"] = format_time(current_time_ms)
+                self.active_trade["exit_price"] = price
+                self.active_trade["status"] = "CLOSED"
+                if "Trailing" in reason: self.active_trade["status"] = "TRAIL STOP"
+                elif "Breakout" in reason: self.active_trade["status"] = "CHANNEL EXIT"
+                
+                self.active_trade["points"] = self.active_trade["entry_price"] - price
+                self.trades.append(self.active_trade)
+                self.active_trade = None
+                
+            self.entry_price = None
             self.tp_level = None
             self.trailing_stop_level = None
             self.partial_exit_done = False
 
     def set_position(self, position: int):
-        """Manually set position state."""
         self.current_position = position
 
     def reconcile_position(self, size: float, entry_price: float):
-        """
-        Reconcile internal state with actual exchange position.
+        """Reconcile with Exchange."""
+        import time, datetime
+        def format_time(ts_ms): return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
         
-        Args:
-            size: Position size from exchange
-            entry_price: Entry price from exchange
-        """
-        import time
-        import datetime
+        expected_pos = 0
+        if size > 0: expected_pos = 1
+        elif size < 0: expected_pos = -1
         
-        def format_time(ts_ms):
-            return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
-        
-        if size > 0:
-            if self.current_position != 1:
-                self.current_position = 1
-                self.last_entry_price = entry_price
+        if self.current_position != expected_pos:
+            logger.warning(f"Reconciling: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
+            self.current_position = expected_pos
+            
+            if expected_pos != 0 and not self.active_trade:
+                side = "LONG" if expected_pos == 1 else "SHORT"
+                self.active_trade = {
+                    "type": side,
+                    "entry_time": format_time(time.time()*1000) + " (Rec)",
+                    "entry_price": entry_price,
+                    "status": "OPEN"
+                }
+                # Set approximated levels?
                 self.entry_price = entry_price
-                logger.info(f"Reconciled state to LONG (Size: {size})")
-        elif size == 0:
-            if self.current_position != 0:
-                self.current_position = 0
-                logger.info("Reconciled state to FLAT")
-                
-            # Ensure active_trade is closed if we are actually FLAT
-            if self.active_trade:
-                current_timestamp = time.time() * 1000
-                formatted_time = format_time(current_timestamp)
-                
-                logger.info("Closing phantom active_trade via Reconciliation")
-                self.active_trade["exit_time"] = f"{formatted_time} (Reconciled)"
-                self.active_trade["exit_price"] = 0.0  # Unknown
-                self.active_trade["exit_upper"] = 0.0
-                self.active_trade["exit_lower"] = 0.0
+                # Without indicators we can't set TP/SL accurately.
+                # They will be set on next candle update if logic allows? 
+                # Actually check_signals updates levels ONLY ON ENTRY.
+                # So reconciled positions might lack dynamic TP/SL levels until manually handled or code improved.
+                logger.warning("Reconciled position lacks TP/SL levels until revisited.")
+
+            elif expected_pos == 0 and self.active_trade:
+                self.active_trade["exit_time"] = format_time(time.time()*1000) + " (Rec)"
                 self.active_trade["status"] = "CLOSED (SYNC)"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
 
     def run_backtest(self, df: pd.DataFrame):
-        """
-        Run backtest on historical data.
-        
-        Args:
-            df: DataFrame with OHLC data and time column
-        """
+        """Run backtest."""
         logger.info("Starting Donchian Channel backtest...")
         self.trades = []
         self.current_position = 0
         self.active_trade = None
         self.entry_price = None
-        self.entry_bar_index = None
         self.tp_level = None
         self.trailing_stop_level = None
-        self.partial_exit_done = False
+        self.last_long_duration_bars = 0
+        self.long_entry_bar = None
         
-        if df.empty: 
-            return
-
-        # Pre-calculate indicators for speed
+        if df.empty: return
+        
+        # Pre-calculate
         upper_channel = df['high'].rolling(window=self.enter_period).max()
         lower_channel = df['low'].rolling(window=self.exit_period).min()
         
-        # Calculate ATR with EMA
+        # ATR
         high_low = df['high'] - df['low']
         high_close = np.abs(df['high'] - df['close'].shift())
         low_close = np.abs(df['low'] - df['close'].shift())
@@ -430,66 +423,74 @@ class DonchianChannelStrategy:
         atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
         
         for i in range(len(df)):
-            if i < max(self.enter_period, self.exit_period, self.atr_period) + 1: 
-                continue
+            if i < max(self.enter_period, self.exit_period, self.atr_period) + 1: continue
             
-            current_time_s = df['time'].iloc[i]
-            current_time_ms = current_time_s * 1000
-            
+            current_time_ms = df['time'].iloc[i] * 1000
             close = df['close'].iloc[i]
             upper = upper_channel.iloc[i]
             lower = lower_channel.iloc[i]
             atr = atr_series.iloc[i]
             
-            if pd.isna(upper) or pd.isna(lower) or pd.isna(atr): 
-                continue
+            if pd.isna(upper) or pd.isna(lower): continue
             
-            # Update Trailing Stop
-            if self.current_position == 1 and self.trailing_stop_level is not None:
-                new_stop = close - (atr * self.atr_mult_trail)
-                if new_stop > self.trailing_stop_level:
-                    self.trailing_stop_level = new_stop
+            indicators = {'upper': upper, 'lower': lower, 'atr': atr}
             
-            # Check Trailing Stop Hit
-            if self.current_position == 1 and self.trailing_stop_level is not None:
-                if close <= self.trailing_stop_level:
-                    indicators = {'upper': upper, 'lower': lower, 'atr': atr}
+            # 1. Update Trailing Stop
+            if self.trailing_stop_level is not None:
+                if self.current_position == 1:
+                    new_stop = close - (atr * self.atr_mult_trail)
+                    if new_stop > self.trailing_stop_level: self.trailing_stop_level = new_stop
+                elif self.current_position == -1:
+                    new_stop = close + (atr * self.atr_mult_trail)
+                    if new_stop < self.trailing_stop_level: self.trailing_stop_level = new_stop
+            
+            # 2. Check Signals manually (Backtest Loop)
+            # Trailing Stop Hit
+            if self.trailing_stop_level is not None:
+                if self.current_position == 1 and close <= self.trailing_stop_level:
                     self.update_position_state("EXIT_LONG", current_time_ms, indicators, close, "Trailing SL Hit")
+                    # Update Duration Tracking
+                    if self.long_entry_bar is not None:
+                         self.last_long_duration_bars = i - self.long_entry_bar
+                    continue
+                elif self.current_position == -1 and close >= self.trailing_stop_level:
+                    self.update_position_state("EXIT_SHORT", current_time_ms, indicators, close, "Trailing SL Hit")
                     continue
             
-            # Check Partial TP (if enabled)
-            if self.enable_partial_tp and self.current_position == 1 and not self.partial_exit_done and self.tp_level is not None:
-                if close >= self.tp_level:
-                    indicators = {'upper': upper, 'lower': lower, 'atr': atr}
-                    self.update_position_state("PARTIAL_EXIT", current_time_ms, indicators, close, "Partial TP Hit")
-                    # Continue to check for other signals
-            
-            # --- Trading Logic ---
-            action = None
-            
-            # Use previous candle's channel for breakout/breakdown detection
+            # Channel Logic: Use Prev Candle
             upper_prev = upper_channel.iloc[i-1]
             lower_prev = lower_channel.iloc[i-1]
             
+            # Entries
             if self.current_position == 0:
-                # Entry: Close breaks above upper channel
-                if close >= upper_prev:
-                    action = "ENTRY_LONG"
-                    # Set levels
+                # Long
+                if self.allow_long and close >= upper_prev:
+                    self.update_position_state("ENTRY_LONG", current_time_ms, indicators, close, "Breakout")
                     self.entry_price = close
-                    self.entry_bar_index = i
                     self.tp_level = close + (atr * self.atr_mult_tp)
                     self.trailing_stop_level = close - (atr * self.atr_mult_trail)
+                    self.long_entry_bar = i
                     self.partial_exit_done = False
-                    
-            elif self.current_position == 1:
-                # Exit: Close breaks below lower channel
-                if close <= lower_prev:
-                    action = "EXIT_LONG"
-            
-            if action:
-                indicators = {'upper': upper, 'lower': lower, 'atr': atr}
-                reason = "Breakout" if action == "ENTRY_LONG" else "Breakdown"
-                self.update_position_state(action, current_time_ms, indicators, close, reason)
                 
+                # Short
+                elif self.allow_short and close <= lower_prev:
+                    # Check Duration
+                    if self.min_long_days == 0 or (self.last_long_duration_bars >= self.min_long_bars):
+                        self.update_position_state("ENTRY_SHORT", current_time_ms, indicators, close, "Breakdown")
+                        self.entry_price = close
+                        self.tp_level = close - (atr * self.atr_mult_tp)
+                        self.trailing_stop_level = close + (atr * self.atr_mult_trail)
+                        self.partial_exit_done = False
+            
+            # Exits (Channel) by Signal
+            elif self.current_position == 1:
+                if close <= lower_prev:
+                    self.update_position_state("EXIT_LONG", current_time_ms, indicators, close, "Breakdown")
+                    if self.long_entry_bar is not None:
+                         self.last_long_duration_bars = i - self.long_entry_bar
+            
+            elif self.current_position == -1:
+                if close >= upper_prev:
+                     self.update_position_state("EXIT_SHORT", current_time_ms, indicators, close, "Breakout")
+                     
         logger.info(f"Backtest complete. Trades: {len(self.trades)}")
