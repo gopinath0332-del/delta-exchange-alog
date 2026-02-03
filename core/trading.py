@@ -59,8 +59,10 @@ def execute_strategy_signal(
     price: float,
     rsi: float,
     reason: str,
+
     mode: str = "live",
-    strategy_name: Optional[str] = None
+    strategy_name: Optional[str] = None,
+    market_price: Optional[float] = None
 ):
     """
     Execute a strategy signal: Place order and send alert.
@@ -75,6 +77,7 @@ def execute_strategy_signal(
         reason: Signal Reason
         mode: Execution mode ('live' or 'paper')
         strategy_name: Name of the strategy executing the signal
+        market_price: Actual market price (LTP) if different from price
     """
     
     try:
@@ -327,7 +330,11 @@ def execute_strategy_signal(
                 strategy_name=strategy_name,
                 pnl=pnl,
                 funding_charges=funding_charges,
-                trading_fees=trading_fees
+                strategy_name=strategy_name,
+                pnl=pnl,
+                funding_charges=funding_charges,
+                trading_fees=trading_fees,
+                market_price=market_price
             )
         except Exception as e:
             logger.error(f"Failed to send trade alert: {e}")
