@@ -4,6 +4,7 @@ Handles order placement, leverage setting, and margin calculations.
 """
 
 from typing import Optional
+import time
 import os
 import uuid
 from datetime import datetime
@@ -221,8 +222,30 @@ def execute_strategy_signal(
                     )
                     logger.info(f"Order placed successfully: {order.get('id')}")
                     
+                    # Fetch actual position from exchange to get precise entry price
+                    if is_entry:
+                        time.sleep(1.0) # Wait for matching engine
+                        try:
+                            logger.info("Fetching actual position from exchange for accurate entry price...")
+                            pos_check = client.get_positions(product_id=product_id)
+                            # Handle list vs dict response just in case, though get_positions usually returns list
+                            if isinstance(pos_check, dict):
+                                pos_check = [pos_check]
+                                
+                            real_pos = next((p for p in pos_check if float(p.get('size', 0)) != 0 and p.get('product_id') == product_id), None)
+                            
+                            if real_pos:
+                                real_entry = float(real_pos.get('entry_price', 0))
+                                if real_entry > 0:
+                                    execution_price = real_entry
+                                    price = real_entry # IMPORTANT: Update price for notification
+                                    logger.info(f"Updated Execution Price from Exchange Position: {execution_price}")
+                        except Exception as ep:
+                            logger.warning(f"Failed to fetch real position after order: {ep}")
+                    
                     # Attempt to get fill price from response
-                    if order.get('avg_fill_price'):
+                    # Attempt to get fill price from response if not already set by position fetch
+                    if not execution_price and order.get('avg_fill_price'):
                         execution_price = float(order['avg_fill_price'])
                         logger.info(f"Execution Price from response: {execution_price}")
                     else:
@@ -322,14 +345,11 @@ def execute_strategy_signal(
             notifier.send_trade_alert(
                 symbol=symbol,
                 side=action, # "ENTRY_LONG" etc.
-                price=price if mode == "paper" else (float(order.get('avg_fill_price', price)) if order else price),
+                price=execution_price if execution_price and mode != "paper" else price,
                 rsi=rsi,
                 reason=reason + (" [PAPER]" if mode == "paper" else ""),
                 margin_used=margin_used if is_entry else None,
                 remaining_margin=remaining_margin,
-                strategy_name=strategy_name,
-                pnl=pnl,
-                funding_charges=funding_charges,
                 strategy_name=strategy_name,
                 pnl=pnl,
                 funding_charges=funding_charges,
