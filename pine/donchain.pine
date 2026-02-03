@@ -11,16 +11,16 @@ allowLong  = mode == "Long"  or mode == "Both"
 allowShort = mode == "Short" or mode == "Both"
 
 // ATR / Risk
-atrmultTP     = input(1.0, title="ATR TP Multiplier")
+atrmultTP     = input(4.0, title="ATR TP Multiplier")
 atrmultTrail  = input(2.0, title="ATR Trailing SL Multiplier")
-atrperiod     = input(20, title="ATR Period")
+atrperiod     = input(16, title="ATR Period")
 
 // NEW: Partial TP toggle
-enablePartialTP = input(true, title="Enable 50% Partial Take Profit")
+enablePartialTP = input(false, title="Enable 50% Partial Take Profit")
 
 // Duration filter
 barsPerDay  = input(24, title="Bars per Day (1H = 24)")
-minLongDays = input(2, title="Minimum Long Duration (Days)")
+minLongDays = input(0, title="Minimum Long Duration (Days)")
 minLongBars = barsPerDay * minLongDays
 
 // Background
