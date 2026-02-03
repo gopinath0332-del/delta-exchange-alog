@@ -255,6 +255,9 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      if first_time > last_time:
                          df = df.iloc[::-1].reset_index(drop=True)
                      
+                     # Capture authentic Market Price (LTP) before any conversion
+                     market_price = float(df['close'].iloc[-1])
+
                      # Determine Candle Type
                      use_ha = (candle_type.lower() == "heikin-ashi")
                      
@@ -410,7 +413,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              notifier=notifier,
                              symbol=symbol,
                              action=action,
-                             price=price,
+                             price=price, # Strategy/Signal Price (HA or Standard)
+                             market_price=market_price, # Authentic Market Price
                              rsi=current_rsi if hasattr(strategy, 'calculate_rsi') else getattr(strategy, 'last_cci', 0.0),
                              reason=reason,
                              mode=mode,

@@ -71,7 +71,8 @@ class DiscordNotifier:
                         strategy_name: Optional[str] = None,
                         pnl: Optional[float] = None,
                         funding_charges: Optional[float] = None,
-                        trading_fees: Optional[float] = None):
+                        trading_fees: Optional[float] = None,
+                        market_price: Optional[float] = None):
         """
         Send a formatted trade alert with ANSI color codes.
 
@@ -87,6 +88,7 @@ class DiscordNotifier:
             pnl: Realized profit/loss (for exit signals)
             funding_charges: Total funding fees paid/received
             trading_fees: Commission/trading fees
+            market_price: Actual market price (LTP) if different from order/signal price
         """
         title = f"🚀 TRADING SIGNAL: {side} {symbol}"
         color = 5763719 if "LONG" in side.upper() else 15548997  # Green for Long, Red for Short
@@ -101,10 +103,24 @@ class DiscordNotifier:
         
         message = ""
         if strategy_name:
-             message += f"Strategy: \u001b[1;37m{strategy_name}\u001b[0m\n"
+            message += f"Strategy: \u001b[1;37m{strategy_name}\u001b[0m\n"
 
         message += (
             f"Price: \u001b[0;36m${price:,.2f}\u001b[0m\n"
+        )
+
+        # Show Market Price if available and significantly different (> 0.05% diff)
+        # OR if strictly requested to show context
+        if market_price and market_price > 0:
+            diff = abs(price - market_price)
+            pct_diff = (diff / market_price) * 100
+            
+            # If price (HA) and market_price are different, show Market Price
+            # We want to show it e.g. "Market Price: $22.28"
+            if pct_diff > 0.01: # Show if diff > 0.01%
+                message += f"Market Price: \u001b[0;36m${market_price:,.2f}\u001b[0m\n"
+
+        message += (
             f"RSI: \u001b[0;33m{rsi:.2f}\u001b[0m\n"
         )
         

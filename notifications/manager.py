@@ -57,7 +57,8 @@ class NotificationManager:
                         strategy_name: Optional[str] = None,
                         pnl: Optional[float] = None,
                         funding_charges: Optional[float] = None,
-                        trading_fees: Optional[float] = None):
+                        trading_fees: Optional[float] = None,
+                        market_price: Optional[float] = None):
         """
         Send trade alert to all enabled channels.
 
@@ -70,11 +71,11 @@ class NotificationManager:
         """
         # Send to Discord
         if self.discord:
-            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees)
+            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price)
             
         # Send to Email (if configured)
         if self.email:
-            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees)
+            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price)
             
         logger.info(f"Alert sent: {side} {symbol} @ {price} (RSI: {rsi:.2f})")
 
