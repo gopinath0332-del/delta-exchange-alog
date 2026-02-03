@@ -38,7 +38,9 @@ class DeltaRestClient:
             config: Configuration instance
         """
         self.config = config
+        self.config = config
         self.rate_limiter = RateLimiter(max_requests=150, time_window=300)
+        self.time_offset = 0 # Offset to synchronize with server time
 
         # Initialize delta-rest-client
         try:
@@ -107,48 +109,74 @@ class DeltaRestClient:
         self.rate_limiter.wait_if_needed()
         
         url = f"{self.config.base_url}{endpoint}"
-        timestamp = str(int(time.time()))
         
-        # Prepare payload and query string for signature
-        query_string = ""
-        if params:
-            query_string = urllib.parse.urlencode(params)
-            url = f"{url}?{query_string}"
+        # Retry loop for time synchronization
+        max_retries = 1
+        for attempt in range(max_retries + 1):
+            timestamp = str(int(time.time() + self.time_offset))
             
-        payload = ""
-        if data:
-            payload = json.dumps(data)
-            
-        # For signature, endpoint should include query params if GET?
-        # Verify Delta API docs: Signature = method + timestamp + path + query_string + body
-        path_with_query = endpoint
-        if query_string:
-            path_with_query = f"{endpoint}?{query_string}"
-            
-        signature = self._generate_signature(method, path_with_query, payload, timestamp)
-        
-        headers = {
-            "Content-Type": "application/json",
-            "api-key": self.config.api_key,
-            "timestamp": timestamp,
-            "signature": signature
-        }
-        
-        try:
-            if method == "GET":
-                response = requests.get(url, headers=headers, timeout=30)
-            elif method == "POST":
-                response = requests.post(url, headers=headers, data=payload, timeout=30)
+            # Prepare payload and query string for signature
+            query_string = ""
+            if params:
+                query_string = urllib.parse.urlencode(params)
+                url_with_query = f"{url}?{query_string}"
             else:
-                raise ValueError(f"Unsupported method: {method}")
+                url_with_query = url
                 
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Auth API request failed: {endpoint}", error=str(e))
-            if e.response is not None:
-                logger.error(f"Response: {e.response.text}")
-            raise APIError(f"Auth request failed: {e}")
+            payload = ""
+            if data:
+                payload = json.dumps(data)
+                
+            # For signature, endpoint should include query params
+            path_with_query = endpoint
+            if query_string:
+                path_with_query = f"{endpoint}?{query_string}"
+                
+            signature = self._generate_signature(method, path_with_query, payload, timestamp)
+            
+            headers = {
+                "Content-Type": "application/json",
+                "api-key": self.config.api_key,
+                "timestamp": timestamp,
+                "signature": signature
+            }
+            
+            try:
+                if method == "GET":
+                    response = requests.get(url_with_query, headers=headers, timeout=30)
+                elif method == "POST":
+                    response = requests.post(url_with_query, headers=headers, data=payload, timeout=30)
+                else:
+                    raise ValueError(f"Unsupported method: {method}")
+                    
+                # Check for specific error scenarios before raising generic status error
+                if response.status_code == 401:
+                    try:
+                        resp_json = response.json()
+                        error_data = resp_json.get("error", {})
+                        if error_data.get("code") == "expired_signature" and attempt < max_retries:
+                            # Parse server time and sync
+                            context = error_data.get("context", {})
+                            server_time = context.get("server_time")
+                            if server_time:
+                                local_time = int(time.time())
+                                # Calculate offset: server_time - local_time + 1s buffer
+                                diff = server_time - local_time
+                                self.time_offset = diff + 2 # Add 2s extra buffer to be safe
+                                logger.warning(f"Time drift detected. Syncing clock. Offset: {self.time_offset}s (Server: {server_time}, Local: {local_time})")
+                                continue # Retry immediately
+                    except Exception:
+                        pass # Failed to parse error, just raise normal status
+                
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.RequestException as e:
+                # If we exhausted retries or it's another error
+                if attempt == max_retries:
+                    logger.error(f"Auth API request failed: {endpoint}", error=str(e))
+                    if e.response is not None:
+                        logger.error(f"Response: {e.response.text}")
+                    raise APIError(f"Auth request failed: {e}")
 
     def _make_direct_request(self, endpoint: str, params: Optional[Dict] = None) -> Any:
         """
