@@ -110,7 +110,8 @@ class EmailNotifier:
                         strategy_name: Optional[str] = None,
                         pnl: Optional[float] = None,
                         funding_charges: Optional[float] = None,
-                        trading_fees: Optional[float] = None):
+                        trading_fees: Optional[float] = None,
+                        market_price: Optional[float] = None):
         """
         Send a formatted trade alert email.
         """
