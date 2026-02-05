@@ -286,8 +286,14 @@ def journal_trade(
             update_data = {k: v for k, v in update_data.items() if v is not None}
             
             # Update the existing document
+            # NOTE: Using set(merge=True) instead of update() to gracefully handle cases where
+            # the entry document might not exist (e.g., if initial journaling failed due to
+            # temporary Firestore unavailability). set(merge=True) will:
+            # - Create the document if it doesn't exist (prevents 404 errors)
+            # - Merge fields into existing document if it does exist (same behavior as update)
+            # This ensures exit trades can always be journaled regardless of entry status.
             doc_ref = _firestore_client.collection(_firestore_collection).document(trade_id)
-            doc_ref.update(update_data)
+            doc_ref.set(update_data, merge=True)
             
             logger.info(f"✓ Trade {status} in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f} | PnL: ${pnl:+,.2f}" if pnl else f"✓ Trade {status} in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f}")
             
