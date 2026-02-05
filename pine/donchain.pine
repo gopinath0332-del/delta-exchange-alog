@@ -1,6 +1,5 @@
-
 //@version=4
-strategy("Gold Both directions", overlay=true, pyramiding=0)
+strategy("Crypto Donchain", overlay=true, pyramiding=0)
 
 // ───── INPUTS ─────
 enter_period = input(20, minval=1, title="Enter Channel")
@@ -16,7 +15,7 @@ atrmultTrail  = input(2.0, title="ATR Trailing SL Multiplier")
 atrperiod     = input(16, title="ATR Period")
 
 // NEW: Partial TP toggle
-enablePartialTP = input(false, title="Enable 50% Partial Take Profit")
+enablePartialTP = input(true, title="Enable 50% Partial Take Profit")
 
 // Duration filter
 barsPerDay  = input(24, title="Bars per Day (1H = 24)")
@@ -31,6 +30,12 @@ transp         = input(85, title="Transparency", minval=0, maxval=100)
 
 longBg  = color.new(longBaseColor, transp)
 shortBg = color.new(shortBaseColor, transp)
+
+// ───── NEW: EMA FILTER INPUTS ─────
+emaLen  = input(100, minval=1, title="EMA Length (Entry Filter)")
+emaSrc  = input(close, title="EMA Source")
+emaVal  = ema(emaSrc, emaLen)
+plot(emaVal, color=color.yellow, linewidth=2, title="EMA (Entry Filter)")
 
 // ───── ATR CALCULATIONS ─────
 atr = ema(tr(true), atrperiod)
@@ -143,8 +148,8 @@ if shortTrailHit
 // =====================================================================
 //                            ENTRY / EXIT LOGIC
 // =====================================================================
-// LONG ENTRY
-if allowLong and breakUp and strategy.position_size <= 0
+// LONG ENTRY: existing condition AND price above EMA
+if allowLong and breakUp and close > emaVal and strategy.position_size <= 0
     strategy.close("SELL")
     strategy.entry("BUY", strategy.long)
     alert("BUY", alert.freq_once_per_bar_close)
@@ -154,8 +159,8 @@ if strategy.position_size > 0 and (breakDown or longStopChannel or longTrailHit)
     strategy.close("BUY")
     alert("EXIT BUY", alert.freq_once_per_bar_close)
 
-// SHORT ENTRY
-if allowShort and breakDown and longHeldEnough and strategy.position_size == 0
+// SHORT ENTRY: existing condition AND price below EMA
+if allowShort and breakDown and longHeldEnough and close < emaVal and strategy.position_size == 0
     strategy.entry("SELL", strategy.short)
     alert("SELL (Long > 2 Days)", alert.freq_once_per_bar_close)
 
