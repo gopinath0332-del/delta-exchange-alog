@@ -20,7 +20,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
   - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
-  - Donchian Channel (RIVERUSD) - Long-only breakout with ATR trailing stop
+  - Donchian Channel (RIVERUSD) - Breakout strategy with 100 EMA trend filter and ATR trailing stop
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
 
@@ -370,19 +370,23 @@ rsi_supertrend:
 
 ### 4. Donchian Channel Strategy (RIVERUSD)
 
-- **Timeframe**: 1 hour with Heikin Ashi candles
-- **Type**: Long-only breakout strategy
-- **Entry**: Price breaks above upper Donchian channel (20-period highest high)
-- **Exit**: Price breaks below lower Donchian channel (10-period lowest low) OR trailing stop hit
+- **Timeframe**: 1 hour with **Standard** candles (changed from Heikin Ashi)
+- **Type**: Both long and short breakout strategy
+- **Entry Long**: Price breaks above upper Donchian channel (20-period highest high) **AND** price > 100 EMA
+- **Entry Short**: Price breaks below lower Donchian channel (10-period lowest low) **AND** price < 100 EMA
+- **Exit**: Price breaks opposite channel OR trailing stop hit
 - **Indicators**:
   - Upper Channel (20-period highest high)
   - Lower Channel (10-period lowest low)
+  - **100 EMA (NEW)** - Trend filter for entry confirmation
   - ATR (16 period, EMA-based)
 - **Features**:
-  - ATR trailing stop (2× ATR below current price)
-  - Optional partial TP (50% exit at 4× ATR, disabled by default)
-  - Dynamic trailing stop that ratchets up with price
+  - **EMA Trend Filter** - Confirms trend direction before entry (reduces false breakouts)
+  - ATR trailing stop (2× ATR from current price)
+  - Partial TP (50% exit at 4× ATR, **enabled by default**)
+  - Dynamic trailing stop that ratchets with price movement
   - Closed candle logic for breakout confirmation
+  - Both long and short trading (configurable via `trade_mode`)
 
 **Configuration** (`config/.env`):
 
@@ -399,16 +403,38 @@ ENABLE_ORDER_PLACEMENT_RIVER=true
 
 ```yaml
 donchian_channel:
+  trade_mode: "Both" # "Long", "Short", or "Both"
   enter_period: 20 # Enter channel (highest high period)
   exit_period: 10 # Exit channel (lowest low period)
   atr_period: 16 # ATR calculation period
   atr_mult_tp: 4.0 # ATR multiplier for take profit
   atr_mult_trail: 2.0 # ATR multiplier for trailing stop
-  enable_partial_tp: false # Disable partial TP by default
+  enable_partial_tp: true # Enable 50% partial TP (updated default)
   partial_pct: 0.5 # 50% partial exit when enabled
   bars_per_day: 24 # For 1H timeframe
-  min_long_days: 2 # Minimum long duration (tracking only)
+  min_long_days: 0 # Minimum long duration (0 = no requirement)
+  # NEW: EMA Trend Filter
+  ema_length: 100 # EMA period for entry filter
+  ema_source: "close" # Source for EMA calculation
 ```
+
+**Entry Logic**:
+
+1. **Long**: Breakout above 20-period high **AND** close > 100 EMA (confirms uptrend)
+2. **Short**: Breakdown below 10-period low **AND** close < 100 EMA (confirms downtrend)
+
+**Exit Logic**:
+
+1. **50% Partial TP**: At entry ± 4× ATR (now enabled by default)
+2. **Trailing Stop**: 2× ATR from current price (ratchets with favorable price movement)
+3. **Channel Exit**: Price breaks opposite channel level
+
+**Benefits of EMA Filter**:
+
+- ✅ Reduces false breakouts in sideways markets
+- ✅ Improves win rate by confirming trend direction
+- ✅ Filters counter-trend trades
+- ✅ Works bidirectionally (long above EMA, short below EMA)
 
 ## Closed Candle Logic
 
