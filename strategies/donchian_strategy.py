@@ -33,11 +33,14 @@ class DonchianChannelStrategy:
         self.atr_period = cfg.get("atr_period", 16)
         self.atr_mult_tp = cfg.get("atr_mult_tp", 4.0)
         self.atr_mult_trail = cfg.get("atr_mult_trail", 2.0)
-        self.enable_partial_tp = cfg.get("enable_partial_tp", False)
+        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Changed default to True
         self.partial_pct = cfg.get("partial_pct", 0.5)
         self.bars_per_day = cfg.get("bars_per_day", 24)
-        self.min_long_days = cfg.get("min_long_days", 2) # Used for "Wait after long" logic
+        self.min_long_days = cfg.get("min_long_days", 0)  # Changed default to 0
         self.min_long_bars = self.bars_per_day * self.min_long_days
+        # NEW: EMA Filter
+        self.ema_length = cfg.get("ema_length", 100)
+        self.ema_source = cfg.get("ema_source", "close")  # close, open, high, low
         
         # Mode Flags
         self.allow_long = self.trade_mode in ["Long", "Both"]
@@ -63,6 +66,7 @@ class DonchianChannelStrategy:
         self.last_upper_channel = 0.0
         self.last_lower_channel = 0.0
         self.last_atr = 0.0
+        self.last_ema = 0.0  # NEW: EMA Cache
         
         # Trade History
         self.trades = []
@@ -73,13 +77,13 @@ class DonchianChannelStrategy:
         self.last_closed_upper = 0.0
         self.last_closed_lower = 0.0
         
-    def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float, float]:
+    def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float, float, float]:
         """
         Calculate Donchian Channels and ATR.
         """
         try:
-            if len(df) < max(self.enter_period, self.exit_period, self.atr_period) + 1:
-                return 0.0, 0.0, 0.0
+            if len(df) < max(self.enter_period, self.exit_period, self.atr_period, self.ema_length) + 1:
+                return 0.0, 0.0, 0.0, 0.0
                 
             if current_time is None:
                 import time
@@ -96,14 +100,20 @@ class DonchianChannelStrategy:
             true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
             atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
             
+            # NEW: EMA Calculation
+            ema_src = df[self.ema_source] if self.ema_source in df.columns else df['close']
+            ema_series = ema_src.ewm(span=self.ema_length, adjust=False).mean()
+            
             current_upper = upper_channel.iloc[-1]
             current_lower = lower_channel.iloc[-1]
             current_atr = atr_series.iloc[-1]
+            current_ema = ema_series.iloc[-1]
             
             # Cache for dashboard
             self.last_upper_channel = current_upper
             self.last_lower_channel = current_lower
             self.last_atr = current_atr
+            self.last_ema = current_ema
             
             # Closed Candle Logic
             last_candle_ts = df['time'].iloc[-1]
@@ -125,19 +135,19 @@ class DonchianChannelStrategy:
                 self.last_closed_upper = 0.0
                 self.last_closed_lower = 0.0
             
-            return current_upper, current_lower, current_atr
+            return current_upper, current_lower, current_atr, current_ema
             
         except Exception as e:
             logger.error(f"Error calculating indicators: {e}")
-            return 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
 
     def check_signals(self, df: pd.DataFrame, current_time_ms: float) -> Tuple[Optional[str], str]:
         """Check for signals using closed candle logic."""
-        if df.empty or len(df) < max(self.enter_period, self.exit_period, self.atr_period) + 2:
+        if df.empty or len(df) < max(self.enter_period, self.exit_period, self.atr_period, self.ema_length) + 2:
             return None, ""
 
         current_time_s = current_time_ms / 1000.0
-        upper, lower, atr = self.calculate_indicators(df, current_time=current_time_s)
+        upper, lower, atr, ema = self.calculate_indicators(df, current_time=current_time_s)
         
         # Determine Closed Candle Index
         last_candle_ts = df['time'].iloc[-1]
@@ -164,6 +174,11 @@ class DonchianChannelStrategy:
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
         atr_closed = atr_series.iloc[closed_idx]
+        
+        # Calculate EMA at closed index
+        ema_src = df[self.ema_source] if self.ema_source in df.columns else df['close']
+        ema_series = ema_src.ewm(span=self.ema_length, adjust=False).mean()
+        ema_closed = ema_series.iloc[closed_idx]
         
         # Current Price for Real-time Hits
         current_price = df['close'].iloc[-1]
@@ -210,11 +225,11 @@ class DonchianChannelStrategy:
         
         # LONG Logic
         if self.allow_long:
-            # Entry Long
+            # Entry Long: Breakout AND close > EMA
             if self.current_position == 0:
-                if close_closed >= upper_prev:
+                if close_closed >= upper_prev and close_closed > ema_closed:
                     action = "ENTRY_LONG"
-                    reason = f"Breakout: Close {close_closed:.4f} >= Upper[prev] {upper_prev:.4f}"
+                    reason = f"Breakout: Close {close_closed:.4f} >= Upper[prev] {upper_prev:.4f} AND above EMA {ema_closed:.4f}"
                     # Set Levels
                     self.entry_price = close_closed
                     self.tp_level = close_closed + (atr_closed * self.atr_mult_tp)
@@ -232,7 +247,7 @@ class DonchianChannelStrategy:
 
         # SHORT Logic
         if self.allow_short:
-            # Entry Short
+            # Entry Short: Breakdown AND close < EMA AND duration met
             if self.current_position == 0:
                 # Check Duration Condition (Must have held long enough previously)
                 duration_ok = True
@@ -242,9 +257,9 @@ class DonchianChannelStrategy:
                 
                 # If min_long_days is 0, duration_ok is True (screenshot case)
                 
-                if duration_ok and close_closed <= lower_prev:
+                if duration_ok and close_closed <= lower_prev and close_closed < ema_closed:
                     action = "ENTRY_SHORT"
-                    reason = f"Breakdown: Close {close_closed:.4f} <= Lower[prev] {lower_prev:.4f}"
+                    reason = f"Breakdown: Close {close_closed:.4f} <= Lower[prev] {lower_prev:.4f} AND below EMA {ema_closed:.4f}"
                     # Set Levels
                     self.entry_price = close_closed
                     self.tp_level = close_closed - (atr_closed * self.atr_mult_tp)
@@ -415,21 +430,26 @@ class DonchianChannelStrategy:
         upper_channel = df['high'].rolling(window=self.enter_period).max()
         lower_channel = df['low'].rolling(window=self.exit_period).min()
         
-        # ATR
+        #  ATR
         high_low = df['high'] - df['low']
         high_close = np.abs(df['high'] - df['close'].shift())
         low_close = np.abs(df['low'] - df['close'].shift())
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
         
+        # NEW: EMA Calculation for Backtest
+        ema_src = df[self.ema_source] if self.ema_source in df.columns else df['close']
+        ema_series = ema_src.ewm(span=self.ema_length, adjust=False).mean()
+        
         for i in range(len(df)):
-            if i < max(self.enter_period, self.exit_period, self.atr_period) + 1: continue
+            if i < max(self.enter_period, self.exit_period, self.atr_period, self.ema_length) + 1: continue
             
             current_time_ms = df['time'].iloc[i] * 1000
             close = df['close'].iloc[i]
             upper = upper_channel.iloc[i]
             lower = lower_channel.iloc[i]
             atr = atr_series.iloc[i]
+            ema = ema_series.iloc[i]  # NEW: Get EMA value
             
             if pd.isna(upper) or pd.isna(lower): continue
             
@@ -463,20 +483,20 @@ class DonchianChannelStrategy:
             
             # Entries
             if self.current_position == 0:
-                # Long
-                if self.allow_long and close >= upper_prev:
-                    self.update_position_state("ENTRY_LONG", current_time_ms, indicators, close, "Breakout")
+                # Long: Breakout AND close > EMA
+                if self.allow_long and close >= upper_prev and close > ema:
+                    self.update_position_state("ENTRY_LONG", current_time_ms, indicators, close, "Breakout + EMA")
                     self.entry_price = close
                     self.tp_level = close + (atr * self.atr_mult_tp)
                     self.trailing_stop_level = close - (atr * self.atr_mult_trail)
                     self.long_entry_bar = i
                     self.partial_exit_done = False
                 
-                # Short
-                elif self.allow_short and close <= lower_prev:
+                # Short: Breakdown AND close < EMA
+                elif self.allow_short and close <= lower_prev and close < ema:
                     # Check Duration
                     if self.min_long_days == 0 or (self.last_long_duration_bars >= self.min_long_bars):
-                        self.update_position_state("ENTRY_SHORT", current_time_ms, indicators, close, "Breakdown")
+                        self.update_position_state("ENTRY_SHORT", current_time_ms, indicators, close, "Breakdown + EMA")
                         self.entry_price = close
                         self.tp_level = close - (atr * self.atr_mult_tp)
                         self.trailing_stop_level = close + (atr * self.atr_mult_trail)

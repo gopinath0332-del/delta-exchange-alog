@@ -96,10 +96,13 @@ strategies:
     atr_period: 16 # ATR calculation period
     atr_mult_tp: 4.0 # ATR multiplier for take profit
     atr_mult_trail: 2.0 # ATR multiplier for trailing stop
-    enable_partial_tp: false # Disable partial TP as per screenshot
+    enable_partial_tp: true # Enable partial TP by default (updated from Pine)
     partial_pct: 0.5 # 50% partial exit when enabled
     bars_per_day: 24 # For 1H timeframe
-    min_long_days: 0 # Minimum long duration (tracking only)
+    min_long_days: 0 # Minimum long duration (set to 0 per Pine script)
+    # NEW: EMA Trend Filter
+    ema_length: 100 # EMA period for entry filter
+    ema_source: "close" # Source for EMA calculation (close, open, high, low)
 
 # Firestore Configuration (for trade journaling)
 firestore:
