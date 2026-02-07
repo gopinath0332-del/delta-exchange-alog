@@ -93,11 +93,11 @@ def main():
         },
         {
             "id": 8,
-            "name": "RIVERUSD Donchian Channel (1H Standard)",
+            "name": "RIVERUSD Donchian Channel (1H Heikin Ashi)",
             "symbol": "RIVERUSD",
             "monitor": "donchian_channel",
             "timeframe": "1h",
-            "candle_type": "standard",
+            "candle_type": "heikin-ashi",
             "desc": "Long-only Donchian breakout with ATR-based TP and trailing stop."
         }
     ]

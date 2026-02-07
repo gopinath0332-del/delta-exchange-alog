@@ -370,7 +370,7 @@ rsi_supertrend:
 
 ### 4. Donchian Channel Strategy (RIVERUSD)
 
-- **Timeframe**: 1 hour with **Standard** candles (changed from Heikin Ashi)
+- **Timeframe**: 1 hour with **Heikin Ashi** candles
 - **Type**: Both long and short breakout strategy
 - **Entry Long**: Price breaks above upper Donchian channel (20-period highest high) **AND** price > 100 EMA
 - **Entry Short**: Price breaks below lower Donchian channel (10-period lowest low) **AND** price < 100 EMA
