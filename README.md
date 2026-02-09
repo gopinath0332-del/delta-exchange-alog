@@ -21,6 +21,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
   - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
   - Donchian Channel (RIVERUSD, PIPPINUSD) - Breakout strategy with 100 EMA trend filter and ATR trailing stop
+  - **EMA Cross (BTCUSD)** - 10/20 EMA crossover with position flipping (NEW)
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
 
@@ -57,6 +58,7 @@ delta-exchange-alog/
 │   ├── rsi_200_ema_strategy.py # RSI + 200 EMA strategy (ETHUSD)
 │   ├── rsi_supertrend_strategy.py # RSI + Supertrend strategy (RIVERUSD)
 │   ├── donchian_strategy.py   # Donchian Channel strategy (RIVERUSD, PIPPINUSD)
+│   ├── ema_cross_strategy.py  # EMA Cross strategy (BTCUSD) - NEW
 │   └── examples/       # Example strategies
 ├── backtesting/        # Backtesting engine
 ├── trading/            # Live trading engine
@@ -451,6 +453,58 @@ ENABLE_ORDER_PLACEMENT_PIPPIN=true
 > [!NOTE]
 > Environment variables use `PIPPIN` as the base asset name (not `PIPPINUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
 
+### 6. EMA Cross Strategy (BTCUSD)
+
+- **Timeframe**: 4 hours with **Standard** candles
+- **Type**: Both long and short crossover strategy
+- **Entry Long**: Fast EMA (10) crosses above Slow EMA (20)
+- **Entry Short**: Fast EMA (10) crosses below Slow EMA (20)
+- **Exit**: Opposite crossover signal
+- **Indicators**:
+  - Fast EMA (10 period)
+  - Slow EMA (20 period)
+- **Features**:
+  - **Position Flipping** - Can close and reverse on the same bar (configurable)
+  - Both long and short trading (configurable via `trade_mode`)
+  - Simple and clean trend-following logic
+  - Closed candle logic for signal confirmation
+
+**Configuration** (`config/.env`):
+
+```env
+ORDER_SIZE_BTC=2
+LEVERAGE_BTC=5
+ENABLE_ORDER_PLACEMENT_BTC=true  # Set to true for live trading
+```
+
+> [!NOTE]
+> Environment variables use `BTC` as the base asset name (not `BTCUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
+
+**Strategy Parameters** (`config/settings.yaml`):
+
+```yaml
+ema_cross:
+  trade_mode: "Both" # "Long", "Short", "Both"
+  fast_ema_length: 10 # Fast EMA period
+  slow_ema_length: 20 # Slow EMA period
+  allow_flip: true # Allow same-bar close & reverse
+```
+
+**Entry Logic**:
+
+1. **Long**: Fast EMA crosses above Slow EMA (bullish crossover)
+2. **Short**: Fast EMA crosses below Slow EMA (bearish crossover)
+
+**Exit Logic**:
+
+1. **Long Exit**: Fast EMA crosses below Slow EMA
+2. **Short Exit**: Fast EMA crosses above Slow EMA
+
+**Allow Flip Behavior**:
+
+- When `allow_flip: true` - Can close existing position and immediately open opposite direction
+- When `allow_flip: false` - Only enters new positions when flat (no position)
+
 ## Closed Candle Logic
 
 All trading strategies use **closed candle logic** for signal generation, ensuring consistency between backtesting and live trading.
@@ -650,7 +704,7 @@ For issues and questions:
 ### Completed ✅
 
 - [x] Advanced technical indicators (MACD, RSI, CCI, EMA, PSAR, ATR, Donchian Channels)
-- [x] Multiple strategy support (7 strategies implemented)
+- [x] Multiple strategy support (8 strategies implemented)
 - [x] Closed candle logic standardization
 - [x] ATR-based risk management (trailing stops, partial exits)
 - [x] Position reconciliation on restart

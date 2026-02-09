@@ -1,0 +1,73 @@
+//@version=5
+strategy("Bitcoin EMA Crossover - 4H",
+     overlay=true,
+     initial_capital=100000,
+     commission_type=strategy.commission.percent,
+     commission_value=0.05,           // 0.05% default commission
+     pyramiding=0,
+     calc_on_order_fills=true,
+     calc_on_every_tick=false)
+
+// ===== Inputs =====
+fastLen      = input.int(10,  "Fast EMA (e.g., 10)", minval=1)
+slowLen      = input.int(20,  "Slow EMA (e.g., 20)", minval=1)
+dirInput     = input.string("BOTH", "Trade Direction", options=["LONG", "SHORT", "BOTH"])
+allowFlip    = input.bool(true, "Allow same-bar flip (close & reverse on same bar)")
+plotBg       = input.bool(true, "Highlight background by position")
+
+// NOTE: Commission must be set in the strategy() call.
+// If you want to change commission from the UI, edit the value above or clone with different presets.
+
+// ===== Calculations =====
+emaFast = ta.ema(close, fastLen)
+emaSlow = ta.ema(close, slowLen)
+
+longCond  = ta.crossover(emaFast, emaSlow)   // 10 crosses above 20
+shortCond = ta.crossunder(emaFast, emaSlow)  // 10 crosses below 20
+
+tradeLong  = dirInput == "LONG"  or dirInput == "BOTH"
+tradeShort = dirInput == "SHORT" or dirInput == "BOTH"
+
+// ===== Plotting =====
+plot(emaFast, "EMA Fast", color=color.new(color.teal, 0),  linewidth=2)
+plot(emaSlow, "EMA Slow", color=color.new(color.orange, 0), linewidth=2)
+plotshape(longCond,  title="Bullish Cross", style=shape.triangleup,   location=location.belowbar, color=color.new(color.teal, 0),  size=size.tiny, text="▲")
+plotshape(shortCond, title="Bearish Cross", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.tiny, text="▼")
+
+// Background highlight must be called at global scope; use na when disabled
+bgCol = plotBg ? strategy.position_size > 0 ? color.new(color.teal, 85) : strategy.position_size < 0 ? color.new(color.orange, 85): na    : na
+bgcolor(bgCol)
+
+// ===== Order Logic =====
+// 1) Exit conditions first — ensures we close the previous position before any new entry.
+if strategy.position_size > 0 and shortCond
+    strategy.close("Long", comment="Long Exit (bearish cross)")
+
+if strategy.position_size < 0 and longCond
+    strategy.close("Short", comment="Short Exit (bullish cross)")
+
+// 2) Entries
+if allowFlip
+    // Permit close & reverse on the same bar
+    if tradeLong and longCond
+        if strategy.position_size < 0
+            strategy.close("Short", comment="Flip to Long")
+        strategy.entry("Long", strategy.long)
+
+    if tradeShort and shortCond
+        if strategy.position_size > 0
+            strategy.close("Long", comment="Flip to Short")
+        strategy.entry("Short", strategy.short)
+else
+    // Only enter when flat
+    if strategy.position_size == 0
+        if tradeLong and longCond
+            strategy.entry("Long", strategy.long)
+        if tradeShort and shortCond
+            strategy.entry("Short", strategy.short)
+
+// ===== Alerts =====
+alertcondition(longCond,  title="Long Entry",  message="10 EMA crossed ABOVE 20 EMA → Long Entry")
+alertcondition(shortCond, title="Short Entry", message="10 EMA crossed BELOW 20 EMA → Short Entry")
+alertcondition(strategy.position_size > 0 and shortCond, title="Long Exit",  message="Opposite cross → Close Long")
+alertcondition(strategy.position_size < 0 and longCond,  title="Short Exit", message="Opposite cross → Close Short")

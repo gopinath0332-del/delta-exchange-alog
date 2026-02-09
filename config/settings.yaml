@@ -104,6 +104,13 @@ strategies:
     ema_length: 100 # EMA period for entry filter
     ema_source: "close" # Source for EMA calculation (close, open, high, low)
 
+  # EMA Cross Strategy (BTC 4H)
+  ema_cross:
+    trade_mode: "Both" # "Long", "Short", "Both"
+    fast_ema_length: 10 # Fast EMA period
+    slow_ema_length: 20 # Slow EMA period
+    allow_flip: true # Allow same-bar close & reverse
+
 # Firestore Configuration (for trade journaling)
 firestore:
   enabled: true # Enable/disable trade journaling to Firestore

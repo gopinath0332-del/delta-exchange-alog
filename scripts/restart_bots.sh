@@ -16,4 +16,7 @@ sudo systemctl restart delta-bot-river.service
 echo "Restarting Pippin Service..."
 sudo systemctl restart delta-bot-pippin.service
 
+echo "Restarting BTC EMA Service..."
+sudo systemctl restart delta-bot-btc-ema.service
+
 echo "Services restarted."

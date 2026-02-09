@@ -110,6 +110,15 @@ def main():
             "timeframe": "1h",
             "candle_type": "heikin-ashi",
             "desc": "Donchian breakout with 100 EMA trend filter and ATR trailing stop."
+        },
+        {
+            "id": 10,
+            "name": "BTCUSD EMA Cross (4H Standard)",
+            "symbol": "BTCUSD",
+            "monitor": "ema-cross",
+            "timeframe": "4h",
+            "candle_type": "standard",
+            "desc": "Long/Short based on EMA 10/20 crossover."
         }
     ]
 
