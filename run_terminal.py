@@ -54,9 +54,11 @@ def main():
         },
         {
             "id": 3,
-            "name": "BTCUSD CCI + 50 EMA Strategy", 
+            "name": "BTCUSD CCI + 50 EMA Strategy (1H Standard)", 
             "symbol": "BTCUSD", 
             "monitor": "cci-ema",
+            "timeframe": "1h",
+            "candle_type": "standard",  # Changed from Heikin Ashi to standard candles
             "desc": "Long Entry, Partial Exit at ATR Target, Final Exit on Reversal."
         },
         {
