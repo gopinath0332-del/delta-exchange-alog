@@ -90,6 +90,11 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         strategy = DonchianChannelStrategy()
         strategy.timeframe = timeframe
         logger.info("Initialized DonchianChannelStrategy")
+    elif strategy_name.lower() in ["ema-cross", "ema_cross", "emacross"]:
+        from strategies.ema_cross_strategy import EMACrossStrategy
+        strategy = EMACrossStrategy()
+        strategy.timeframe = timeframe
+        logger.info("Initialized EMACrossStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
@@ -568,6 +573,16 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
                          print(f"     Upper:    ${strategy.last_closed_upper:.{p_decimals}f}")
                          print(f"     Lower:    ${strategy.last_closed_lower:.{p_decimals}f}")
+                elif strategy_name.lower() in ["ema-cross", "ema_cross", "emacross"]: # EMA Cross Strategy
+                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    print(f"   Fast EMA ({getattr(strategy, 'fast_ema_length', 10)}): ${strategy.last_fast_ema:.{p_decimals}f}")
+                    print(f"   Slow EMA ({getattr(strategy, 'slow_ema_length', 20)}): ${strategy.last_slow_ema:.{p_decimals}f}")
+                    trend = "BULLISH" if strategy.last_fast_ema > strategy.last_slow_ema else "BEARISH"
+                    print(f"   Trend:      {trend}")
+                    if hasattr(strategy, 'last_closed_fast_ema'):
+                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         print(f"     Fast EMA: ${strategy.last_closed_fast_ema:.{p_decimals}f}")
+                         print(f"     Slow EMA: ${strategy.last_closed_slow_ema:.{p_decimals}f}")
                 
                 print("-" * 80)
                 
