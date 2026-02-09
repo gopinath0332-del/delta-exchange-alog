@@ -20,8 +20,8 @@ class CCIEMAStrategy:
     Parameters:
     - CCI Length: 30
     - EMA Length: 50
-    - ATR Length: 14
-    - ATR Multiplier: 4.0
+    - ATR Length: 20 (Updated from Pine script)
+    - ATR Multiplier: 9.0 (Updated from Pine script for partial profit target)
     """
     
     def __init__(self):
@@ -29,11 +29,11 @@ class CCIEMAStrategy:
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("cci_ema", {})
         
-        # Parameters
+        # Parameters (defaults match Pine script: atrLength=20, atrTarget=9.0)
         self.cci_length = cfg.get("cci_length", 30)
         self.ema_length = cfg.get("ema_length", 50)
-        self.atr_length = cfg.get("atr_length", 14)
-        self.atr_multiplier = cfg.get("atr_multiplier", 4.0)
+        self.atr_length = cfg.get("atr_length", 20)  # Updated from 14 to match Pine
+        self.atr_multiplier = cfg.get("atr_multiplier", 9.0)  # Updated from 4.0 to match Pine
         
         self.indicator_label = "CCI"
         

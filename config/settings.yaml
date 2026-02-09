@@ -42,8 +42,8 @@ strategies:
   cci_ema:
     cci_length: 30
     ema_length: 50
-    atr_length: 14
-    atr_multiplier: 4.0
+    atr_length: 20 # Updated from 14 to match Pine script
+    atr_multiplier: 9.0 # Updated from 4.0 to match Pine script (partial profit target)
 
   double_dip_rsi:
     rsi_period: 14
