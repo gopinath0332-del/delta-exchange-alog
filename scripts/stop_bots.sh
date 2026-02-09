@@ -13,4 +13,7 @@ sudo systemctl stop delta-bot-xrp.service
 echo "Stopping River Service..."
 sudo systemctl stop delta-bot-river.service
 
+echo "Stopping Pippin Service..."
+sudo systemctl stop delta-bot-pippin.service
+
 echo "All services stopped."
