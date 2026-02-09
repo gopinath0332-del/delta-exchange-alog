@@ -20,7 +20,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
   - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
-  - Donchian Channel (RIVERUSD) - Breakout strategy with 100 EMA trend filter and ATR trailing stop
+  - Donchian Channel (RIVERUSD, PIPPINUSD) - Breakout strategy with 100 EMA trend filter and ATR trailing stop
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
 
@@ -56,7 +56,7 @@ delta-exchange-alog/
 │   ├── macd_psar_100ema_strategy.py # MACD + PSAR + 100 EMA (XRPUSD)
 │   ├── rsi_200_ema_strategy.py # RSI + 200 EMA strategy (ETHUSD)
 │   ├── rsi_supertrend_strategy.py # RSI + Supertrend strategy (RIVERUSD)
-│   ├── donchian_strategy.py   # Donchian Channel strategy (RIVERUSD)
+│   ├── donchian_strategy.py   # Donchian Channel strategy (RIVERUSD, PIPPINUSD)
 │   └── examples/       # Example strategies
 ├── backtesting/        # Backtesting engine
 ├── trading/            # Live trading engine
@@ -436,6 +436,21 @@ donchian_channel:
 - ✅ Filters counter-trend trades
 - ✅ Works bidirectionally (long above EMA, short below EMA)
 
+### 5. Donchian Channel Strategy (PIPPINUSD)
+
+Same strategy as above (RIVERUSD), configured for the PIPPINUSD trading pair.
+
+**Configuration** (`config/.env`):
+
+```env
+ORDER_SIZE_PIPPIN=100
+LEVERAGE_PIPPIN=5
+ENABLE_ORDER_PLACEMENT_PIPPIN=true
+```
+
+> [!NOTE]
+> Environment variables use `PIPPIN` as the base asset name (not `PIPPINUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
+
 ## Closed Candle Logic
 
 All trading strategies use **closed candle logic** for signal generation, ensuring consistency between backtesting and live trading.
@@ -535,7 +550,7 @@ python main.py report --backtest-id latest --output report.pdf
   - [x] MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - [x] RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA and ATR-based exits
   - [x] RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit (RMA-based ATR)
-  - [x] Donchian Channel (RIVERUSD) - Long-only breakout with ATR trailing stop
+  - [x] Donchian Channel (RIVERUSD, PIPPINUSD) - Breakout with ATR trailing stop
 - [x] **3-Hour Candle Aggregation** - Local candle aggregation for custom timeframes
 - [x] **Position Reconciliation** - Automatic sync with exchange on restart
 - [x] **ATR-based Risk Management** - Dynamic trailing stops and partial exits

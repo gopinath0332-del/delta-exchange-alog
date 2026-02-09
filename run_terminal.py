@@ -99,6 +99,15 @@ def main():
             "timeframe": "1h",
             "candle_type": "heikin-ashi",
             "desc": "Long-only Donchian breakout with ATR-based TP and trailing stop."
+        },
+        {
+            "id": 9,
+            "name": "PIPPINUSD Donchian Channel (1H Heikin Ashi)",
+            "symbol": "PIPPINUSD",
+            "monitor": "donchian_channel",
+            "timeframe": "1h",
+            "candle_type": "heikin-ashi",
+            "desc": "Donchian breakout with 100 EMA trend filter and ATR trailing stop."
         }
     ]
 
