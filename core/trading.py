@@ -161,6 +161,35 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.error(f"Failed to fetch position for partial exit: {e}")
                 enable_orders = False
+        elif action == "PARTIAL_EXIT":
+            # Generic PARTIAL_EXIT action (used by Donchian and RSI-200-EMA strategies)
+            # Determine side from current exchange position
+            try:
+                current_positions = client.get_positions(product_id=product_id)
+                active_position = next((p for p in current_positions if float(p.get('size', 0)) != 0), None)
+                if active_position:
+                    current_size = float(active_position['size'])
+                    # Positive size = LONG position → sell to close partial
+                    # Negative size = SHORT position → buy to close partial
+                    side = "sell" if current_size > 0 else "buy"
+                    
+                    # Calculate 50% of absolute position size
+                    partial_size = int(abs(current_size) * 0.5)
+                    
+                    if partial_size > 0:
+                        order_size = partial_size
+                        logger.info(f"Partial Exit: Closing {order_size} lots (50% of {abs(current_size)}) - Direction: {'LONG' if current_size > 0 else 'SHORT'}")
+                    else:
+                        logger.warning(f"Position size {abs(current_size)} too small to partial. Sending ALERT ONLY.")
+                        enable_orders = False
+                        reason += " [SIZE TOO SMALL]"
+                else:
+                    logger.warning("No active position found for partial exit. Sending ALERT ONLY.")
+                    enable_orders = False
+                    reason += " [NO POSITION]"
+            except Exception as e:
+                logger.error(f"Failed to fetch position for partial exit: {e}")
+                enable_orders = False
         
         if not side:
             logger.warning(f"Unknown action: {action}")
