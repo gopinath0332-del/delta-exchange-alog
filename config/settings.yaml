@@ -44,6 +44,7 @@ strategies:
     ema_length: 50
     atr_length: 20 # Updated from 14 to match Pine script
     atr_multiplier: 9.0 # Updated from 4.0 to match Pine script (partial profit target)
+    enable_partial_tp: false # Disable partial exits
 
   double_dip_rsi:
     rsi_period: 14
@@ -56,6 +57,7 @@ strategies:
     atr_length: 14
     atr_mult_tp: 4.0
     trail_atr_mult: 3.0
+    enable_partial_tp: false # Disable partial exits
     partial_pct: 0.5
 
   rsi_50_ema:
@@ -80,6 +82,7 @@ strategies:
     atr_length: 17
     atr_multiplier_tp: 2.5
     atr_multiplier_trail: 2.5
+    enable_partial_tp: false # Disable partial exits
     partial_pct: 0.5
     historical_days: 60 # Fetch 60 days for backtesting (480 3h candles)
 
@@ -96,7 +99,7 @@ strategies:
     atr_period: 16 # ATR calculation period
     atr_mult_tp: 4.0 # ATR multiplier for take profit
     atr_mult_trail: 2.0 # ATR multiplier for trailing stop
-    enable_partial_tp: true # Enable partial TP by default (updated from Pine)
+    enable_partial_tp: false # Disable partial exits
     partial_pct: 0.5 # 50% partial exit when enabled
     bars_per_day: 24 # For 1H timeframe
     min_long_days: 0 # Minimum long duration (set to 0 per Pine script)
