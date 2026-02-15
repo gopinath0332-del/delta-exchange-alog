@@ -15,6 +15,79 @@ from core.firestore_client import journal_trade  # For trade journaling to Fires
 
 logger = get_logger(__name__)
 
+def calculate_position_size(
+    target_margin: float,
+    price: float,
+    leverage: int,
+    contract_value: float,
+    enable_partial_tp: bool = False
+) -> int:
+    """
+    Calculate position size dynamically based on target margin.
+    
+    Args:
+        target_margin: Target margin to use (e.g., 40 USD)
+        price: Current market price
+        leverage: Leverage to apply
+        contract_value: Contract value from product info
+        enable_partial_tp: Whether partial take-profit is enabled
+        
+    Returns:
+        Calculated position size (integer number of contracts)
+        
+    Logic:
+        1. Calculate base size: (target_margin * leverage) / (price * contract_value)
+        2. Round to integer
+        3. If enable_partial_tp is True and size is odd, round to nearest even number
+        4. Validate final size doesn't exceed target margin
+        5. Return size (minimum 2 if partial TP enabled, minimum 1 otherwise)
+    """
+    try:
+        # Calculate base position size
+        # Formula: (target_margin * leverage) / (price * contract_value)
+        base_size = (target_margin * leverage) / (price * contract_value)
+        
+        # Round to integer
+        position_size = int(base_size)
+        
+        # If partial TP is enabled, ensure even number for clean 50% exits
+        if enable_partial_tp:
+            if position_size % 2 != 0:
+                # Round to nearest even number
+                # If size is odd, add 1 to make it even
+                position_size += 1
+            
+            # Ensure minimum of 2 contracts when partial TP is enabled
+            if position_size < 2:
+                position_size = 2
+                logger.warning(
+                    f"Position size too small for partial TP. Setting to minimum: {position_size} contracts. "
+                    f"Target margin: ${target_margin}, Price: ${price}, Leverage: {leverage}x"
+                )
+        else:
+            # Ensure minimum of 1 contract
+            if position_size < 1:
+                position_size = 1
+        
+        # Validate that the final size doesn't significantly exceed target margin
+        actual_margin = (position_size * price * contract_value) / leverage
+        
+        # Log calculation details
+        logger.info(
+            f"Position size calculation: "
+            f"Target Margin=${target_margin:.2f}, Price=${price:.2f}, "
+            f"Leverage={leverage}x, Contract Value={contract_value}, "
+            f"Partial TP Enabled={enable_partial_tp} → "
+            f"Position Size={position_size} contracts (Actual Margin=${actual_margin:.2f})"
+        )
+        
+        return position_size
+        
+    except Exception as e:
+        logger.error(f"Error calculating position size: {e}")
+        # Return safe default based on partial TP setting
+        return 2 if enable_partial_tp else 1
+
 def get_trade_config(symbol: str):
     """
     Get trade configuration for a symbol from environment variables.
@@ -31,25 +104,28 @@ def get_trade_config(symbol: str):
     base_asset = symbol.upper().replace("USD", "").replace("USDT", "").replace("-", "").replace("/", "").replace("_", "")
     
     # 2. Defaults
-    order_size = 1
+    order_size = 1  # Deprecated: kept for backwards compatibility
     leverage = 5
+    target_margin = 40.0  # Default target margin in USD
     
     # 3. Load overrides
     try:
         order_size = int(os.getenv(f"ORDER_SIZE_{base_asset}", str(order_size)))
         leverage = int(os.getenv(f"LEVERAGE_{base_asset}", str(leverage)))
+        target_margin = float(os.getenv(f"TARGET_MARGIN_{base_asset}", str(target_margin)))
     except ValueError:
-        logger.warning(f"Invalid integer configuration for {base_asset}, using defaults.")
+        logger.warning(f"Invalid configuration for {base_asset}, using defaults.")
 
     # 4. Check Enable Flag
     env_var_key = f"ENABLE_ORDER_PLACEMENT_{base_asset}"
     enable_orders = os.getenv(env_var_key, "false").lower() == "true"
     
     return {
-        "order_size": order_size,
+        "order_size": order_size,  # Deprecated: kept for backwards compatibility
         "leverage": leverage,
         "enabled": enable_orders,
-        "base_asset": base_asset
+        "base_asset": base_asset,
+        "target_margin": target_margin  # New: configurable target margin
     }
 
 def execute_strategy_signal(
@@ -60,10 +136,10 @@ def execute_strategy_signal(
     price: float,
     rsi: float,
     reason: str,
-
     mode: str = "live",
     strategy_name: Optional[str] = None,
-    market_price: Optional[float] = None
+    market_price: Optional[float] = None,
+    enable_partial_tp: bool = False
 ):
     """
     Execute a strategy signal: Place order and send alert.
@@ -79,6 +155,7 @@ def execute_strategy_signal(
         mode: Execution mode ('live' or 'paper')
         strategy_name: Name of the strategy executing the signal
         market_price: Actual market price (LTP) if different from price
+        enable_partial_tp: Whether partial take-profit is enabled (for position sizing)
     """
     
     try:
@@ -95,21 +172,69 @@ def execute_strategy_signal(
         
         # 2. Get Configuration
         config = get_trade_config(symbol)
-        order_size = config['order_size']
+        order_size = config['order_size']  # Will be overridden for entries with dynamic sizing
         leverage = config['leverage']
         enable_orders = config['enabled']
         base_asset = config['base_asset']
+        target_margin = config['target_margin']
         
         side = None
         is_entry = False
+        lot_size = None  # Will be set for notifications
         active_position = None  # Store position data for PnL/fees extraction
         
+        # Handle entry orders with dynamic position sizing
         if action == "ENTRY_LONG":
             side = "buy"
             is_entry = True
+            
+            # Use dynamic position sizing for entries
+            try:
+                # Get current market price for accurate calculation
+                ticker = client.get_ticker(symbol)
+                current_price = float(ticker.get('close', price))
+                logger.info(f"Fetched current market price for position sizing: ${current_price:.2f}")
+                
+                # Calculate dynamic position size
+                order_size = calculate_position_size(
+                    target_margin=target_margin,
+                    price=current_price,
+                    leverage=leverage,
+                    contract_value=contract_value,
+                    enable_partial_tp=enable_partial_tp
+                )
+                lot_size = order_size  # Store for notification
+                logger.info(f"Calculated position size for ENTRY_LONG: {order_size} contracts")
+            except Exception as e:
+                logger.error(f"Failed to calculate dynamic position size: {e}. Using default.")
+                order_size = 2 if enable_partial_tp else 1
+                lot_size = order_size
+                
         elif action == "ENTRY_SHORT":
             side = "sell"
             is_entry = True
+            
+            # Use dynamic position sizing for entries
+            try:
+                # Get current market price for accurate calculation
+                ticker = client.get_ticker(symbol)
+                current_price = float(ticker.get('close', price))
+                logger.info(f"Fetched current market price for position sizing: ${current_price:.2f}")
+                
+                # Calculate dynamic position size
+                order_size = calculate_position_size(
+                    target_margin=target_margin,
+                    price=current_price,
+                    leverage=leverage,
+                    contract_value=contract_value,
+                    enable_partial_tp=enable_partial_tp
+                )
+                lot_size = order_size  # Store for notification
+                logger.info(f"Calculated position size for ENTRY_SHORT: {order_size} contracts")
+            except Exception as e:
+                logger.error(f"Failed to calculate dynamic position size: {e}. Using default.")
+                order_size = 2 if enable_partial_tp else 1
+                lot_size = order_size
         elif action == "EXIT_LONG" or action == "EXIT_SHORT":
             # For final exits, fetch actual position size from exchange
             # to avoid selling more than what's actually held (e.g., after partial exits)
@@ -121,6 +246,7 @@ def execute_strategy_signal(
                 if active_position:
                     current_size = abs(float(active_position['size']))
                     order_size = int(current_size)
+                    lot_size = order_size  # Store for notification
                     logger.info(f"Final Exit: Closing {order_size} lots (actual position size)")
                     logger.info(f"Position data for PnL: {active_position}")
                 else:
@@ -149,6 +275,7 @@ def execute_strategy_signal(
                     
                     if partial_size > 0:
                         order_size = partial_size
+                        lot_size = order_size  # Store for notification
                         logger.info(f"Partial Exit: Closing {order_size} lots (50% of {current_size})")
                     else:
                         logger.warning(f"Position size {current_size} too small to partial. Sending ALERT ONLY.")
@@ -178,6 +305,7 @@ def execute_strategy_signal(
                     
                     if partial_size > 0:
                         order_size = partial_size
+                        lot_size = order_size  # Store for notification
                         logger.info(f"Partial Exit: Closing {order_size} lots (50% of {abs(current_size)}) - Direction: {'LONG' if current_size > 0 else 'SHORT'}")
                     else:
                         logger.warning(f"Position size {abs(current_size)} too small to partial. Sending ALERT ONLY.")
@@ -383,7 +511,8 @@ def execute_strategy_signal(
                 pnl=pnl,
                 funding_charges=funding_charges,
                 trading_fees=trading_fees,
-                market_price=market_price
+                market_price=market_price,
+                lot_size=lot_size
             )
         except Exception as e:
             logger.error(f"Failed to send trade alert: {e}")

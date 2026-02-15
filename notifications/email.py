@@ -111,13 +111,15 @@ class EmailNotifier:
                         pnl: Optional[float] = None,
                         funding_charges: Optional[float] = None,
                         trading_fees: Optional[float] = None,
-                        market_price: Optional[float] = None):
+                        market_price: Optional[float] = None,
+                        lot_size: Optional[int] = None):
         """
         Send a formatted trade alert email.
         """
         subject = f"Trading Alert: {side} {symbol}"
         
         strategy_line = f"<li><strong>Strategy:</strong> {strategy_name}</li>" if strategy_name else ""
+        lot_size_line = f"<li><strong>Lot Size:</strong> {lot_size} contracts</li>" if lot_size is not None else ""
 
         # HTML Body
         body = f"""
@@ -129,6 +131,7 @@ class EmailNotifier:
               <li><strong>Symbol:</strong> {symbol}</li>
               <li><strong>Side:</strong> <span style="color: {'green' if side == 'LONG' else 'red'}">{side}</span></li>
               <li><strong>Price:</strong> ${price:,.2f}</li>
+              {lot_size_line}
               <li><strong>RSI:</strong> {rsi:.2f}</li>
               <li><strong>Reason:</strong> {reason}</li>
             </ul>

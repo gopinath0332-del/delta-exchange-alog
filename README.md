@@ -146,16 +146,65 @@ LOG_MAX_BYTES=10485760
 LOG_BACKUP_COUNT=5
 
 # Symbol Specific Order Settings
-# Overrides default order size (1) and leverage (5)
-ORDER_SIZE_XRP=10
+# Dynamic Position Sizing (Recommended)
+TARGET_MARGIN_XRP=40  # Target margin in USD for position sizing (default: 40)
+TARGET_MARGIN_BTC=40
 LEVERAGE_XRP=5
-ORDER_SIZE_BTC=1
 LEVERAGE_BTC=5
+
+# Legacy Order Size Configuration (Deprecated for entry orders)
+# ORDER_SIZE is still read for backwards compatibility but not used for entry orders
+# Position sizes are now calculated dynamically based on TARGET_MARGIN
+# ORDER_SIZE_XRP=10  # Deprecated: Use TARGET_MARGIN_XRP instead
+# ORDER_SIZE_BTC=1   # Deprecated: Use TARGET_MARGIN_BTC instead
 
 # Firestore Trade Journaling (optional)
 # See Firebase Admin SDK setup below
 FIREBASE_PROJECT_ID=crypto-journal-b2298
 ```
+
+### Dynamic Position Sizing
+
+The platform now uses **dynamic position sizing** based on target margin allocation instead of fixed order sizes.
+
+**How it works:**
+
+- Position size is calculated as: `(TARGET_MARGIN * leverage) / (price * contract_value)`
+- When partial take-profit is enabled, position size is rounded to the nearest even number
+- This ensures consistent margin usage across different price levels
+- Notifications display the calculated lot size for transparency
+
+**Configuration:**
+
+```env
+# Set target margin per asset (in USD)
+TARGET_MARGIN_BTC=40   # Use $40 margin for BTC positions
+TARGET_MARGIN_XRP=50   # Use $50 margin for XRP positions
+LEVERAGE_BTC=5         # 5x leverage
+```
+
+**Example Calculation:**
+
+```
+Price: $100,000
+Leverage: 5x
+Target Margin: $40
+Contract Value: 0.001 BTC
+
+Position Size = (40 * 5) / (100000 * 0.001) = 200 / 100 = 2 contracts
+```
+
+**Benefits:**
+
+- ✅ Consistent risk management across price movements
+- ✅ Automatic adjustment for different asset prices
+- ✅ Even number handling for clean partial exits
+- ✅ Configurable per asset
+
+> [!NOTE]
+> The old `ORDER_SIZE_{ASSET}` configuration is deprecated for entry orders but still supported for backwards compatibility. It is recommended to migrate to `TARGET_MARGIN_{ASSET}` for better risk management.
+
+````
 
 ### Firestore Trade Journaling (Optional)
 
@@ -177,7 +226,7 @@ firestore:
   enabled: true # Enable/disable trade journaling
   service_account_path: "config/your-firebase-adminsdk-file.json"
   collection_name: "trades" # Firestore collection name
-```
+````
 
 3. **Install Firebase Admin SDK**:
 
@@ -352,7 +401,7 @@ risk_management:
 **Configuration** (`config/.env`):
 
 ```env
-ORDER_SIZE_RIVER=4
+TARGET_MARGIN_RIVER=40  # Use $40 margin for positions
 LEVERAGE_RIVER=5
 ENABLE_ORDER_PLACEMENT_RIVER=true
 ```
@@ -393,7 +442,7 @@ rsi_supertrend:
 **Configuration** (`config/.env`):
 
 ```env
-ORDER_SIZE_RIVER=4
+TARGET_MARGIN_RIVER=40  # Use $40 margin for positions
 LEVERAGE_RIVER=5
 ENABLE_ORDER_PLACEMENT_RIVER=true
 ```
@@ -445,7 +494,7 @@ Same strategy as above (RIVERUSD), configured for the PIPPINUSD trading pair.
 **Configuration** (`config/.env`):
 
 ```env
-ORDER_SIZE_PIPPIN=100
+TARGET_MARGIN_PIPPIN=40  # Use $40 margin for positions
 LEVERAGE_PIPPIN=5
 ENABLE_ORDER_PLACEMENT_PIPPIN=true
 ```
@@ -472,7 +521,7 @@ ENABLE_ORDER_PLACEMENT_PIPPIN=true
 **Configuration** (`config/.env`):
 
 ```env
-ORDER_SIZE_BTC=2
+TARGET_MARGIN_BTC=40  # Use $40 margin for positions
 LEVERAGE_BTC=5
 ENABLE_ORDER_PLACEMENT_BTC=true  # Set to true for live trading
 ```
