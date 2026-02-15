@@ -477,6 +477,15 @@ class DonchianChannelStrategy:
                     self.update_position_state("EXIT_SHORT", current_time_ms, indicators, close, "Trailing SL Hit")
                     continue
             
+            # Partial TP Check (if enabled and not already done)
+            if self.enable_partial_tp and not self.partial_exit_done and self.tp_level is not None:
+                if self.current_position == 1 and close >= self.tp_level:
+                    self.update_position_state("PARTIAL_EXIT", current_time_ms, indicators, close, f"Partial TP Hit: {close:.4f}")
+                    continue
+                elif self.current_position == -1 and close <= self.tp_level:
+                    self.update_position_state("PARTIAL_EXIT", current_time_ms, indicators, close, f"Partial TP Hit: {close:.4f}")
+                    continue
+            
             # Channel Logic: Use Prev Candle
             upper_prev = upper_channel.iloc[i-1]
             lower_prev = lower_channel.iloc[i-1]
