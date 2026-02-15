@@ -180,7 +180,7 @@ class DonchianChannelStrategy:
         ema_series = ema_src.ewm(span=self.ema_length, adjust=False).mean()
         ema_closed = ema_series.iloc[closed_idx]
         
-        # Current Price for Real-time Hits
+        # Current Price for Trailing Stop Updates (responsive)
         current_price = df['close'].iloc[-1]
         
         action = None
@@ -194,7 +194,7 @@ class DonchianChannelStrategy:
             if self.long_entry_bar is None:
                 self.long_entry_bar = len(df) + closed_idx # Approx
         
-        # 1. Trailing Stop Update
+        # 1. Trailing Stop Update (uses current price for responsiveness)
         if self.trailing_stop_level is not None:
             if self.current_position == 1:
                 # Long: Stop moves UP only
@@ -207,19 +207,20 @@ class DonchianChannelStrategy:
                 if new_stop < self.trailing_stop_level:
                     self.trailing_stop_level = new_stop
                     
-        # 2. Check Trailing Stop Hit (Real-time)
+        # 2. Check Trailing Stop Hit (CLOSED CANDLE LOGIC - prevents false signals)
         if self.trailing_stop_level is not None:
-            if self.current_position == 1 and current_price <= self.trailing_stop_level:
-                return "EXIT_LONG", f"Trailing SL Hit: {current_price:.4f} <= {self.trailing_stop_level:.4f}"
-            elif self.current_position == -1 and current_price >= self.trailing_stop_level:
-                return "EXIT_SHORT", f"Trailing SL Hit: {current_price:.4f} >= {self.trailing_stop_level:.4f}"
+            if self.current_position == 1 and close_closed <= self.trailing_stop_level:
+                return "EXIT_LONG", f"Trailing SL Hit: {close_closed:.4f} <= {self.trailing_stop_level:.4f}"
+            elif self.current_position == -1 and close_closed >= self.trailing_stop_level:
+                return "EXIT_SHORT", f"Trailing SL Hit: {close_closed:.4f} >= {self.trailing_stop_level:.4f}"
                 
-        # 3. Check Partial TP (Real-time)
+        # 3. Check Partial TP (CLOSED CANDLE LOGIC - prevents false signals)
         if self.enable_partial_tp and not self.partial_exit_done and self.tp_level is not None:
-            if self.current_position == 1 and current_price >= self.tp_level:
-                return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} >= {self.tp_level:.4f}"
-            elif self.current_position == -1 and current_price <= self.tp_level:
-                return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} <= {self.tp_level:.4f}"
+            if self.current_position == 1 and close_closed >= self.tp_level:
+                return "PARTIAL_EXIT", f"Partial TP Hit: {close_closed:.4f} >= {self.tp_level:.4f}"
+            elif self.current_position == -1 and close_closed <= self.tp_level:
+                return "PARTIAL_EXIT", f"Partial TP Hit: {close_closed:.4f} <= {self.tp_level:.4f}"
+
 
         # 4. Entry/Exit Logic (Closed Candle)
         
