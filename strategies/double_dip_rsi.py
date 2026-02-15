@@ -37,6 +37,7 @@ class DoubleDipRSIStrategy:
         self.atr_length = cfg.get("atr_length", 14)
         self.atr_mult_tp = cfg.get("atr_mult_tp", 4.0)
         self.trail_atr_mult = cfg.get("trail_atr_mult", 4.0)
+        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Enable partial TP by default
         self.partial_pct = cfg.get("partial_pct", 0.5)
         
         self.indicator_label = "RSI"
@@ -153,7 +154,7 @@ class DoubleDipRSIStrategy:
             # Target calculated from CLOSED candle ATR for stability
             entry_price = float(self.active_trade.get('entry_price', 0)) if self.active_trade else 0
             
-            if entry_price > 0 and not self.active_trade.get('partial_exit_done'):
+            if self.enable_partial_tp and entry_price > 0 and not self.active_trade.get('partial_exit_done'):
                 # Use CLOSED ATR for target calculation
                 tp_target = entry_price + (closed_atr * self.atr_mult_tp)
                 self.next_partial_target = tp_target
@@ -207,7 +208,7 @@ class DoubleDipRSIStrategy:
             # Target calculated from CLOSED candle ATR
             entry_price = float(self.active_trade.get('entry_price', 0)) if self.active_trade else 0
             
-            if entry_price > 0 and not self.active_trade.get('partial_exit_done'):
+            if self.enable_partial_tp and entry_price > 0 and not self.active_trade.get('partial_exit_done'):
                 # Use CLOSED ATR for target calculation
                 tp_target = entry_price - (closed_atr * self.atr_mult_tp)
                 self.next_partial_target = tp_target

@@ -39,6 +39,7 @@ class RSI200EMAStrategy:
         self.atr_length = cfg.get("atr_length", 17)
         self.atr_multiplier_tp = cfg.get("atr_multiplier_tp", 2.5)
         self.atr_multiplier_trail = cfg.get("atr_multiplier_trail", 2.5)
+        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Enable partial TP by default
         self.partial_pct = cfg.get("partial_pct", 0.5)
         
         self.indicator_label = "RSI"
@@ -183,7 +184,7 @@ class RSI200EMAStrategy:
                 return action, reason
         
         # Check Partial TP
-        if self.current_position == 1 and not self.partial_exit_done and self.tp_level is not None:
+        if self.enable_partial_tp and self.current_position == 1 and not self.partial_exit_done and self.tp_level is not None:
             if current_price >= self.tp_level:
                 action = "PARTIAL_EXIT"
                 reason = f"Partial TP Hit: Price {current_price:.2f} >= TP {self.tp_level:.2f}"
@@ -395,7 +396,7 @@ class RSI200EMAStrategy:
                     continue
             
             # Check Partial TP
-            if self.current_position == 1 and not self.partial_exit_done and self.tp_level is not None:
+            if self.enable_partial_tp and self.current_position == 1 and not self.partial_exit_done and self.tp_level is not None:
                 if close >= self.tp_level:
                     self.update_position_state("PARTIAL_EXIT", current_time_ms, rsi, close, "Partial TP Hit")
                     # Continue to check for other signals

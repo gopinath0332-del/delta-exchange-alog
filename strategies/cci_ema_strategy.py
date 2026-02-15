@@ -34,6 +34,8 @@ class CCIEMAStrategy:
         self.ema_length = cfg.get("ema_length", 50)
         self.atr_length = cfg.get("atr_length", 20)  # Updated from 14 to match Pine
         self.atr_multiplier = cfg.get("atr_multiplier", 9.0)  # Updated from 4.0 to match Pine
+        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Enable partial TP by default
+        self.partial_pct = cfg.get("partial_pct", 0.5)  # 50% partial exit when enabled
         
         self.indicator_label = "CCI"
         
@@ -171,7 +173,7 @@ class CCIEMAStrategy:
         # In Long Position
         elif self.current_position == 1:
             # 1. Partial Profit Check (uses current high for better fills)
-            if not self.partial_profit_taken:
+            if self.enable_partial_tp and not self.partial_profit_taken:
                 target_price = self.last_entry_price + (atr * self.atr_multiplier)
                 # Check if current High hit the target (real-time check)
                 if current_high >= target_price:
@@ -292,7 +294,7 @@ class CCIEMAStrategy:
                     
             elif self.current_position == 1:
                 # Partial
-                if not self.partial_profit_taken:
+                if self.enable_partial_tp and not self.partial_profit_taken:
                     target = self.last_entry_price + (atr * self.atr_multiplier)
                     if high >= target:
                         action = "EXIT_LONG_PARTIAL"
