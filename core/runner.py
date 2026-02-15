@@ -433,8 +433,29 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                                  exec_price = float(result['execution_price'])
                                  logger.info(f"Using actual execution price for state update: {exec_price}")
                          
-                         # Execute Action (Update State) with CORRECT PRICE
-                         strategy.update_position_state(action, current_time_ms, current_rsi, exec_price, reason=reason)
+                         # Build indicators dictionary for state update
+                         # Different strategies have different indicator types
+                         indicators = {}
+                         if strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
+                             # Donchian uses upper, lower, atr
+                             indicators = {
+                                 'upper': getattr(strategy, 'last_upper_channel', 0.0),
+                                 'lower': getattr(strategy, 'last_lower_channel', 0.0),
+                                 'atr': getattr(strategy, 'last_atr', 0.0)
+                             }
+                         elif strategy_name.lower() in ["ema-cross", "ema_cross", "emacross"]:
+                             # EMA Cross uses fast_ema, slow_ema
+                             indicators = {
+                                 'fast_ema': getattr(strategy, 'last_fast_ema', 0.0),
+                                 'slow_ema': getattr(strategy, 'last_slow_ema', 0.0)
+                             }
+                         else:
+                             # Default: RSI-based strategies, or single indicator value
+                             # For backward compatibility with strategies expecting single value
+                             indicators = current_rsi
+                         
+                         # Execute Action (Update State) with CORRECT ARGUMENTS
+                         strategy.update_position_state(action, current_time_ms, indicators, exec_price, reason=reason)
                 else:
                      logger.error(f"Unexpected candle data format: {df.columns}")
                      time.sleep(10)
