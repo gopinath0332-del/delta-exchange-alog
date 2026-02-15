@@ -423,7 +423,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              rsi=current_rsi if hasattr(strategy, 'calculate_rsi') else getattr(strategy, 'last_cci', 0.0),
                              reason=reason,
                              mode=mode,
-                             strategy_name=strategy_name
+                             strategy_name=strategy_name,
+                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False)
                          )
                          
                          # Check for successful execution and actual fill price

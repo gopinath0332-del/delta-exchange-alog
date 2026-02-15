@@ -72,7 +72,8 @@ class DiscordNotifier:
                         pnl: Optional[float] = None,
                         funding_charges: Optional[float] = None,
                         trading_fees: Optional[float] = None,
-                        market_price: Optional[float] = None):
+                        market_price: Optional[float] = None,
+                        lot_size: Optional[int] = None):
         """
         Send a formatted trade alert with ANSI color codes.
 
@@ -89,6 +90,7 @@ class DiscordNotifier:
             funding_charges: Total funding fees paid/received
             trading_fees: Commission/trading fees
             market_price: Actual market price (LTP) if different from order/signal price
+            lot_size: Number of contracts/lots in the order
         """
         title = f"🚀 TRADING SIGNAL: {side} {symbol}"
         color = 5763719 if "LONG" in side.upper() else 15548997  # Green for Long, Red for Short
@@ -123,6 +125,10 @@ class DiscordNotifier:
         message += (
             f"RSI: \u001b[0;33m{rsi:.2f}\u001b[0m\n"
         )
+        
+        # Show lot size if available
+        if lot_size is not None:
+            message += f"Lot Size: \u001b[0;36m{lot_size}\u001b[0m contracts\n"
         
         # Color-code [DISABLED] tag in reason if present
         if "[DISABLED]" in reason:
