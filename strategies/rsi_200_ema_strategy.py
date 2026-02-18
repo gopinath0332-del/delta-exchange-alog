@@ -39,7 +39,7 @@ class RSI200EMAStrategy:
         self.atr_length = cfg.get("atr_length", 17)
         self.atr_multiplier_tp = cfg.get("atr_multiplier_tp", 2.5)
         self.atr_multiplier_trail = cfg.get("atr_multiplier_trail", 2.5)
-        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Enable partial TP by default
+        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Overridden per-coin from .env by runner
         self.partial_pct = cfg.get("partial_pct", 0.5)
         
         self.indicator_label = "RSI"
