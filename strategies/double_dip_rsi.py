@@ -37,7 +37,7 @@ class DoubleDipRSIStrategy:
         self.atr_length = cfg.get("atr_length", 14)
         self.atr_mult_tp = cfg.get("atr_mult_tp", 4.0)
         self.trail_atr_mult = cfg.get("trail_atr_mult", 4.0)
-        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Overridden per-coin from .env by runner
+        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Enable partial TP by default
         self.partial_pct = cfg.get("partial_pct", 0.5)
         
         self.indicator_label = "RSI"

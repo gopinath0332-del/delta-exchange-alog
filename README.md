@@ -152,10 +152,6 @@ TARGET_MARGIN_BTC=40
 LEVERAGE_XRP=5
 LEVERAGE_BTC=5
 
-# Partial Take-Profit Toggle (per-coin)
-ENABLE_PARTIAL_TP_XRP=true   # Enable/disable 50% partial TP for XRP
-ENABLE_PARTIAL_TP_BTC=true   # Enable/disable 50% partial TP for BTC
-
 # Legacy Order Size Configuration (Deprecated for entry orders)
 # ORDER_SIZE is still read for backwards compatibility but not used for entry orders
 # Position sizes are now calculated dynamically based on TARGET_MARGIN
@@ -408,7 +404,6 @@ risk_management:
 TARGET_MARGIN_RIVER=40  # Use $40 margin for positions
 LEVERAGE_RIVER=5
 ENABLE_ORDER_PLACEMENT_RIVER=true
-ENABLE_PARTIAL_TP_RIVER=true  # Enable/disable 50% partial TP
 ```
 
 > [!NOTE]
@@ -450,7 +445,6 @@ rsi_supertrend:
 TARGET_MARGIN_RIVER=40  # Use $40 margin for positions
 LEVERAGE_RIVER=5
 ENABLE_ORDER_PLACEMENT_RIVER=true
-ENABLE_PARTIAL_TP_RIVER=true  # Enable/disable 50% partial TP
 ```
 
 > [!NOTE]
@@ -466,7 +460,7 @@ donchian_channel:
   atr_period: 16 # ATR calculation period
   atr_mult_tp: 4.0 # ATR multiplier for take profit
   atr_mult_trail: 2.0 # ATR multiplier for trailing stop
-  # enable_partial_tp: Now controlled per-coin in .env (ENABLE_PARTIAL_TP_{COIN})
+  enable_partial_tp: true # Enable 50% partial TP (updated default)
   partial_pct: 0.5 # 50% partial exit when enabled
   bars_per_day: 24 # For 1H timeframe
   min_long_days: 0 # Minimum long duration (0 = no requirement)
@@ -503,7 +497,6 @@ Same strategy as above (RIVERUSD), configured for the PIPPINUSD trading pair.
 TARGET_MARGIN_PIPPIN=40  # Use $40 margin for positions
 LEVERAGE_PIPPIN=5
 ENABLE_ORDER_PLACEMENT_PIPPIN=true
-ENABLE_PARTIAL_TP_PIPPIN=true  # Enable/disable 50% partial TP
 ```
 
 > [!NOTE]
@@ -531,7 +524,6 @@ ENABLE_PARTIAL_TP_PIPPIN=true  # Enable/disable 50% partial TP
 TARGET_MARGIN_BTC=40  # Use $40 margin for positions
 LEVERAGE_BTC=5
 ENABLE_ORDER_PLACEMENT_BTC=true  # Set to true for live trading
-ENABLE_PARTIAL_TP_BTC=true       # Enable/disable 50% partial TP
 ```
 
 > [!NOTE]
