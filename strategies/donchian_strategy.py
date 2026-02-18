@@ -33,7 +33,7 @@ class DonchianChannelStrategy:
         self.atr_period = cfg.get("atr_period", 16)
         self.atr_mult_tp = cfg.get("atr_mult_tp", 4.0)
         self.atr_mult_trail = cfg.get("atr_mult_trail", 2.0)
-        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Overridden per-coin from .env by runner
+        self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Changed default to True
         self.partial_pct = cfg.get("partial_pct", 0.5)
         self.bars_per_day = cfg.get("bars_per_day", 24)
         self.min_long_days = cfg.get("min_long_days", 0)  # Changed default to 0

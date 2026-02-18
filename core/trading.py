@@ -120,16 +120,12 @@ def get_trade_config(symbol: str):
     env_var_key = f"ENABLE_ORDER_PLACEMENT_{base_asset}"
     enable_orders = os.getenv(env_var_key, "false").lower() == "true"
     
-    # 5. Check Partial TP Flag (per-coin, defaults to true for backwards compatibility)
-    enable_partial_tp = os.getenv(f"ENABLE_PARTIAL_TP_{base_asset}", "true").lower() == "true"
-    
     return {
         "order_size": order_size,  # Deprecated: kept for backwards compatibility
         "leverage": leverage,
         "enabled": enable_orders,
         "base_asset": base_asset,
-        "target_margin": target_margin,  # Configurable target margin
-        "enable_partial_tp": enable_partial_tp  # Per-coin partial take-profit toggle
+        "target_margin": target_margin  # New: configurable target margin
     }
 
 def execute_strategy_signal(
@@ -142,13 +138,11 @@ def execute_strategy_signal(
     reason: str,
     mode: str = "live",
     strategy_name: Optional[str] = None,
-    market_price: Optional[float] = None
+    market_price: Optional[float] = None,
+    enable_partial_tp: bool = False
 ):
     """
     Execute a strategy signal: Place order and send alert.
-    
-    Note: enable_partial_tp is now determined per-coin from .env 
-    (ENABLE_PARTIAL_TP_{COIN}) via get_trade_config(), not passed as a parameter.
     
     Args:
         client: API Client
@@ -161,6 +155,7 @@ def execute_strategy_signal(
         mode: Execution mode ('live' or 'paper')
         strategy_name: Name of the strategy executing the signal
         market_price: Actual market price (LTP) if different from price
+        enable_partial_tp: Whether partial take-profit is enabled (for position sizing)
     """
     
     try:
@@ -182,7 +177,6 @@ def execute_strategy_signal(
         enable_orders = config['enabled']
         base_asset = config['base_asset']
         target_margin = config['target_margin']
-        enable_partial_tp = config['enable_partial_tp']  # Per-coin partial TP from .env
         
         side = None
         is_entry = False

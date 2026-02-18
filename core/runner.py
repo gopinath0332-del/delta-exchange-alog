@@ -59,61 +59,45 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         from strategies.double_dip_rsi import DoubleDipRSIStrategy
         strategy = DoubleDipRSIStrategy()
         strategy.timeframe = timeframe
-        strategy.symbol = symbol  # Set symbol for coin-based config (e.g., partial TP)
         logger.info("Initialized DoubleDipRSIStrategy")
     elif strategy_name.lower() in ["cci-ema", "cciema"]:
         from strategies.cci_ema_strategy import CCIEMAStrategy
         strategy = CCIEMAStrategy()
         strategy.timeframe = timeframe
-        strategy.symbol = symbol  # Set symbol for coin-based config (e.g., partial TP)
         logger.info("Initialized CCIEMAStrategy")
     elif strategy_name.lower() in ["rs-50-ema", "rsi-50-ema", "rsi50ema"]:
         from strategies.rsi_50_ema_strategy import RSI50EMAStrategy
         strategy = RSI50EMAStrategy()
         strategy.timeframe = timeframe
-        strategy.symbol = symbol  # Set symbol for coin-based config (e.g., partial TP)
         logger.info("Initialized RSI50EMAStrategy")
     elif strategy_name.lower() in ["macd-psar-100ema", "macd_psar_100ema", "macdpsar"]:
         from strategies.macd_psar_100ema_strategy import MACDPSAR100EMAStrategy
         strategy = MACDPSAR100EMAStrategy()
         strategy.timeframe = timeframe
-        strategy.symbol = symbol  # Set symbol for coin-based config (e.g., partial TP)
         logger.info("Initialized MACDPSAR100EMAStrategy")
     elif strategy_name.lower() in ["rsi-200-ema", "rsi_200_ema", "rsi200ema"]:
         from strategies.rsi_200_ema_strategy import RSI200EMAStrategy
         strategy = RSI200EMAStrategy()
         strategy.timeframe = timeframe
-        strategy.symbol = symbol  # Set symbol for coin-based config (e.g., partial TP)
         logger.info("Initialized RSI200EMAStrategy")
     elif strategy_name.lower() in ["rsi-supertrend", "rsi_supertrend", "rsisupertrend"]:
         from strategies.rsi_supertrend_strategy import RSISupertrendStrategy
         strategy = RSISupertrendStrategy()
         strategy.timeframe = timeframe
-        strategy.symbol = symbol  # Set symbol for coin-based config (e.g., partial TP)
         logger.info("Initialized RSISupertrendStrategy")
     elif strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
         from strategies.donchian_strategy import DonchianChannelStrategy
         strategy = DonchianChannelStrategy()
         strategy.timeframe = timeframe
-        strategy.symbol = symbol  # Set symbol for coin-based config (e.g., partial TP)
         logger.info("Initialized DonchianChannelStrategy")
     elif strategy_name.lower() in ["ema-cross", "ema_cross", "emacross"]:
         from strategies.ema_cross_strategy import EMACrossStrategy
         strategy = EMACrossStrategy()
         strategy.timeframe = timeframe
-        strategy.symbol = symbol  # Set symbol for coin-based config (e.g., partial TP)
         logger.info("Initialized EMACrossStrategy")
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
-
-    # Override enable_partial_tp from .env (per-coin config instead of per-strategy)
-    # This reads ENABLE_PARTIAL_TP_{COIN} from .env and sets it on the strategy
-    # so that signal-level logic (e.g., partial exit triggers) uses the coin setting
-    coin_config = get_trade_config(symbol)
-    if hasattr(strategy, 'enable_partial_tp'):
-        strategy.enable_partial_tp = coin_config['enable_partial_tp']
-        logger.info(f"Partial TP for {symbol}: {'ENABLED' if strategy.enable_partial_tp else 'DISABLED'} (from .env)")
 
     # Wait for Internet Connectivity (RPi Startup Fix)
     logger.info("Waiting for network connectivity...")
@@ -209,16 +193,10 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     except Exception as e:
         logger.warning(f"Failed to fetch wallet balance for startup: {e}")
     
-    # Partial TP status with ANSI color (green=enabled, red=disabled)
-    partial_tp_enabled = trade_config['enable_partial_tp']
-    partial_tp_str = "ENABLED" if partial_tp_enabled else "DISABLED"
-    ansi_partial_tp_str = f"\u001b[0;32m{partial_tp_str}\u001b[0m" if partial_tp_enabled else f"\u001b[0;31m{partial_tp_str}\u001b[0m"
-    
     start_msg = (
         f"{symbol} {strategy_name} started on host: {hostname}\n"
         f"Candle Type: {candle_type}\n"
         f"Order Placement: {ansi_enabled_str}\n"
-        f"Partial TP: {ansi_partial_tp_str}\n"
         f"Order Size: {trade_config['order_size']}\n"
         f"Leverage: {trade_config['leverage']}x\n"
         f"Wallet Balance: \u001b[0;36m{wallet_balance_str}\u001b[0m"
@@ -446,7 +424,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              reason=reason,
                              mode=mode,
                              strategy_name=strategy_name,
-                             # enable_partial_tp is now resolved per-coin inside execute_strategy_signal
+                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False)
                          )
                          
                          # Check for successful execution and actual fill price
