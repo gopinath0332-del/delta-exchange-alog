@@ -209,10 +209,16 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     except Exception as e:
         logger.warning(f"Failed to fetch wallet balance for startup: {e}")
     
+    # Partial TP status with ANSI color (green=enabled, red=disabled)
+    partial_tp_enabled = trade_config['enable_partial_tp']
+    partial_tp_str = "ENABLED" if partial_tp_enabled else "DISABLED"
+    ansi_partial_tp_str = f"\u001b[0;32m{partial_tp_str}\u001b[0m" if partial_tp_enabled else f"\u001b[0;31m{partial_tp_str}\u001b[0m"
+    
     start_msg = (
         f"{symbol} {strategy_name} started on host: {hostname}\n"
         f"Candle Type: {candle_type}\n"
         f"Order Placement: {ansi_enabled_str}\n"
+        f"Partial TP: {ansi_partial_tp_str}\n"
         f"Order Size: {trade_config['order_size']}\n"
         f"Leverage: {trade_config['leverage']}x\n"
         f"Wallet Balance: \u001b[0;36m{wallet_balance_str}\u001b[0m"
