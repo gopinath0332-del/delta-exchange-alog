@@ -1,8 +1,10 @@
 """REST API client for Delta Exchange using delta-rest-client library."""
 
+import os
 import time
 import json
 import hmac
+import random
 import hashlib
 import urllib.parse
 from datetime import datetime
@@ -17,6 +19,43 @@ from core.logger import get_logger
 from .rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Retry / backoff helpers
+# ---------------------------------------------------------------------------
+
+# HTTP status codes that are worth retrying (exchange overload / transient errors)
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+# Read retry config from environment (with sensible defaults)
+# API_MAX_RETRIES      – how many times to retry a failed request (default 4)
+# API_BACKOFF_BASE_SEC – starting wait time in seconds for first retry (default 2)
+# API_BACKOFF_MAX_SEC  – maximum wait time cap in seconds (default 60)
+_MAX_RETRIES: int = int(os.getenv("API_MAX_RETRIES", "4"))
+_BACKOFF_BASE: float = float(os.getenv("API_BACKOFF_BASE_SEC", "2"))
+_BACKOFF_MAX: float = float(os.getenv("API_BACKOFF_MAX_SEC", "60"))
+
+
+def _backoff_wait(attempt: int) -> None:
+    """
+    Sleep for an exponentially increasing duration with random jitter.
+
+    Formula: min(base * 2^attempt, max) + uniform_jitter(0, 1)
+
+    The jitter prevents a thundering-herd effect when multiple strategies
+    all retry at the same time after a shared transient failure.
+
+    Args:
+        attempt: Zero-based retry attempt number (0 = first retry)
+    """
+    delay = min(_BACKOFF_BASE * (2 ** attempt), _BACKOFF_MAX)
+    jitter = random.uniform(0, 1)  # Add up to 1 second of random jitter
+    total_wait = delay + jitter
+    logger.warning(
+        f"API retry backoff: waiting {total_wait:.1f}s "
+        f"(attempt {attempt + 1}/{_MAX_RETRIES}, base={_BACKOFF_BASE}s, cap={_BACKOFF_MAX}s)"
+    )
+    time.sleep(total_wait)
 
 
 class DeltaRestClient:
@@ -182,30 +221,110 @@ class DeltaRestClient:
         """
         Make direct API request for public endpoints not in delta-rest-client.
 
+        Implements exponential backoff with jitter on transient failures
+        (HTTP 400 'Bad Request' from exchange overload, 429 rate-limit,
+        5xx server errors and network timeouts).  The number of retries and
+        backoff timing are controlled via environment variables:
+            API_MAX_RETRIES      (default 4)
+            API_BACKOFF_BASE_SEC (default 2 s)
+            API_BACKOFF_MAX_SEC  (default 60 s)
+
+        Non-retryable errors (e.g. 401 Unauthorized) are raised immediately.
+
         Note: Use delta-rest-client methods when available. This is only for
         public endpoints like /v2/products, /v2/history/candles that are not
         included in the delta-rest-client library.
 
         Args:
-            endpoint: API endpoint
-            params: Query parameters
+            endpoint: API endpoint path (e.g. '/v2/history/candles')
+            params: Optional dictionary of query parameters
 
         Returns:
-            API response
+            Parsed JSON response dict
+
+        Raises:
+            APIError: If all retries are exhausted or a non-retryable error occurs
         """
         import requests
 
         self.rate_limiter.wait_if_needed()
 
         url = f"{self.config.base_url}{endpoint}"
+        last_exception: Optional[Exception] = None
 
-        try:
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error("Direct API request failed", endpoint=endpoint, error=str(e))
-            raise APIError(f"API request failed: {e}")
+        for attempt in range(_MAX_RETRIES + 1):  # +1 so we always try at least once
+            try:
+                response = requests.get(url, params=params, timeout=30)
+
+                # Immediately raise on non-retryable auth errors
+                if response.status_code == 401:
+                    logger.error(
+                        f"Direct API auth error (401) for {endpoint} – not retrying"
+                    )
+                    response.raise_for_status()
+
+                # For retryable HTTP error codes, log and back off
+                if response.status_code in _RETRYABLE_STATUS_CODES:
+                    logger.warning(
+                        f"Retryable HTTP {response.status_code} from {endpoint}. "
+                        f"Attempt {attempt + 1}/{_MAX_RETRIES + 1}"
+                    )
+                    if attempt < _MAX_RETRIES:
+                        _backoff_wait(attempt)
+                        continue  # retry
+                    # All retries exhausted – raise to surface the real error
+                    response.raise_for_status()
+
+                # Handle 400 Bad Request separately – Delta Exchange returns this
+                # when the exchange is temporarily overloaded or parameters are
+                # marginal (e.g. candle start/end epoch edge cases),
+                # so we retry with backoff rather than giving up immediately.
+                if response.status_code == 400:
+                    logger.warning(
+                        f"HTTP 400 Bad Request from {endpoint} – exchange may be busy. "
+                        f"Attempt {attempt + 1}/{_MAX_RETRIES + 1}"
+                    )
+                    if attempt < _MAX_RETRIES:
+                        _backoff_wait(attempt)
+                        continue  # retry
+                    response.raise_for_status()  # Give up after max retries
+
+                response.raise_for_status()
+                return response.json()
+
+            except requests.exceptions.Timeout as e:
+                # Network timeout – always worth retrying
+                last_exception = e
+                logger.warning(
+                    f"Request timeout for {endpoint}. "
+                    f"Attempt {attempt + 1}/{_MAX_RETRIES + 1}"
+                )
+                if attempt < _MAX_RETRIES:
+                    _backoff_wait(attempt)
+                    continue
+
+            except requests.exceptions.ConnectionError as e:
+                # Connection dropped – retryable
+                last_exception = e
+                logger.warning(
+                    f"Connection error for {endpoint}. "
+                    f"Attempt {attempt + 1}/{_MAX_RETRIES + 1}"
+                )
+                if attempt < _MAX_RETRIES:
+                    _backoff_wait(attempt)
+                    continue
+
+            except requests.exceptions.RequestException as e:
+                # Other request errors (non-retryable, e.g. invalid URL)
+                logger.error("Direct API request failed", endpoint=endpoint, error=str(e))
+                raise APIError(f"API request failed: {e}")
+
+        # All retries exhausted
+        logger.error(
+            f"Direct API request failed after {_MAX_RETRIES} retries: {endpoint}",
+            error=str(last_exception),
+        )
+        raise APIError(f"API request failed after {_MAX_RETRIES} retries: {last_exception}")
 
     # Product and Market Data Methods
 

@@ -694,8 +694,21 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 time.sleep(sleep_seconds)
                 
             except Exception as e:
-                logger.error(f"Error in strategy loop: {e}")
-                time.sleep(60)
+                error_msg = str(e)
+                # Detect exhausted-retry situations (exchange overload / transient API errors)
+                # The _make_direct_request already applied exponential backoff internally,
+                # so by the time we get here the exchange was truly unavailable for a while.
+                # Give it a full 5-minute cooldown before trying the next strategy cycle.
+                if "retries" in error_msg.lower() or "400" in error_msg or "busy" in error_msg.lower():
+                    logger.warning(
+                        f"Exchange appears busy or overloaded. "
+                        f"Backing off for 5 minutes before next cycle. Error: {e}"
+                    )
+                    time.sleep(300)  # 5-minute cooldown for exchange overload
+                else:
+                    # Generic strategy-loop error – shorter pause and retry
+                    logger.error(f"Error in strategy loop: {e}")
+                    time.sleep(60)  # 1-minute pause for other errors
 
     except KeyboardInterrupt:
         logger.info("Stopping strategy...")
