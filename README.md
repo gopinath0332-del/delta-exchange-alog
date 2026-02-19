@@ -145,6 +145,12 @@ LOG_FILE=logs/trading.log
 LOG_MAX_BYTES=10485760
 LOG_BACKUP_COUNT=5
 
+# API Retry / Backoff (exchange overload protection)
+# When busy, retries: 2s → 4s → 8s → 16s (+ jitter)
+API_MAX_RETRIES=4
+API_BACKOFF_BASE_SEC=2
+API_BACKOFF_MAX_SEC=60
+
 # Symbol Specific Order Settings
 # Dynamic Position Sizing (Recommended)
 TARGET_MARGIN_XRP=40  # Target margin in USD for position sizing (default: 40)
@@ -205,6 +211,36 @@ Position Size = (40 * 5) / (100000 * 0.001) = 200 / 100 = 2 contracts
 > The old `ORDER_SIZE_{ASSET}` configuration is deprecated for entry orders but still supported for backwards compatibility. It is recommended to migrate to `TARGET_MARGIN_{ASSET}` for better risk management.
 
 ````
+
+### API Resilience: Exponential Backoff
+
+When **Delta Exchange is busy or overloaded** (HTTP 400/429/5xx), the bot automatically retries with exponential backoff instead of immediately raising an error every second.
+
+**How it works:**
+
+| Retry | Wait (approx) |
+|-------|----------------|
+| 1st   | 2s + jitter    |
+| 2nd   | 4s + jitter    |
+| 3rd   | 8s + jitter    |
+| 4th   | 16s + jitter   |
+| Give up → 5 min cooldown |   |
+
+- **Jitter**: up to +1s random added to each wait (prevents thundering-herd when many strategies retry together)
+- **Non-retryable**: HTTP 401 (auth errors) are raised immediately — no retry
+- **After all retries**: the strategy loop backs off 5 minutes before the next full cycle
+
+**Configuration** (in `config/.env`):
+
+```env
+API_MAX_RETRIES=4        # Number of retry attempts
+API_BACKOFF_BASE_SEC=2   # Initial wait in seconds
+API_BACKOFF_MAX_SEC=60   # Maximum single wait cap
+```
+
+> [!TIP]
+> If you want faster recovery on a stable connection, set `API_MAX_RETRIES=2` and `API_BACKOFF_BASE_SEC=1`.
+> For more patience during sustained outages, try `API_BACKOFF_MAX_SEC=120`.
 
 ### Firestore Trade Journaling (Optional)
 
