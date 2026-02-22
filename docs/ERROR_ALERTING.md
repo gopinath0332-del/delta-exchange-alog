@@ -22,7 +22,13 @@ Add these to your `config/.env` file:
 # Error Alerting
 ENABLE_ERROR_ALERTS=true                    # Enable/disable error alerts
 DISCORD_ENABLED=true                        # Enable Discord notifications
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
+
+# Two separate webhooks are used:
+# - DISCORD_WEBHOOK_URL         → general trade notifications (entries, exits, etc.)
+# - DISCORD_ERROR_WEBHOOK_URL   → ERROR/CRITICAL application alerts only
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_TRADE_WEBHOOK_URL
+DISCORD_ERROR_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_ERROR_WEBHOOK_URL
+
 ALERT_THROTTLE_SECONDS=300                  # Minimum seconds between same alerts (5 minutes)
 
 # Logging
@@ -255,7 +261,8 @@ setup_logging(
    config = get_config()
    print(f"Alerts enabled: {config.enable_error_alerts}")
    print(f"Discord enabled: {config.discord_enabled}")
-   print(f"Webhook URL: {config.discord_webhook_url[:50]}...")
+   # discord_error_webhook_url is used exclusively for ERROR/CRITICAL alerts
+   print(f"Error Webhook URL: {config.discord_error_webhook_url[:50]}...")
    ```
 
 3. **Check logs**: Look for error alert handler errors in your logs

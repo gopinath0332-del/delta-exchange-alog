@@ -89,7 +89,7 @@ def setup_logging(
     log_max_bytes: int = 524288000,  # 500MB default
     log_backup_count: int = 5,
     human_readable: bool = True,
-    discord_webhook_url: Optional[str] = None,
+    discord_error_webhook_url: Optional[str] = None,  # Dedicated error/critical alert webhook (DISCORD_ERROR_WEBHOOK_URL)
     alert_throttle_seconds: int = 300,  # 5 minutes
     enable_error_alerts: bool = True,
 ) -> None:
@@ -102,7 +102,7 @@ def setup_logging(
         log_max_bytes: Maximum size of log file before rotation (default: 500MB)
         log_backup_count: Number of backup log files to keep
         human_readable: Use human-readable formatting (default: True)
-        discord_webhook_url: Discord webhook URL for error alerts (optional)
+        discord_error_webhook_url: Discord webhook URL dedicated to ERROR/CRITICAL alerts (DISCORD_ERROR_WEBHOOK_URL)
         alert_throttle_seconds: Minimum seconds between alerts for same error
         enable_error_alerts: Enable Discord alerts for ERROR/CRITICAL messages
     """
@@ -181,12 +181,14 @@ def setup_logging(
         root_logger = logging.getLogger()
         root_logger.addHandler(file_handler)
 
-    # Add error alert handler if configured
-    if enable_error_alerts and discord_webhook_url:
+    # Add error alert handler if configured.
+    # Uses DISCORD_ERROR_WEBHOOK_URL (discord_error_webhook_url) so that ERROR/CRITICAL
+    # messages go to a dedicated alerts channel, separate from trade notifications.
+    if enable_error_alerts and discord_error_webhook_url:
         from .error_alerts import create_error_alert_handler
 
         alert_handler = create_error_alert_handler(
-            discord_webhook_url=discord_webhook_url,
+            discord_webhook_url=discord_error_webhook_url,  # Route errors to the dedicated error webhook
             alert_throttle_seconds=alert_throttle_seconds,
         )
         
