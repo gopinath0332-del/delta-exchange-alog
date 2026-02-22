@@ -41,6 +41,9 @@ class DonchianChannelStrategy:
         # NEW: EMA Filter
         self.ema_length = cfg.get("ema_length", 100)
         self.ema_source = cfg.get("ema_source", "close")  # close, open, high, low
+        # PnL Exit Guard: exit if unrealised PnL% drops below this threshold.
+        # Configured via donchian_channel.pnl_exit_threshold in settings.yaml.
+        self.pnl_exit_threshold = cfg.get("pnl_exit_threshold", -10.0)
         
         # Mode Flags
         self.allow_long = self.trade_mode in ["Long", "Both"]
@@ -203,20 +206,20 @@ class DonchianChannelStrategy:
         # --- LOGIC ---
 
         # 0. PnL % Hard Exit Guard (checked BEFORE trailing stop and channel exits)
-        #    If the current position's unrealised PnL drops below -10%, exit immediately
-        #    to cap downside risk beyond what the trailing stop already covers.
-        PNL_EXIT_THRESHOLD = -10.0  # Exit if PnL% is worse than this value
+        #    If the current position's unrealised PnL drops below the configured threshold,
+        #    exit immediately to cap downside risk beyond what the trailing stop covers.
+        #    Threshold is set via donchian_channel.pnl_exit_threshold in settings.yaml.
         if pnl_pct is not None and self.current_position != 0:
-            if pnl_pct < PNL_EXIT_THRESHOLD:
+            if pnl_pct < self.pnl_exit_threshold:
                 if self.current_position == 1:
                     return (
                         "EXIT_LONG",
-                        f"PnL Exit Guard: Position PnL {pnl_pct:.2f}% < {PNL_EXIT_THRESHOLD}%"
+                        f"PnL Exit Guard: Position PnL {pnl_pct:.2f}% < {self.pnl_exit_threshold}%"
                     )
                 elif self.current_position == -1:
                     return (
                         "EXIT_SHORT",
-                        f"PnL Exit Guard: Position PnL {pnl_pct:.2f}% < {PNL_EXIT_THRESHOLD}%"
+                        f"PnL Exit Guard: Position PnL {pnl_pct:.2f}% < {self.pnl_exit_threshold}%"
                     )
         
         # Update Duration State (if Long)
