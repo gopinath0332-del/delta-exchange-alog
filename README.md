@@ -512,9 +512,10 @@ donchian_channel:
 
 **Exit Logic**:
 
-1. **50% Partial TP**: At entry ± 4× ATR (now enabled by default)
+1. **PnL Guard Exit** _(NEW)_: If the position's unrealised PnL drops below **-10%** of margin, the position is closed immediately — before any other exit check. Labelled `PNL STOP` in trade history.
 2. **Trailing Stop**: 2× ATR from current price (ratchets with favorable price movement)
-3. **Channel Exit**: Price breaks opposite channel level
+3. **50% Partial TP**: At entry ± 4× ATR (now enabled by default)
+4. **Channel Exit**: Price breaks opposite channel level
 
 **Benefits of EMA Filter**:
 

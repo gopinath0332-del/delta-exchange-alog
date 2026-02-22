@@ -41,6 +41,9 @@ class DonchianChannelStrategy:
         # NEW: EMA Filter
         self.ema_length = cfg.get("ema_length", 100)
         self.ema_source = cfg.get("ema_source", "close")  # close, open, high, low
+        # PnL Exit Guard: exit if unrealised PnL% drops below this threshold.
+        # Configured via donchian_channel.pnl_exit_threshold in settings.yaml.
+        self.pnl_exit_threshold = cfg.get("pnl_exit_threshold", -10.0)
         
         # Mode Flags
         self.allow_long = self.trade_mode in ["Long", "Both"]
@@ -141,8 +144,22 @@ class DonchianChannelStrategy:
             logger.error(f"Error calculating indicators: {e}")
             return 0.0, 0.0, 0.0, 0.0
 
-    def check_signals(self, df: pd.DataFrame, current_time_ms: float) -> Tuple[Optional[str], str]:
-        """Check for signals using closed candle logic."""
+    def check_signals(
+        self,
+        df: pd.DataFrame,
+        current_time_ms: float,
+        pnl_pct: Optional[float] = None
+    ) -> Tuple[Optional[str], str]:
+        """
+        Check for trading signals using closed candle logic.
+
+        Args:
+            df: OHLCV DataFrame (sorted ascending by time).
+            current_time_ms: Current epoch time in milliseconds.
+            pnl_pct: Current position PnL as a percentage (e.g. -12.5 means -12.5%).
+                     When provided and < -10.0, an immediate exit is triggered BEFORE
+                     the trailing-stop and channel-exit checks.
+        """
         if df.empty or len(df) < max(self.enter_period, self.exit_period, self.atr_period, self.ema_length) + 2:
             return None, ""
 
@@ -185,8 +202,25 @@ class DonchianChannelStrategy:
         
         action = None
         reason = ""
-        
+
         # --- LOGIC ---
+
+        # 0. PnL % Hard Exit Guard (checked BEFORE trailing stop and channel exits)
+        #    If the current position's unrealised PnL drops below the configured threshold,
+        #    exit immediately to cap downside risk beyond what the trailing stop covers.
+        #    Threshold is set via donchian_channel.pnl_exit_threshold in settings.yaml.
+        if pnl_pct is not None and self.current_position != 0:
+            if pnl_pct < self.pnl_exit_threshold:
+                if self.current_position == 1:
+                    return (
+                        "EXIT_LONG",
+                        f"PnL Exit Guard: Position PnL {pnl_pct:.2f}% < {self.pnl_exit_threshold}%"
+                    )
+                elif self.current_position == -1:
+                    return (
+                        "EXIT_SHORT",
+                        f"PnL Exit Guard: Position PnL {pnl_pct:.2f}% < {self.pnl_exit_threshold}%"
+                    )
         
         # Update Duration State (if Long)
         if self.current_position == 1:
@@ -346,6 +380,7 @@ class DonchianChannelStrategy:
                 self.active_trade["status"] = "CLOSED"
                 if "Trailing" in reason: self.active_trade["status"] = "TRAIL STOP"
                 elif "Breakdown" in reason: self.active_trade["status"] = "CHANNEL EXIT"
+                elif "PnL Exit Guard" in reason: self.active_trade["status"] = "PNL STOP"
                 
                 self.active_trade["points"] = price - self.active_trade["entry_price"]
                 self.trades.append(self.active_trade)
@@ -365,6 +400,7 @@ class DonchianChannelStrategy:
                 self.active_trade["status"] = "CLOSED"
                 if "Trailing" in reason: self.active_trade["status"] = "TRAIL STOP"
                 elif "Breakout" in reason: self.active_trade["status"] = "CHANNEL EXIT"
+                elif "PnL Exit Guard" in reason: self.active_trade["status"] = "PNL STOP"
                 
                 self.active_trade["points"] = self.active_trade["entry_price"] - price
                 self.trades.append(self.active_trade)

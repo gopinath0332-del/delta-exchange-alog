@@ -107,6 +107,9 @@ strategies:
     # NEW: EMA Trend Filter
     ema_length: 100 # EMA period for entry filter
     ema_source: "close" # Source for EMA calculation (close, open, high, low)
+    # PnL Exit Guard: exit position if unrealised PnL% drops below this threshold.
+    # e.g. -10.0 means exit when position loses more than 10% of its margin.
+    pnl_exit_threshold: -10.0
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:
