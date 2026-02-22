@@ -554,14 +554,28 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     pnl = float(live_pos_data.get('unrealized_pnl', 0))
                     liq = float(live_pos_data.get('liquidation_price', 0))
                     margin = float(live_pos_data.get('margin', 0))
-                    
+
                     side_str = "LONG" if sz > 0 else "SHORT"
                     print(f" Exchange Pos: {side_str} ({abs(sz)} @ ${ep:,.{p_decimals}f})")
                     print(f" PnL (Unreal): {pnl:+.{p_decimals}f} USD")
+
+                    # Compute and display PnL% (only meaningful when margin > 0)
+                    if margin > 0:
+                        live_pnl_pct = (pnl / margin) * 100.0
+                        # For Donchian: show distance to the PnL exit threshold
+                        if strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
+                            threshold = getattr(strategy, 'pnl_exit_threshold', -10.0)
+                            distance = live_pnl_pct - threshold  # positive = safe margin remaining
+                            warn = " ⚠ NEAR EXIT THRESHOLD" if distance < 2.0 else ""
+                            print(f" PnL %:        {live_pnl_pct:+.2f}%  (guard threshold: {threshold:.1f}%{warn})")
+                        else:
+                            print(f" PnL %:        {live_pnl_pct:+.2f}%")
+
                     print(f" Margin Used:  ${margin:,.2f}")
                     print(f" Liq Price:    ${liq:,.{p_decimals}f}")
                 else:
                     print(f" Exchange Pos: FLAT")
+
 
                 print(f" Candle Type:  {'Heikin Ashi' if use_ha else 'Standard'}")
                 print("-" * 80)
