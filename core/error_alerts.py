@@ -197,9 +197,10 @@ if __name__ == "__main__":
     # Setup basic logging
     logging.basicConfig(level=logging.DEBUG)
     
-    # Create alert handler (would use real webhook URL in production)
+    # Create alert handler using the dedicated error webhook (DISCORD_ERROR_WEBHOOK_URL),
+    # NOT the general trade-notification webhook (DISCORD_WEBHOOK_URL).
     alert_handler = ErrorAlertHandler(
-        discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL"),
+        discord_webhook_url=os.getenv("DISCORD_ERROR_WEBHOOK_URL"),
         alert_throttle_seconds=10,  # Short throttle for testing
     )
     
