@@ -21,7 +21,8 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
   - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
   - Donchian Channel (RIVERUSD, PIPPINUSD) - Breakout strategy with 100 EMA trend filter and ATR trailing stop
-  - **EMA Cross (BTCUSD)** - 10/20 EMA crossover with position flipping (NEW)
+  - **Donchian Channel (PIUSD)** - 1H Heikin Ashi, 5x leverage, $50 target margin (NEW)
+  - **EMA Cross (BTCUSD)** - 10/20 EMA crossover with position flipping
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
 
@@ -534,7 +535,7 @@ Same strategy as above (RIVERUSD), configured for the PIPPINUSD trading pair.
 **Configuration** (`config/.env`):
 
 ```env
-TARGET_MARGIN_PIPPIN=40  # Use $40 margin for positions
+TARGET_MARGIN_PIPPIN=50  # Use $50 margin for positions
 LEVERAGE_PIPPIN=5
 ENABLE_ORDER_PLACEMENT_PIPPIN=true
 ```
@@ -542,7 +543,45 @@ ENABLE_ORDER_PLACEMENT_PIPPIN=true
 > [!NOTE]
 > Environment variables use `PIPPIN` as the base asset name (not `PIPPINUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
 
-### 6. EMA Cross Strategy (BTCUSD)
+### 6. Donchian Channel Strategy (PIUSD)
+
+Same Donchian Channel strategy, configured for the **PIUSD** futures pair.
+
+- **Timeframe**: 1H with **Heikin Ashi** candles
+- **Leverage**: 5x
+- **Target Margin**: $50
+- **Strategy ID**: 11 (`--strategy 11`)
+- **Service File**: `service/delta-bot-pi.service`
+
+**Configuration** (`config/.env`):
+
+```env
+# PIUSD — base asset key is 'PI' (code strips 'USD' from symbol)
+TARGET_MARGIN_PI=50   # Use $50 margin for positions
+LEVERAGE_PI=5
+ENABLE_ORDER_PLACEMENT_PI=true
+```
+
+> [!NOTE]
+> Environment variables use `PI` as the base asset name (not `PIUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
+
+**Running manually**:
+
+```bash
+python3 run_terminal.py --strategy 11 --non-interactive
+```
+
+**Deploying as a systemd service**:
+
+```bash
+sudo cp service/delta-bot-pi.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable delta-bot-pi
+sudo systemctl start delta-bot-pi
+sudo systemctl status delta-bot-pi
+```
+
+### 7. EMA Cross Strategy (BTCUSD)
 
 - **Timeframe**: 4 hours with **Standard** candles
 - **Type**: Both long and short crossover strategy
@@ -693,7 +732,7 @@ python main.py report --backtest-id latest --output report.pdf
   - [x] MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - [x] RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA and ATR-based exits
   - [x] RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit (RMA-based ATR)
-  - [x] Donchian Channel (RIVERUSD, PIPPINUSD) - Breakout with ATR trailing stop
+  - [x] Donchian Channel (RIVERUSD, PIPPINUSD, PIUSD) - Breakout with ATR trailing stop
 - [x] **3-Hour Candle Aggregation** - Local candle aggregation for custom timeframes
 - [x] **Position Reconciliation** - Automatic sync with exchange on restart
 - [x] **ATR-based Risk Management** - Dynamic trailing stops and partial exits
