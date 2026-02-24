@@ -512,7 +512,10 @@ donchian_channel:
 
 **Exit Logic**:
 
-1. **PnL Guard Exit** _(NEW)_: If the position's unrealised PnL drops below **-10%** of margin, the position is closed immediately — before any other exit check. Labelled `PNL STOP` in trade history.
+1. **Exchange Stop-Loss** _(replaces PnL Guard)_: Immediately after every entry, a **bracket stop-loss order** is placed on the exchange. The stop price is calculated so that a loss of `stop_loss_pct` (default **10%**) of the margin triggers a full close via the exchange's matching engine — no application polling required.
+   - Formula: `distance = (target_margin × stop_loss_pct) / (position_size × contract_value)`
+   - Long SL: `entry_price - distance`, Short SL: `entry_price + distance`
+   - Configurable via `stop_loss_pct` in `settings.yaml` (default `0.10`).
 2. **Trailing Stop**: 2× ATR from current price (ratchets with favorable price movement)
 3. **50% Partial TP**: At entry ± 4× ATR (now enabled by default)
 4. **Channel Exit**: Price breaks opposite channel level

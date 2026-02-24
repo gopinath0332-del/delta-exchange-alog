@@ -698,6 +698,63 @@ class DeltaRestClient:
         logger.info("Order placed", order_id=response.get("id"))
         return cast(Dict[str, Any], response)
 
+    def place_bracket_order(
+        self,
+        product_id: int,
+        product_symbol: str,
+        stop_price: str,
+        stop_order_type: str = "market_order",
+        stop_trigger_method: str = "last_traded_price",
+    ) -> Dict[str, Any]:
+        """
+        Place a bracket stop-loss order attached to an open position.
+
+        Delta Exchange bracket orders are separate from the position order and are
+        managed by the exchange matching engine.  A single bracket order per position
+        is allowed.  When the market reaches `stop_price` the exchange will
+        immediately close the full position using the specified `stop_order_type`.
+
+        API endpoint: POST /v2/orders/bracket
+
+        Args:
+            product_id:          Exchange product ID (from get_products()).
+            product_symbol:      Symbol string (e.g. "BTCUSD") – used alongside product_id.
+            stop_price:          Stop trigger price as a string (e.g. "59000").
+            stop_order_type:     How to fill when triggered: "market_order" (default) or
+                                 "limit_order".  Use market_order for guaranteed fill.
+            stop_trigger_method: Price type used to trigger the stop.
+                                 "last_traded_price" (default) or "mark_price".
+
+        Returns:
+            API response dict (contains the created bracket order details).
+
+        Raises:
+            APIError: If the request fails after retries.
+        """
+        logger.info(
+            f"Placing bracket stop-loss order: product={product_symbol} "
+            f"(id={product_id}), stop_price={stop_price}, "
+            f"order_type={stop_order_type}, trigger={stop_trigger_method}"
+        )
+
+        # Build bracket order payload — only stop_loss_order is required.
+        # The exchange uses the existing open position's size automatically,
+        # so we do not need to specify a separate size field.
+        payload = {
+            "product_id": product_id,
+            "product_symbol": product_symbol,
+            "stop_loss_order": {
+                "order_type": stop_order_type,
+                "stop_price": stop_price,
+            },
+            "bracket_stop_trigger_method": stop_trigger_method,
+        }
+
+        response = self._make_auth_request("POST", "/v2/orders/bracket", data=payload)
+        result = response.get("result", response) if isinstance(response, dict) else response
+        logger.info(f"Bracket stop-loss order placed: {result}")
+        return cast(Dict[str, Any], result)
+
     def cancel_order(self, product_id: int, order_id: int) -> Dict[str, Any]:
         """
         Cancel an open order.

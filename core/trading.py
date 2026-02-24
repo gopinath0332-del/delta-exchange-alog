@@ -139,7 +139,8 @@ def execute_strategy_signal(
     mode: str = "live",
     strategy_name: Optional[str] = None,
     market_price: Optional[float] = None,
-    enable_partial_tp: bool = False
+    enable_partial_tp: bool = False,
+    stop_loss_pct: Optional[float] = None
 ):
     """
     Execute a strategy signal: Place order and send alert.
@@ -156,6 +157,10 @@ def execute_strategy_signal(
         strategy_name: Name of the strategy executing the signal
         market_price: Actual market price (LTP) if different from price
         enable_partial_tp: Whether partial take-profit is enabled (for position sizing)
+        stop_loss_pct: Fraction of target_margin to use as max loss (e.g. 0.10 = 10%).
+                       When provided (Donchian only), a bracket stop-loss order is placed
+                       on the exchange immediately after a successful entry order.
+                       Pass None (default) to skip bracket SL placement entirely.
     """
     
     try:
@@ -414,8 +419,83 @@ def execute_strategy_signal(
                     logger.error(f"Failed to place order: {e}")
                     notifier.send_error(f"Order Failed: {symbol}", str(e))
                     return {"success": False, "error": str(e)}
+
+                # --- EXCHANGE BRACKET STOP-LOSS (Donchian only) ---
+                # Place a bracket stop-loss order on the exchange immediately after
+                # a successful entry so the exchange closes the position automatically
+                # when the stop price is hit — no application-level polling required.
+                #
+                # The stop price is derived from the configured stop_loss_pct:
+                #   stop_loss_distance = (target_margin * stop_loss_pct)
+                #                        / (position_size * contract_value)
+                #
+                # For LONG:  stop_price = entry_price - stop_loss_distance
+                # For SHORT: stop_price = entry_price + stop_loss_distance
+                #
+                # Example: margin=$1000, 10%, position_size=100, contract_value=0.001
+                #   stop_loss_distance = (1000 * 0.10) / (100 * 0.001) = $1,000
+                #   stop_price (LONG) = 100,000 - 1,000 = $99,000
+                #   PnL at stop = -$100 = exactly -10% of $1000 margin  ✓
+                if stop_loss_pct is not None and is_entry and order:
+                    try:
+                        # Use the actual fill price for SL anchor; fall back to signal price.
+                        sl_anchor_price = execution_price if execution_price else price
+
+                        # Guard against zero/negative contract_value or position size.
+                        if contract_value > 0 and order_size > 0:
+                            sl_distance = (target_margin * stop_loss_pct) / (order_size * contract_value)
+
+                            if action == "ENTRY_LONG":
+                                sl_price = sl_anchor_price - sl_distance
+                            else:  # ENTRY_SHORT
+                                sl_price = sl_anchor_price + sl_distance
+
+                            # Determine decimal precision from the product's tick_size so
+                            # the stop price matches the exchange's accepted format.
+                            # e.g. tick_size=0.5 → 1 decimal, tick_size=0.01 → 2 decimals.
+                            import math as _math
+                            try:
+                                tick_size = float(product.get("tick_size", "1"))
+                                if 0 < tick_size < 1:
+                                    sl_decimals = _math.ceil(abs(_math.log10(tick_size)))
+                                else:
+                                    sl_decimals = 0
+                            except Exception:
+                                sl_decimals = 2  # Safe fallback
+                            sl_price_str = f"{sl_price:.{sl_decimals}f}"
+
+                            logger.info(
+                                f"Placing exchange bracket SL: anchor={sl_anchor_price}, "
+                                f"distance={sl_distance:.4f}, stop_price={sl_price_str} "
+                                f"(margin={target_margin}, pct={stop_loss_pct*100:.0f}%, "
+                                f"size={order_size}, contract_value={contract_value})"
+                            )
+
+                            client.place_bracket_order(
+                                product_id=product_id,
+                                product_symbol=symbol,
+                                stop_price=sl_price_str,
+                                stop_order_type="market_order",   # Fill immediately on trigger
+                                stop_trigger_method="last_traded_price"
+                            )
+
+                            logger.info(f"Exchange bracket stop-loss placed at {sl_price_str} for {symbol}")
+                        else:
+                            logger.warning(
+                                f"Skipping bracket SL: invalid contract_value={contract_value} "
+                                f"or order_size={order_size}"
+                            )
+
+                    except Exception as sl_err:
+                        # SL placement failure is non-fatal: position is already open.
+                        # Log an error so it surfaces via Discord error webhook.
+                        logger.error(
+                            f"Failed to place bracket stop-loss for {symbol}: {sl_err}. "
+                            f"Position is open WITHOUT an exchange stop-loss. "
+                            f"Manual intervention may be required."
+                        )
             else:
-                logger.info("Skipping actual order placement (ENABLE_ORDER_PLACEMENT is false).")
+                logger.info("Skipping actual order placement (ENABLE_ORDER_PLACEMENT is false.)")  # noqa
 
             # 6. Calculate Margin (Estimated)
             # Do this BEFORE fetching wallet so we have it even if wallet fetch fails

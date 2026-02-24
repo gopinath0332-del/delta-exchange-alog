@@ -391,52 +391,13 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                      current_time_ms = int(time.time() * 1000)
                      price = float(closes.iloc[-1])
 
-                     # For Donchian strategy: fetch live position PnL% so that check_signals
-                     # can apply the PnL-based exit guard (-10% threshold).
-                     donchian_pnl_pct = None
-                     if strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
-                         try:
-                             products_pnl = client.get_products()
-                             target_prod_pnl = next(
-                                 (p for p in products_pnl if p.get('symbol') == symbol), None
-                             )
-                             if target_prod_pnl:
-                                 pid_pnl = target_prod_pnl.get('id')
-                                 pos_pnl = client.get_positions(product_id=pid_pnl)
-                                 if isinstance(pos_pnl, dict):
-                                     pos_pnl = [pos_pnl]
-                                 # Grab the matching position
-                                 for _p in pos_pnl:
-                                     if not isinstance(_p, dict):
-                                         continue
-                                     if len(pos_pnl) == 1 or str(_p.get('product_id')) == str(pid_pnl):
-                                         _size = float(_p.get('size', 0))
-                                         _pnl  = float(_p.get('unrealized_pnl', 0))
-                                         _margin = float(_p.get('margin', 0))
-                                         # Compute PnL% only when a real position exists
-                                         if _size != 0 and _margin > 0:
-                                             donchian_pnl_pct = (_pnl / _margin) * 100.0
-                                             logger.info(
-                                                 f"Donchian PnL%: {donchian_pnl_pct:.2f}% "
-                                                 f"(PnL={_pnl:.4f}, Margin={_margin:.4f})"
-                                             )
-                                         break
-                         except Exception as pnl_err:
-                             logger.warning(f"Failed to fetch Donchian PnL%: {pnl_err}")
-
                      if hasattr(strategy, 'calculate_indicators'):
-                          # For CCI Strategy and Updated Double Dip RSI
-                          # Update indicators first (if not done inside check_signals, but check_signals usually does it)
-                          # We rely on check_signals to calculate and return action.
-                          # Pass pnl_pct for Donchian so it can apply the PnL exit guard.
-                          if strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
-                              action, reason = strategy.check_signals(
-                                  df, current_time_ms, pnl_pct=donchian_pnl_pct
-                              )
-                          else:
-                              action, reason = strategy.check_signals(df, current_time_ms)
+                          # Run signal check for the current candle.
+                          # (The old Donchian PnL% polling block has been removed;
+                          # the exchange now enforces a bracket stop-loss after every entry.)
+                          action, reason = strategy.check_signals(df, current_time_ms)
 
-                          # Extract latest values for logging/dashboard from strategy state
+                          # Extract latest indicator values for the dashboard
                           current_rsi = getattr(strategy, 'last_rsi', 0.0)
                           current_atr = getattr(strategy, 'last_atr', 0.0)
                           prev_rsi = 0.0 # Not explicitly tracked unless strategy does it
@@ -452,6 +413,14 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          logger.info(f"SIGNAL: {action} - {reason}")
                          
                          # Execute Signal (Order + Alert)
+                         # For Donchian: pass stop_loss_pct so a bracket SL order is placed
+                         # on the exchange after every entry. All other strategies pass None.
+                         donchian_cfg = config.settings.get("strategies", {}).get("donchian_channel", {})
+                         sl_pct = (
+                             donchian_cfg.get("stop_loss_pct", 0.10)
+                             if strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]
+                             else None
+                         )
                          result = execute_strategy_signal(
                              client=client,
                              notifier=notifier,
@@ -463,7 +432,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              reason=reason,
                              mode=mode,
                              strategy_name=strategy_name,
-                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False)
+                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False),
+                             stop_loss_pct=sl_pct
                          )
                          
                          # Check for successful execution and actual fill price
@@ -562,14 +532,7 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                     # Compute and display PnL% (only meaningful when margin > 0)
                     if margin > 0:
                         live_pnl_pct = (pnl / margin) * 100.0
-                        # For Donchian: show distance to the PnL exit threshold
-                        if strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
-                            threshold = getattr(strategy, 'pnl_exit_threshold', -10.0)
-                            distance = live_pnl_pct - threshold  # positive = safe margin remaining
-                            warn = " ⚠ NEAR EXIT THRESHOLD" if distance < 2.0 else ""
-                            print(f" PnL %:        {live_pnl_pct:+.2f}%  (guard threshold: {threshold:.1f}%{warn})")
-                        else:
-                            print(f" PnL %:        {live_pnl_pct:+.2f}%")
+                        print(f" PnL %:        {live_pnl_pct:+.2f}%")
 
                     print(f" Margin Used:  ${margin:,.2f}")
                     print(f" Liq Price:    ${liq:,.{p_decimals}f}")
