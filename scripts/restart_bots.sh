@@ -16,6 +16,9 @@
 echo "Restarting Pippin Service..."
 sudo systemctl restart delta-bot-pippin.service
 
+echo "Restarting PIUSD Service..."
+sudo systemctl restart delta-bot-pi.service
+
 #echo "Restarting BTC EMA Service..."
 #sudo systemctl restart delta-bot-btc-ema.service
 
