@@ -41,10 +41,6 @@ class DonchianChannelStrategy:
         # NEW: EMA Filter
         self.ema_length = cfg.get("ema_length", 100)
         self.ema_source = cfg.get("ema_source", "close")  # close, open, high, low
-        # PnL Exit Guard: exit if unrealised PnL% drops below this threshold.
-        # Configured via donchian_channel.pnl_exit_threshold in settings.yaml.
-        self.pnl_exit_threshold = cfg.get("pnl_exit_threshold", -10.0)
-        
         # Mode Flags
         self.allow_long = self.trade_mode in ["Long", "Both"]
         self.allow_short = self.trade_mode in ["Short", "Both"]
@@ -148,7 +144,6 @@ class DonchianChannelStrategy:
         self,
         df: pd.DataFrame,
         current_time_ms: float,
-        pnl_pct: Optional[float] = None
     ) -> Tuple[Optional[str], str]:
         """
         Check for trading signals using closed candle logic.
@@ -156,9 +151,6 @@ class DonchianChannelStrategy:
         Args:
             df: OHLCV DataFrame (sorted ascending by time).
             current_time_ms: Current epoch time in milliseconds.
-            pnl_pct: Current position PnL as a percentage (e.g. -12.5 means -12.5%).
-                     When provided and < -10.0, an immediate exit is triggered BEFORE
-                     the trailing-stop and channel-exit checks.
         """
         if df.empty or len(df) < max(self.enter_period, self.exit_period, self.atr_period, self.ema_length) + 2:
             return None, ""
@@ -205,29 +197,12 @@ class DonchianChannelStrategy:
 
         # --- LOGIC ---
 
-        # 0. PnL % Hard Exit Guard (checked BEFORE trailing stop and channel exits)
-        #    If the current position's unrealised PnL drops below the configured threshold,
-        #    exit immediately to cap downside risk beyond what the trailing stop covers.
-        #    Threshold is set via donchian_channel.pnl_exit_threshold in settings.yaml.
-        if pnl_pct is not None and self.current_position != 0:
-            if pnl_pct < self.pnl_exit_threshold:
-                if self.current_position == 1:
-                    return (
-                        "EXIT_LONG",
-                        f"PnL Exit Guard: Position PnL {pnl_pct:.2f}% < {self.pnl_exit_threshold}%"
-                    )
-                elif self.current_position == -1:
-                    return (
-                        "EXIT_SHORT",
-                        f"PnL Exit Guard: Position PnL {pnl_pct:.2f}% < {self.pnl_exit_threshold}%"
-                    )
-        
-        # Update Duration State (if Long)
+        # Update Duration State (if Long) — tracks approximate bar index of entry
+        # for the min_long_days short-entry gate.
         if self.current_position == 1:
-            # We track bars in position approximately
             if self.long_entry_bar is None:
-                self.long_entry_bar = len(df) + closed_idx # Approx
-        
+                self.long_entry_bar = len(df) + closed_idx  # Approximate bar index
+
         # 1. Trailing Stop Update (uses current price for responsiveness)
         if self.trailing_stop_level is not None:
             if self.current_position == 1:
@@ -378,10 +353,10 @@ class DonchianChannelStrategy:
                 self.active_trade["exit_time"] = format_time(current_time_ms)
                 self.active_trade["exit_price"] = price
                 self.active_trade["status"] = "CLOSED"
+                # Update status label based on the exit reason
                 if "Trailing" in reason: self.active_trade["status"] = "TRAIL STOP"
                 elif "Breakdown" in reason: self.active_trade["status"] = "CHANNEL EXIT"
-                elif "PnL Exit Guard" in reason: self.active_trade["status"] = "PNL STOP"
-                
+
                 self.active_trade["points"] = price - self.active_trade["entry_price"]
                 self.trades.append(self.active_trade)
                 self.active_trade = None
@@ -400,7 +375,6 @@ class DonchianChannelStrategy:
                 self.active_trade["status"] = "CLOSED"
                 if "Trailing" in reason: self.active_trade["status"] = "TRAIL STOP"
                 elif "Breakout" in reason: self.active_trade["status"] = "CHANNEL EXIT"
-                elif "PnL Exit Guard" in reason: self.active_trade["status"] = "PNL STOP"
                 
                 self.active_trade["points"] = self.active_trade["entry_price"] - price
                 self.trades.append(self.active_trade)

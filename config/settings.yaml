@@ -107,9 +107,14 @@ strategies:
     # NEW: EMA Trend Filter
     ema_length: 100 # EMA period for entry filter
     ema_source: "close" # Source for EMA calculation (close, open, high, low)
-    # PnL Exit Guard: exit position if unrealised PnL% drops below this threshold.
-    # e.g. -10.0 means exit when position loses more than 10% of its margin.
-    pnl_exit_threshold: -10.0
+    # Exchange Stop-Loss: after every entry a bracket stop-loss order is placed on the
+    # exchange. The stop price is computed as:
+    #   distance = (TARGET_MARGIN_ASSET * stop_loss_pct) / (position_size * contract_value)
+    #   stop_price (LONG)  = entry_price - distance
+    #   stop_price (SHORT) = entry_price + distance
+    # Example: margin=1000, 10%, 100 contracts, contract_value=0.001
+    #   distance = (1000 * 0.10) / (100 * 0.001) = $1000 -> exactly -10% of margin at trigger.
+    stop_loss_pct: 0.10 # 10% of target margin used as exchange stop-loss distance
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:
