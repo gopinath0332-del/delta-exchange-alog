@@ -19,4 +19,7 @@ sudo systemctl stop delta-bot-pippin.service
 echo "Stopping BTC EMA Service..."
 sudo systemctl stop delta-bot-btc-ema.service
 
+echo "Stopping PIUSD Service..."
+sudo systemctl stop delta-bot-pi.service
+
 echo "All services stopped."
