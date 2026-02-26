@@ -10,8 +10,8 @@
 #echo "Restarting XRP Service..."
 #sudo systemctl restart delta-bot-xrp.service
 
-#echo "Restarting River Service..."
-#sudo systemctl restart delta-bot-river.service
+echo "Restarting River Service..."
+sudo systemctl restart delta-bot-river.service
 
 echo "Restarting Pippin Service..."
 sudo systemctl restart delta-bot-pippin.service
