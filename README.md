@@ -58,7 +58,7 @@ delta-exchange-alog/
 │   ├── macd_psar_100ema_strategy.py # MACD + PSAR + 100 EMA (XRPUSD)
 │   ├── rsi_200_ema_strategy.py # RSI + 200 EMA strategy (ETHUSD)
 │   ├── rsi_supertrend_strategy.py # RSI + Supertrend strategy (RIVERUSD)
-│   ├── donchian_strategy.py   # Donchian Channel strategy (RIVERUSD, PIPPINUSD)
+│   ├── donchian_strategy.py   # Donchian Channel strategy (RIVERUSD, PIPPINUSD, PIUSD, BERAUSD)
 │   ├── ema_cross_strategy.py  # EMA Cross strategy (BTCUSD) - NEW
 │   └── examples/       # Example strategies
 ├── backtesting/        # Backtesting engine
@@ -581,7 +581,45 @@ sudo systemctl start delta-bot-pi
 sudo systemctl status delta-bot-pi
 ```
 
-### 7. EMA Cross Strategy (BTCUSD)
+### 7. Donchian Channel Strategy (BERAUSD)
+
+Same Donchian Channel strategy, configured for the **BERAUSD** futures pair.
+
+- **Timeframe**: 1H with **Heikin Ashi** candles
+- **Leverage**: 5×
+- **Target Margin**: $50
+- **Strategy ID**: 12 (`--strategy 12`)
+- **Service File**: `service/delta-bot-bera.service`
+
+**Configuration** (`config/.env`):
+
+```env
+# BERAUSD — base asset key is 'BERA' (code strips 'USD' from symbol)
+TARGET_MARGIN_BERA=50   # Use $50 margin for positions
+LEVERAGE_BERA=5
+ENABLE_ORDER_PLACEMENT_BERA=true
+```
+
+> [!NOTE]
+> Environment variables use `BERA` as the base asset name (not `BERAUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
+
+**Running manually**:
+
+```bash
+python3 run_terminal.py --strategy 12 --non-interactive
+```
+
+**Deploying as a systemd service**:
+
+```bash
+sudo cp service/delta-bot-bera.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable delta-bot-bera
+sudo systemctl start delta-bot-bera
+sudo systemctl status delta-bot-bera
+```
+
+### 8. EMA Cross Strategy (BTCUSD)
 
 - **Timeframe**: 4 hours with **Standard** candles
 - **Type**: Both long and short crossover strategy
@@ -732,7 +770,7 @@ python main.py report --backtest-id latest --output report.pdf
   - [x] MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - [x] RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA and ATR-based exits
   - [x] RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit (RMA-based ATR)
-  - [x] Donchian Channel (RIVERUSD, PIPPINUSD, PIUSD) - Breakout with ATR trailing stop
+  - [x] Donchian Channel (RIVERUSD, PIPPINUSD, PIUSD, BERAUSD) - Breakout with ATR trailing stop
 - [x] **3-Hour Candle Aggregation** - Local candle aggregation for custom timeframes
 - [x] **Position Reconciliation** - Automatic sync with exchange on restart
 - [x] **ATR-based Risk Management** - Dynamic trailing stops and partial exits
@@ -832,7 +870,7 @@ For issues and questions:
 ### Completed ✅
 
 - [x] Advanced technical indicators (MACD, RSI, CCI, EMA, PSAR, ATR, Donchian Channels)
-- [x] Multiple strategy support (8 strategies implemented)
+- [x] Multiple strategy support (9 strategies implemented)
 - [x] Closed candle logic standardization
 - [x] ATR-based risk management (trailing stops, partial exits)
 - [x] Position reconciliation on restart

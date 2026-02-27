@@ -1,0 +1,21 @@
+[Unit]
+Description=Delta Exchange Trading Bot - BERAUSD Donchian Channel (1H Heikin Ashi)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/Apps/delta-exchange-alog
+# Runs strategy ID 12: BERAUSD Donchian Channel, 1H Heikin Ashi, 5x leverage, $50 target margin
+ExecStart=/home/pi/Apps/delta-exchange-alog/venv/bin/python3 -u /home/pi/Apps/delta-exchange-alog/run_terminal.py --strategy 12 --non-interactive
+Restart=on-failure
+RestartSec=60
+EnvironmentFile=/home/pi/Apps/delta-exchange-alog/config/.env
+
+# Logging — stdout goes to bera.log, stderr (crashes/tracebacks) to bera.error.log
+StandardOutput=append:/home/pi/Apps/delta-exchange-alog/logs/bera.log
+StandardError=append:/home/pi/Apps/delta-exchange-alog/logs/bera.error.log
+
+[Install]
+WantedBy=multi-user.target

@@ -133,6 +133,18 @@ def main():
             "timeframe": "1h",
             "candle_type": "heikin-ashi",
             "desc": "Donchian breakout with 100 EMA trend filter and ATR trailing stop."
+        },
+        {
+            # BERAUSD Donchian Channel — 1H Heikin Ashi, 5x leverage, $50 target margin
+            # Reuses the existing DonchianChannelStrategy (no new strategy code needed).
+            # Start/stop: sudo systemctl start/stop delta-bot-bera
+            "id": 12,
+            "name": "BERAUSD Donchian Channel (1H Heikin Ashi)",
+            "symbol": "BERAUSD",
+            "monitor": "donchian_channel",
+            "timeframe": "1h",
+            "candle_type": "heikin-ashi",
+            "desc": "Donchian breakout with 100 EMA trend filter and ATR trailing stop."
         }
     ]
 
