@@ -216,19 +216,21 @@ class DonchianChannelStrategy:
                 if new_stop < self.trailing_stop_level:
                     self.trailing_stop_level = new_stop
                     
-        # 2. Check Trailing Stop Hit (CLOSED CANDLE LOGIC - prevents false signals)
+        # 2. Check Trailing Stop Hit (CLOSED CANDLE LOGIC - prevents false signals on wicks)
         if self.trailing_stop_level is not None:
             if self.current_position == 1 and close_closed <= self.trailing_stop_level:
                 return "EXIT_LONG", f"Trailing SL Hit: {close_closed:.4f} <= {self.trailing_stop_level:.4f}"
             elif self.current_position == -1 and close_closed >= self.trailing_stop_level:
                 return "EXIT_SHORT", f"Trailing SL Hit: {close_closed:.4f} >= {self.trailing_stop_level:.4f}"
                 
-        # 3. Check Partial TP (CLOSED CANDLE LOGIC - prevents false signals)
+        # 3. Check Partial TP (LIVE PRICE LOGIC - fires immediately when price crosses ATR TP level)
+        # Uses current_price (latest tick) instead of close_closed so the TP executes as soon as
+        # the market touches the target, without waiting for the candle to close.
         if self.enable_partial_tp and not self.partial_exit_done and self.tp_level is not None:
-            if self.current_position == 1 and close_closed >= self.tp_level:
-                return "PARTIAL_EXIT", f"Partial TP Hit: {close_closed:.4f} >= {self.tp_level:.4f}"
-            elif self.current_position == -1 and close_closed <= self.tp_level:
-                return "PARTIAL_EXIT", f"Partial TP Hit: {close_closed:.4f} <= {self.tp_level:.4f}"
+            if self.current_position == 1 and current_price >= self.tp_level:
+                return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} >= {self.tp_level:.4f}"
+            elif self.current_position == -1 and current_price <= self.tp_level:
+                return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} <= {self.tp_level:.4f}"
 
 
         # 4. Entry/Exit Logic (Closed Candle)
