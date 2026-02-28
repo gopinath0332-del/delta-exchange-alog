@@ -59,24 +59,34 @@ class NotificationManager:
                         funding_charges: Optional[float] = None,
                         trading_fees: Optional[float] = None,
                         market_price: Optional[float] = None,
-                        lot_size: Optional[int] = None):
+                        lot_size: Optional[int] = None,
+                        target_margin: Optional[float] = None):
         """
         Send trade alert to all enabled channels.
 
         Args:
             symbol: Trading symbol
-            side: LONG or SHORT
-            price: Entry price
-            rsi: RSI value
-            reason: Explanation string
+            side: Trade action (ENTRY_LONG, EXIT_SHORT, etc.)
+            price: Entry/exit price
+            rsi: RSI value at signal time
+            reason: Human-readable trigger reason
+            margin_used: Actual margin consumed by this order
+            remaining_margin: Wallet available balance after the order
+            strategy_name: Name of the strategy sending the alert
+            pnl: Realized PnL for exit signals
+            funding_charges: Funding fees paid/received
+            trading_fees: Commission fees
+            market_price: Raw market (LTP) price when HA candle price differs
+            lot_size: Number of contracts placed
+            target_margin: Configured target margin from .env (e.g. TARGET_MARGIN_PAXG=30)
         """
         # Send to Discord
         if self.discord:
-            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size)
+            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin)
             
         # Send to Email (if configured)
         if self.email:
-            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size)
+            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin)
             
         logger.info(f"Alert sent: {side} {symbol} @ {price} (RSI: {rsi:.2f})")
 

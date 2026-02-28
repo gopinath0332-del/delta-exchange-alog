@@ -112,14 +112,33 @@ class EmailNotifier:
                         funding_charges: Optional[float] = None,
                         trading_fees: Optional[float] = None,
                         market_price: Optional[float] = None,
-                        lot_size: Optional[int] = None):
+                        lot_size: Optional[int] = None,
+                        target_margin: Optional[float] = None):
         """
         Send a formatted trade alert email.
+
+        Args:
+            symbol: Trading symbol
+            side: Trade action (ENTRY_LONG, EXIT_SHORT, etc.)
+            price: Signal/fill price
+            rsi: RSI indicator value at signal time
+            reason: Human-readable reason for the signal
+            margin_used: Actual margin consumed by the order
+            remaining_margin: Wallet's available balance after the order
+            strategy_name: Name of the strategy
+            pnl: Realized PnL for exit signals
+            funding_charges: Funding fees paid/received
+            trading_fees: Commission fees
+            market_price: Raw candle close price (if HA candle price differs)
+            lot_size: Number of contracts placed
+            target_margin: Configured target margin from .env (e.g. TARGET_MARGIN_PAXG=30)
         """
         subject = f"Trading Alert: {side} {symbol}"
         
         strategy_line = f"<li><strong>Strategy:</strong> {strategy_name}</li>" if strategy_name else ""
         lot_size_line = f"<li><strong>Lot Size:</strong> {lot_size} contracts</li>" if lot_size is not None else ""
+        # Show the configured target margin so the recipient knows the capital allocation
+        target_margin_line = f"<li><strong>Target Margin:</strong> ${target_margin:,.2f}</li>" if target_margin is not None else ""
 
         # HTML Body
         body = f"""
@@ -132,6 +151,7 @@ class EmailNotifier:
               <li><strong>Side:</strong> <span style="color: {'green' if side == 'LONG' else 'red'}">{side}</span></li>
               <li><strong>Price:</strong> ${price:,.2f}</li>
               {lot_size_line}
+              {target_margin_line}
               <li><strong>RSI:</strong> {rsi:.2f}</li>
               <li><strong>Reason:</strong> {reason}</li>
             </ul>

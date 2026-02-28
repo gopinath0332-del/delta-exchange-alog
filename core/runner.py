@@ -199,6 +199,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         f"Order Placement: {ansi_enabled_str}\n"
         f"Order Size: {trade_config['order_size']}\n"
         f"Leverage: {trade_config['leverage']}x\n"
+        # Target Margin is the configured capital allocation per trade (from TARGET_MARGIN_{ASSET} in .env)
+        f"Target Margin: \u001b[0;35m${trade_config['target_margin']:,.2f}\u001b[0m\n"
         f"Wallet Balance: \u001b[0;36m{wallet_balance_str}\u001b[0m"
     )
     

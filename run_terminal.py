@@ -145,6 +145,19 @@ def main():
             "timeframe": "1h",
             "candle_type": "heikin-ashi",
             "desc": "Donchian breakout with 100 EMA trend filter and ATR trailing stop."
+        },
+        {
+            # PAXGUSD Donchian Channel — 1H Heikin Ashi, 5x leverage, $30 target margin
+            # Reuses the existing DonchianChannelStrategy (no new strategy code needed).
+            # Config keys: LEVERAGE_PAXG, TARGET_MARGIN_PAXG, ENABLE_ORDER_PLACEMENT_PAXG
+            # Start/stop: sudo systemctl start/stop delta-bot-paxg
+            "id": 13,
+            "name": "PAXGUSD Donchian Channel (1H Heikin Ashi)",
+            "symbol": "PAXGUSD",
+            "monitor": "donchian_channel",
+            "timeframe": "1h",
+            "candle_type": "heikin-ashi",
+            "desc": "Donchian breakout with 100 EMA trend filter and ATR trailing stop. $30 target margin."
         }
     ]
 
