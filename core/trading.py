@@ -592,7 +592,9 @@ def execute_strategy_signal(
                 funding_charges=funding_charges,
                 trading_fees=trading_fees,
                 market_price=market_price,
-                lot_size=lot_size
+                lot_size=lot_size,
+                # Pass configured target margin so Discord/email shows the capital allocation setting
+                target_margin=target_margin if is_entry else None
             )
         except Exception as e:
             logger.error(f"Failed to send trade alert: {e}")

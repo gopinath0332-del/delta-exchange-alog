@@ -25,4 +25,7 @@ sudo systemctl stop delta-bot-pi.service
 echo "Stopping BERAUSD Service..."
 sudo systemctl stop delta-bot-bera.service
 
+echo "Stopping PAXGUSD Service..."
+sudo systemctl stop delta-bot-paxg.service
+
 echo "All services stopped."

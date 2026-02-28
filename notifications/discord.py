@@ -73,7 +73,8 @@ class DiscordNotifier:
                         funding_charges: Optional[float] = None,
                         trading_fees: Optional[float] = None,
                         market_price: Optional[float] = None,
-                        lot_size: Optional[int] = None):
+                        lot_size: Optional[int] = None,
+                        target_margin: Optional[float] = None):
         """
         Send a formatted trade alert with ANSI color codes.
 
@@ -83,7 +84,7 @@ class DiscordNotifier:
             price: Entry price
             rsi: RSI value
             reason: Trigger reason
-            margin_used: Margin used directly for this trade
+            margin_used: Margin used directly for this trade (actual calculated margin)
             remaining_margin: Remaining wallet balance
             strategy_name: Name of the strategy executing the trade
             pnl: Realized profit/loss (for exit signals)
@@ -91,6 +92,7 @@ class DiscordNotifier:
             trading_fees: Commission/trading fees
             market_price: Actual market price (LTP) if different from order/signal price
             lot_size: Number of contracts/lots in the order
+            target_margin: Configured target margin from .env (e.g. TARGET_MARGIN_PAXG=30)
         """
         title = f"🚀 TRADING SIGNAL: {side} {symbol}"
         color = 5763719 if "LONG" in side.upper() else 15548997  # Green for Long, Red for Short
@@ -129,6 +131,11 @@ class DiscordNotifier:
         # Show lot size if available
         if lot_size is not None:
             message += f"Lot Size: \u001b[0;36m{lot_size}\u001b[0m contracts\n"
+        
+        # Show target margin (configured capital allocation) for entry signals
+        # This tells the trader what margin budget was set for this position
+        if target_margin is not None:
+            message += f"Target Margin: \u001b[0;35m${target_margin:,.2f}\u001b[0m\n"
         
         # Color-code [DISABLED] tag in reason if present
         if "[DISABLED]" in reason:

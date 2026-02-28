@@ -21,7 +21,9 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
   - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
   - Donchian Channel (RIVERUSD, PIPPINUSD) - Breakout strategy with 100 EMA trend filter and ATR trailing stop
-  - **Donchian Channel (PIUSD)** - 1H Heikin Ashi, 5x leverage, $50 target margin (NEW)
+  - **Donchian Channel (PIUSD)** - 1H Heikin Ashi, 5x leverage, $50 target margin
+  - **Donchian Channel (BERAUSD)** - 1H Heikin Ashi, 5x leverage, $50 target margin
+  - **Donchian Channel (PAXGUSD)** - 1H Heikin Ashi, 5x leverage, $30 target margin (NEW)
   - **EMA Cross (BTCUSD)** - 10/20 EMA crossover with position flipping
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
@@ -207,11 +209,58 @@ Position Size = (40 * 5) / (100000 * 0.001) = 200 / 100 = 2 contracts
 - ✅ Automatic adjustment for different asset prices
 - ✅ Even number handling for clean partial exits
 - ✅ Configurable per asset
+- ✅ **Target margin is shown in trade alerts (Discord + Email)** so you immediately see the capital allocation used at entry
+- ✅ **Target margin is shown in startup messages** so you can verify the correct margin is loaded when a service starts
 
 > [!NOTE]
 > The old `ORDER_SIZE_{ASSET}` configuration is deprecated for entry orders but still supported for backwards compatibility. It is recommended to migrate to `TARGET_MARGIN_{ASSET}` for better risk management.
 
 ````
+
+### Notifications
+
+All alerts are sent to **Discord** (via webhook embeds with ANSI colour codes) and **Email** (HTML).
+
+#### Trade Alert (Entry Signal)
+
+Displayed whenever a new position is opened:
+
+| Field | Description |
+|---|---|
+| Strategy | Strategy name |
+| Price | Execution / fill price |
+| Market Price | Raw candlestick LTP (shown if different from signal price, e.g. Heikin Ashi) |
+| RSI | RSI value at signal time |
+| Lot Size | Number of contracts placed |
+| **Target Margin** | Configured `TARGET_MARGIN_{ASSET}` from `.env` — shows the capital allocation for this trade |
+| Reason | Signal trigger description |
+| Margin Used | Estimated USD margin consumed by the order |
+| Remaining Wallet | Available balance after the trade |
+
+#### Trade Alert (Exit / Partial Exit Signal)
+
+Displayed whenever a position is closed or partially exited. All entry fields above are shown **except** Target Margin and Lot Size. Additional exit-only fields:
+
+| Field | Description |
+|---|---|
+| P&L | Realised profit / loss (green if positive, red if negative) |
+| Funding | Funding fees paid / received |
+| Fees | Exchange trading commission |
+| Remaining Wallet | Available balance after the exit |
+
+#### Startup Message (Service Start)
+
+Sent to Discord when any bot service starts. Lets you verify the configuration loaded correctly:
+
+| Field | Description |
+|---|---|
+| Host | Hostname of the machine running the service |
+| Candle Type | `Heikin Ashi` or `Standard` |
+| Order Placement | `ENABLED` (green) or `DISABLED` (red) |
+| Order Size | Legacy order size (deprecated) |
+| Leverage | Leverage multiplier |
+| **Target Margin** | Configured `TARGET_MARGIN_{ASSET}` from `.env` — confirms the capital allocation at startup |
+| Wallet Balance | Current available balance at launch |
 
 ### API Resilience: Exponential Backoff
 
@@ -619,6 +668,44 @@ sudo systemctl start delta-bot-bera
 sudo systemctl status delta-bot-bera
 ```
 
+### 8. Donchian Channel Strategy (PAXGUSD)
+
+Same Donchian Channel strategy, configured for the **PAXGUSD** (PAX Gold) futures pair.
+
+- **Timeframe**: 1H with **Heikin Ashi** candles
+- **Leverage**: 5×
+- **Target Margin**: $30
+- **Strategy ID**: 13 (`--strategy 13`)
+- **Service File**: `service/delta-bot-paxg.service`
+
+**Configuration** (`config/.env`):
+
+```env
+# PAXGUSD — base asset key is 'PAXG' (code strips 'USD' from symbol)
+TARGET_MARGIN_PAXG=30   # Use $30 margin for positions
+LEVERAGE_PAXG=5
+ENABLE_ORDER_PLACEMENT_PAXG=true
+```
+
+> [!NOTE]
+> Environment variables use `PAXG` as the base asset name (not `PAXGUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
+
+**Running manually**:
+
+```bash
+python3 run_terminal.py --strategy 13 --non-interactive
+```
+
+**Deploying as a systemd service**:
+
+```bash
+sudo cp service/delta-bot-paxg.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable delta-bot-paxg
+sudo systemctl start delta-bot-paxg
+sudo systemctl status delta-bot-paxg
+```
+
 ### 8. EMA Cross Strategy (BTCUSD)
 
 - **Timeframe**: 4 hours with **Standard** candles
@@ -770,7 +857,7 @@ python main.py report --backtest-id latest --output report.pdf
   - [x] MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - [x] RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA and ATR-based exits
   - [x] RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit (RMA-based ATR)
-  - [x] Donchian Channel (RIVERUSD, PIPPINUSD, PIUSD, BERAUSD) - Breakout with ATR trailing stop
+  - [x] Donchian Channel (RIVERUSD, PIPPINUSD, PIUSD, BERAUSD, PAXGUSD) - Breakout with ATR trailing stop
 - [x] **3-Hour Candle Aggregation** - Local candle aggregation for custom timeframes
 - [x] **Position Reconciliation** - Automatic sync with exchange on restart
 - [x] **ATR-based Risk Management** - Dynamic trailing stops and partial exits
