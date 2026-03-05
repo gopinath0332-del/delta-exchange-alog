@@ -223,22 +223,20 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                 
                 logger.info(f"Fetching {days_lookback} days of historical data for {strategy_name}") 
                 
-                # Fetch history
-                # Note: This relies on _make_direct_request. If this fails, we need to check API docs/auth.
-                # For 3h candles (180m), we fetch 1h and aggregate
+                # Fetch history using the paginated get_historical_candles method.
+                # The Delta Exchange API caps responses at ~2000 candles per request,
+                # so for large lookbacks (e.g. 180 days = ~4320 1H candles) we need
+                # automatic pagination to retrieve the full dataset.
+                # For 3h candles (180m), we fetch 1h and aggregate afterwards.
                 fetch_resolution = "1h" if timeframe == "180m" else timeframe
                 
-                response = client._make_direct_request(
-                    "/v2/history/candles", 
-                    params={
-                        "resolution": fetch_resolution,
-                        "symbol": symbol,
-                        "start": start_time,
-                        "end": end_time
-                    }
+                candles = client.get_historical_candles(
+                    symbol=symbol,
+                    resolution=fetch_resolution,
+                    start=start_time,
+                    end=end_time,
                 )
                 
-                candles = response.get("result", [])
                 if not candles:
                     logger.warning(f"No candle data fetched for {symbol}")
                     time.sleep(10)
