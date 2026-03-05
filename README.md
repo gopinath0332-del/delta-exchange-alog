@@ -292,6 +292,27 @@ API_BACKOFF_MAX_SEC=60   # Maximum single wait cap
 > If you want faster recovery on a stable connection, set `API_MAX_RETRIES=2` and `API_BACKOFF_BASE_SEC=1`.
 > For more patience during sustained outages, try `API_BACKOFF_MAX_SEC=120`.
 
+### Staggered Bot Startup (Reboot Rate-Limit Prevention)
+
+The Raspberry Pi restarts all bot services simultaneously on reboot. If every bot connects and fetches candle history at the same instant,  the combined burst of API requests can hit the **150 req / 5-min rate limit**, causing some bots to fail on startup.
+
+To prevent this, each systemd service file uses `ExecStartPre=/bin/sleep N` so services start sequentially, ~30 seconds apart:
+
+| Service | Bot | Startup delay |
+|---|---|---|
+| `delta-bot-river.service` | RIVERUSD | 0 s (starts first) |
+| `delta-bot-pippin.service` | PIPPINUSD | 30 s |
+| `delta-bot-pi.service` | PIUSD | 60 s |
+| `delta-bot-bera.service` | BERAUSD | 90 s |
+| `delta-bot-paxg.service` | PAXGUSD | 120 s |
+
+This means all bots are fully running within ~2 minutes of a reboot, with no overlap in their initial data-fetch bursts.
+
+> [!IMPORTANT]
+> When adding a **new bot service**, assign the next delay in the sequence (e.g. `150` s) and document it in this table. The delay only applies on cold-start / reboot; it does **not** affect `RestartSec` (on-failure auto-restart still fires after 60 s, as configured).
+
+
+
 ### Firestore Trade Journaling (Optional)
 
 All trades are automatically journaled to Google Cloud Firestore for historical analysis and performance tracking.
