@@ -107,10 +107,10 @@ strategies:
     # NEW: EMA Trend Filter
     ema_length: 100 # EMA period for entry filter
     ema_source: "close" # Source for EMA calculation (close, open, high, low)
-    # 180 days of history so the iterative Heikin Ashi Open calculation converges
+    # 90 days of history so the iterative Heikin Ashi Open calculation converges
     # to match TradingView's HA values.  With only 30 days the HA smoothing is
     # insufficient and signals can fire on effectively-standard-candle values.
-    historical_days: 180
+    historical_days: 90
     # Exchange Stop-Loss: after every entry a bracket stop-loss order is placed on the
     # exchange. The stop price is computed as:
     #   distance = (TARGET_MARGIN_ASSET * stop_loss_pct) / (position_size * contract_value)
