@@ -6,16 +6,16 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/delta-exchange-alog/logs
+WorkingDirectory=/home/pi/delta-exchange-alog
 # Runs strategy ID 11: PIUSD Donchian Channel, 1H Heikin Ashi, 5x leverage, $50 target margin
-ExecStart=/home/pi/delta-exchange-alog/logs/venv/bin/python3 -u /home/pi/delta-exchange-alog/logs/run_terminal.py --strategy 11 --non-interactive
+ExecStart=/home/pi/delta-exchange-alog/venv/bin/python3 -u /home/pi/delta-exchange-alog/run_terminal.py --strategy 11 --non-interactive
 Restart=on-failure
 RestartSec=60
-EnvironmentFile=/home/pi/delta-exchange-alog/logs/config/.env
+EnvironmentFile=/home/pi/delta-exchange-alog/config/.env
 
 # Logging — stdout goes to pi.log, stderr (crashes/tracebacks) to pi.error.log
-StandardOutput=append:/home/pi/delta-exchange-alog/logs/logs/pi.log
-StandardError=append:/home/pi/delta-exchange-alog/logs/logs/pi.error.log
+StandardOutput=append:/home/pi/delta-exchange-alog/logs/pi.log
+StandardError=append:/home/pi/delta-exchange-alog/logs/pi.error.log
 
 [Install]
 WantedBy=multi-user.target
