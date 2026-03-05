@@ -72,7 +72,9 @@ delta-exchange-alog/
 2. Register the strategy in `core/runner.py` `run_strategy_terminal()` under the strategy name mapping (if/elif block, lines ~58–100).
 3. Add strategy config to `config/settings.yaml` under `strategies:`.
 4. Create a systemd service file in `service/delta-bot-<name>.service` copying an existing template.
-5. Update `README.md` with the new strategy, its parameters, and how to run it.
+5. **Update `scripts/restart_bots.sh`** — add an `echo` + `sudo systemctl restart delta-bot-<name>.service` entry so the new service is included in bulk restarts.
+6. **Update `scripts/stop_bots.sh`** — add an `echo` + `sudo systemctl stop delta-bot-<name>.service` entry so the new service is included in bulk stops.
+7. Update `README.md` with the new strategy, its parameters, and how to run it.
 
 ### Candle Types
 
@@ -195,7 +197,9 @@ DeltaExchangeError
   1. Create `service/delta-bot-<name>.service` based on an existing template.
   2. Add `.env` symbol-specific settings (`LEVERAGE_<ASSET>`, `TARGET_MARGIN_<ASSET>`, `ENABLE_ORDER_PLACEMENT_<ASSET>`).
   3. Register strategy name in `core/runner.py`.
-  4. Deploy via: `sudo systemctl enable delta-bot-<name>` and `sudo systemctl start delta-bot-<name>`.
+  4. **Update `scripts/restart_bots.sh`** — append the matching `echo` + `sudo systemctl restart delta-bot-<name>.service` lines so the new service participates in bulk restarts.
+  5. **Update `scripts/stop_bots.sh`** — append the matching `echo` + `sudo systemctl stop delta-bot-<name>.service` lines so the new service participates in bulk stops.
+  6. Deploy via: `sudo systemctl enable delta-bot-<name>` and `sudo systemctl start delta-bot-<name>`.
 - Each process has an **independent** `ErrorAlertHandler` — error throttling is per-process.
 
 ---
@@ -226,3 +230,4 @@ DeltaExchangeError
 | `logger.info()` inside `except` for real failures             | Use `logger.error()` or `logger.warning()` appropriately                                      |
 | Modify `.env` keys without updating `core/config.py`          | Always add new `.env` keys to the corresponding `_init_*_config()` method in `core/config.py` |
 | Create a new strategy without a systemd service file          | Always create a matching `service/delta-bot-<name>.service`                                   |
+| Add a new strategy/coin without updating management scripts   | Always add the service to `scripts/restart_bots.sh` and `scripts/stop_bots.sh`                |
