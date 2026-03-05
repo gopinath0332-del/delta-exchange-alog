@@ -8,6 +8,8 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/delta-exchange-alog
 # Runs strategy ID 11: PIUSD Donchian Channel, 1H Heikin Ashi, 5x leverage, $50 target margin
+# Staggered startup: PI waits 60s after reboot to avoid API rate limits.
+ExecStartPre=/bin/sleep 60
 ExecStart=/home/pi/delta-exchange-alog/venv/bin/python3 -u /home/pi/delta-exchange-alog/run_terminal.py --strategy 11 --non-interactive
 Restart=on-failure
 RestartSec=60
