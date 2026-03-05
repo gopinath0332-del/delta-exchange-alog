@@ -70,13 +70,27 @@ class RateLimiter:
         """
         Wait if rate limit is reached.
 
+        Reads `oldest_request` under the lock to avoid a race condition where another
+        thread drains the deque between the `acquire()` check and the read.
+
+        Also guards `wait_time` with `max(0, ...)` so that an already-expired oldest
+        entry can never produce a negative sleep duration (which would raise
+        `ValueError: sleep length must be non-negative`).
+
         Args:
             endpoint: API endpoint (for logging purposes)
         """
         while not self.acquire(endpoint=endpoint):
-            current_time = time.time()
-            oldest_request = self.requests[0]
-            wait_time = self.time_window - (current_time - oldest_request) + 1
+            # Re-read under lock: the deque may have changed between acquire() and here.
+            with self.lock:
+                if not self.requests:
+                    # All entries expired between the acquire() check and now — nothing to wait for.
+                    break
+                current_time = time.time()
+                oldest_request = self.requests[0]
+                # How long until the oldest request falls outside the window.
+                # max(0, ...) ensures we never pass a negative value to time.sleep().
+                wait_time = max(0, self.time_window - (current_time - oldest_request)) + 1
 
             logger.info("Waiting for rate limit", endpoint=endpoint, wait_time=f"{wait_time:.2f}s")
             time.sleep(wait_time)
