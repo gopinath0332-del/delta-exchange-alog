@@ -67,6 +67,10 @@ def run_strategy_terminal(
     notifier = shared_notifier if shared_notifier is not None else NotificationManager(config)
     
     # Resolve Product & Precision
+    # Fetch products ONCE at startup and cache the product_id for this symbol.
+    # This avoids repeated get_products() calls inside the main loop (which burned
+    # ~10 extra API requests per 10-min cycle across 5 symbol-threads, exhausting
+    # the 150 req/5min rate limit).
     logger.info(f"Resolving product details for {symbol}...")
     try:
         products_init = client.get_products()
@@ -74,6 +78,11 @@ def run_strategy_terminal(
     except Exception as e:
         logger.warning(f"Failed to fetch initial products: {e}")
         target_prod_init = None
+
+    # Cache product_id so reconciliation and dashboard can reuse it without
+    # calling get_products() on every loop iteration.
+    cached_product_id: Optional[int] = target_prod_init.get('id') if target_prod_init else None
+    logger.info(f"Cached product_id={cached_product_id} for {symbol}")
 
     p_decimals = 2 # Default
     if target_prod_init and 'tick_size' in target_prod_init:
@@ -358,15 +367,11 @@ def run_strategy_terminal(
                              try:
                                  logger.info("Reconciling state with live positions...")
                                  
-                                 # We need product_id for get_positions
-                                 products = client.get_products()
-                                 target_product = next((p for p in products if p.get('symbol') == symbol), None)
-                                 
+                                 # Reuse the product_id cached at startup — no extra get_products() call.
                                  positions = []
-                                 if target_product:
-                                     pid = target_product.get('id')
-                                     logger.info(f"Resolved {symbol} to Product ID: {pid}")
-                                     positions = client.get_positions(product_id=pid)
+                                 if cached_product_id is not None:
+                                     logger.info(f"Reconciliation: Using cached product_id={cached_product_id} for {symbol}")
+                                     positions = client.get_positions(product_id=cached_product_id)
                                  else:
                                      logger.warning(f"Could not resolve product ID for {symbol}. Trying without ID (might fail)...")
                                      positions = client.get_positions()
@@ -389,9 +394,8 @@ def run_strategy_terminal(
                                          logger.error(f"Position data is primitive type {type(p)}, expected dict: {p}")
                                          continue
                                      
-                                     # If we already filtered by Product ID, this is likely the one.
-                                     # But let's verify if possible, or just take it if it's the only one.
-                                     if len(positions) == 1 and target_product:
+                                     # If we filtered by product_id, a single result is our position.
+                                     if len(positions) == 1 and cached_product_id is not None:
                                           current_pos = p
                                           break
                                           
@@ -512,14 +516,11 @@ def run_strategy_terminal(
                 sleep_seconds = 600 - (current_ts % 600)
                 
                 # --- FETCH LIVE POSITION FOR DASHBOARD ---
+                # Reuse cached_product_id from startup — avoids get_products() on every cycle.
                 live_pos_data = None
                 try:
-                    # Resolve product ID first
-                    products = client.get_products()
-                    target_product = next((p for p in products if p.get('symbol') == symbol), None)
-                    
-                    if target_product:
-                        pid = target_product.get('id')
+                    if cached_product_id is not None:
+                        pid = cached_product_id
                         # Use get_positions (plural) which now hits /v2/positions/margined
                         all_positions = client.get_positions(product_id=pid)
                         
