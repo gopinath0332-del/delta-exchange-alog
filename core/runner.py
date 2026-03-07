@@ -29,6 +29,7 @@ def run_strategy_terminal(
     shared_client: Optional["DeltaRestClient"] = None,
     shared_notifier: Optional["NotificationManager"] = None,
     log_file: Optional[str] = None,
+    prefetched_wallet_balance_str: Optional[str] = None,
 ):
     """
     Run strategy in terminal mode with dashboard output.
@@ -47,6 +48,10 @@ def run_strategy_terminal(
         log_file: Optional per-symbol log file path (used in multi-coin mode).
                   When set, a dedicated RotatingFileHandler is added just for this
                   symbol's thread so its logs go to a separate file.
+        prefetched_wallet_balance_str: Optional pre-fetched wallet balance string.
+                  In multi-coin mode this is fetched ONCE by run_multi_symbol_terminal()
+                  and passed to all symbol threads to avoid redundant API calls.
+                  When None the balance is fetched normally (single-coin mode).
     """
     # --- Per-symbol log file setup (multi-coin mode) ---
     # Add a dedicated RotatingFileHandler for this symbol so its log records
@@ -176,67 +181,74 @@ def run_strategy_terminal(
     # \u001b[0;32m = Green, \u001b[0;31m = Red, \u001b[0m = Reset
     ansi_enabled_str = f"\u001b[0;32m{enabled_str}\u001b[0m" if trade_config['enabled'] else f"\u001b[0;31m{enabled_str}\u001b[0m"
     
-    # Fetch wallet balance for startup message
-    wallet_balance_str = "N/A"
-    try:
-        logger.info("Fetching wallet balance for startup message...")
-        wallet_data = client.get_wallet_balance()
-        
-        # Get the collateral currency
-        # Delta Exchange uses 'USD' as the symbol (not USDT)
-        collateral_currency = "USD"
-        
-        balance_obj = {}
-        if isinstance(wallet_data, list):
-            # Log all available assets
-            available_assets = [b.get('asset_symbol', 'unknown') for b in wallet_data]
-            logger.info(f"Available assets in wallet (list): {available_assets}")
-            balance_obj = next((b for b in wallet_data if b.get('asset_symbol') == collateral_currency), {})
-        elif isinstance(wallet_data, dict):
-            data_source = wallet_data.get('result', wallet_data)
-            if isinstance(data_source, list):
+    # Wallet balance for startup message.
+    # In multi-coin mode this is passed in pre-fetched (fetched ONCE in
+    # run_multi_symbol_terminal) to avoid 5 redundant API calls at startup.
+    # In single-coin mode we fetch it here as usual.
+    if prefetched_wallet_balance_str is not None:
+        wallet_balance_str = prefetched_wallet_balance_str
+        logger.info(f"Using pre-fetched wallet balance: {wallet_balance_str}")
+    else:
+        wallet_balance_str = "N/A"
+        try:
+            logger.info("Fetching wallet balance for startup message...")
+            wallet_data = client.get_wallet_balance()
+            
+            # Get the collateral currency
+            # Delta Exchange uses 'USD' as the symbol (not USDT)
+            collateral_currency = "USD"
+            
+            balance_obj = {}
+            if isinstance(wallet_data, list):
                 # Log all available assets
-                available_assets = [b.get('asset_symbol', 'unknown') for b in data_source]
-                logger.info(f"Available assets in wallet (dict->list): {available_assets}")
-                balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency), {})
-            elif isinstance(data_source, dict):
-                # Log all keys in the dict
-                logger.info(f"Wallet data keys: {list(data_source.keys())}")
-                if data_source.get('asset_symbol') == collateral_currency:
-                    balance_obj = data_source
-                else:
-                    balance_obj = data_source.get(collateral_currency, {})
-        
-        if balance_obj:
-            available_balance = float(balance_obj.get('available_balance', 0.0))
-            wallet_balance_str = f"${available_balance:,.2f}"
-            logger.info(f"Startup wallet balance: {wallet_balance_str}")
-        else:
-            # Try fallback to USDT if USD not found
-            collateral_currency_fallback = "USDT"
-            if isinstance(wallet_data, dict):
+                available_assets = [b.get('asset_symbol', 'unknown') for b in wallet_data]
+                logger.info(f"Available assets in wallet (list): {available_assets}")
+                balance_obj = next((b for b in wallet_data if b.get('asset_symbol') == collateral_currency), {})
+            elif isinstance(wallet_data, dict):
                 data_source = wallet_data.get('result', wallet_data)
                 if isinstance(data_source, list):
-                    balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency_fallback), {})
-                    if balance_obj:
-                        available_balance = float(balance_obj.get('available_balance', 0.0))
-                        wallet_balance_str = f"${available_balance:,.2f}"
-                        logger.info(f"Startup wallet balance ({collateral_currency_fallback}): {wallet_balance_str}")
+                    # Log all available assets
+                    available_assets = [b.get('asset_symbol', 'unknown') for b in data_source]
+                    logger.info(f"Available assets in wallet (dict->list): {available_assets}")
+                    balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency), {})
+                elif isinstance(data_source, dict):
+                    # Log all keys in the dict
+                    logger.info(f"Wallet data keys: {list(data_source.keys())}")
+                    if data_source.get('asset_symbol') == collateral_currency:
+                        balance_obj = data_source
+                    else:
+                        balance_obj = data_source.get(collateral_currency, {})
             
-            if not balance_obj:
-                logger.warning(f"Could not find {collateral_currency} or {collateral_currency_fallback} balance in wallet data")
-                # Try to find ANY balance as fallback
-            if isinstance(wallet_data, dict):
-                data_source = wallet_data.get('result', wallet_data)
-                if isinstance(data_source, list) and len(data_source) > 0:
-                    # Use first available balance
-                    first_balance = data_source[0]
-                    asset_sym = first_balance.get('asset_symbol', 'Unknown')
-                    available_balance = float(first_balance.get('available_balance', 0.0))
-                    wallet_balance_str = f"${available_balance:,.2f} ({asset_sym})"
-                    logger.info(f"Using first available balance: {wallet_balance_str}")
-    except Exception as e:
-        logger.warning(f"Failed to fetch wallet balance for startup: {e}")
+            if balance_obj:
+                available_balance = float(balance_obj.get('available_balance', 0.0))
+                wallet_balance_str = f"${available_balance:,.2f}"
+                logger.info(f"Startup wallet balance: {wallet_balance_str}")
+            else:
+                # Try fallback to USDT if USD not found
+                collateral_currency_fallback = "USDT"
+                if isinstance(wallet_data, dict):
+                    data_source = wallet_data.get('result', wallet_data)
+                    if isinstance(data_source, list):
+                        balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency_fallback), {})
+                        if balance_obj:
+                            available_balance = float(balance_obj.get('available_balance', 0.0))
+                            wallet_balance_str = f"${available_balance:,.2f}"
+                            logger.info(f"Startup wallet balance ({collateral_currency_fallback}): {wallet_balance_str}")
+                
+                if not balance_obj:
+                    logger.warning(f"Could not find {collateral_currency} or {collateral_currency_fallback} balance in wallet data")
+                    # Try to find ANY balance as fallback
+                if isinstance(wallet_data, dict):
+                    data_source = wallet_data.get('result', wallet_data)
+                    if isinstance(data_source, list) and len(data_source) > 0:
+                        # Use first available balance
+                        first_balance = data_source[0]
+                        asset_sym = first_balance.get('asset_symbol', 'Unknown')
+                        available_balance = float(first_balance.get('available_balance', 0.0))
+                        wallet_balance_str = f"${available_balance:,.2f} ({asset_sym})"
+                        logger.info(f"Using first available balance: {wallet_balance_str}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch wallet balance for startup: {e}")
     
     start_msg = (
         f"{symbol} {strategy_name} started on host: {hostname}\n"
@@ -874,6 +886,35 @@ def run_multi_symbol_terminal(
         f"symbols={[s['symbol'] for s in symbols_config]}, mode={mode}"
     )
 
+    # Fetch wallet balance ONCE here — all threads display the same account balance,
+    # so there is no need for each of the 5 symbol threads to call get_wallet_balance()
+    # independently. This saves 4 redundant authenticated API calls at startup.
+    shared_wallet_balance_str = "N/A"
+    try:
+        logger.info("Fetching wallet balance once for all symbol threads...")
+        wallet_data = shared_client.get_wallet_balance()
+        collateral_currency = "USD"
+        balance_obj = {}
+        if isinstance(wallet_data, list):
+            balance_obj = next((b for b in wallet_data if b.get('asset_symbol') == collateral_currency), {})
+        elif isinstance(wallet_data, dict):
+            data_source = wallet_data.get('result', wallet_data)
+            if isinstance(data_source, list):
+                balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency), {})
+            elif isinstance(data_source, dict):
+                balance_obj = data_source if data_source.get('asset_symbol') == collateral_currency else data_source.get(collateral_currency, {})
+        if balance_obj:
+            shared_wallet_balance_str = f"${float(balance_obj.get('available_balance', 0.0)):,.2f}"
+        else:
+            # Fallback: use the first available asset balance
+            data_source = wallet_data.get('result', wallet_data) if isinstance(wallet_data, dict) else wallet_data
+            if isinstance(data_source, list) and data_source:
+                fb = data_source[0]
+                shared_wallet_balance_str = f"${float(fb.get('available_balance', 0.0)):,.2f} ({fb.get('asset_symbol', '?')})"
+        logger.info(f"Shared wallet balance for all threads: {shared_wallet_balance_str}")
+    except Exception as e:
+        logger.warning(f"Failed to fetch shared wallet balance: {e}")
+
     threads: List[threading.Thread] = []
     for sym_cfg in symbols_config:
         symbol = sym_cfg["symbol"]
@@ -888,6 +929,8 @@ def run_multi_symbol_terminal(
                 "shared_client": shared_client,
                 "shared_notifier": shared_notifier,
                 "log_file": log_file,
+                # Pass the pre-fetched balance so each thread skips its own API call.
+                "prefetched_wallet_balance_str": shared_wallet_balance_str,
             },
             # Thread name = symbol so it appears in stack traces / debug output.
             name=symbol,
