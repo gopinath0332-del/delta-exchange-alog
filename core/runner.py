@@ -853,8 +853,8 @@ def _add_per_symbol_log_handler(
     log_path = Path(log_file)
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
-    except PermissionError as e:
-        logger.warning(f"[{symbol}] Permission denied creating log directory {log_path.parent}: {e}")
+    except OSError as e:
+        logger.warning(f"[{symbol}] Error creating log directory {log_path.parent}: {e}")
         return
 
     try:
@@ -869,8 +869,8 @@ def _add_per_symbol_log_handler(
         root_logger.addHandler(handler)
 
         logger.info(f"[{symbol}] Per-symbol log handler attached: {log_file}")
-    except PermissionError as e:
-        logger.warning(f"[{symbol}] Permission denied attaching log handler to {log_file}. Run with sudo if owned by root. Skipping file log. Error: {e}")
+    except OSError as e:
+        logger.warning(f"[{symbol}] Could not attach log handler to {log_file} (Permission denied or is a directory). Skipping file log. Error: {e}")
 
 
 # ---------------------------------------------------------------------------
