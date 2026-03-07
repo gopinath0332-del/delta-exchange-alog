@@ -543,14 +543,29 @@ class DeltaRestClient:
                     break
 
                 # Update start time for next batch
-                # Candles have 'time' field with timestamp
+                # Candles have 'time' field with Unix timestamp in seconds
                 last_candle_time = candles[-1].get("time", 0) if candles else 0
+                
+                # Safety checks to prevent infinite pagination
                 if last_candle_time <= current_start:
                     logger.debug("Last candle time not advancing, stopping pagination")
+                    break
+                    
+                if last_candle_time >= end:
+                    logger.debug("Reached end timestamp, stopping pagination")
                     break
 
                 # Move to next batch (add 1 second to avoid duplicate)
                 current_start = last_candle_time + 1
+
+                # Additional safety: stop if we fetched way more than expected
+                # (e.g. if the API ignored our start/end params)
+                if len(all_candles) > expected_candles + max_candles_per_request:
+                    logger.warning(
+                        "Fetched significantly more candles than expected. "
+                        f"Stopping pagination. (Count: {len(all_candles)}, Expected: {expected_candles})"
+                    )
+                    break
 
                 logger.debug(
                     "Fetched candle batch",

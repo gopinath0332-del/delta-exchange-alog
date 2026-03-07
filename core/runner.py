@@ -30,6 +30,7 @@ def run_strategy_terminal(
     shared_notifier: Optional["NotificationManager"] = None,
     log_file: Optional[str] = None,
     prefetched_wallet_balance_str: Optional[str] = None,
+    cycle_lock: Optional[threading.Lock] = None,
 ):
     """
     Run strategy in terminal mode with dashboard output.
@@ -52,6 +53,12 @@ def run_strategy_terminal(
                   In multi-coin mode this is fetched ONCE by run_multi_symbol_terminal()
                   and passed to all symbol threads to avoid redundant API calls.
                   When None the balance is fetched normally (single-coin mode).
+        cycle_lock: Optional shared threading.Lock passed from run_multi_symbol_terminal().
+                  Each thread acquires this lock at the START of its API work phase
+                  (candle fetch + signal check + position fetch) and releases it just
+                  before sleeping. This ensures only ONE symbol runs its API-heavy
+                  cycle at a time, preventing concurrent bursts that exhaust the
+                  150 req/5min rate limit. None = no locking (single-coin mode).
     """
     # --- Per-symbol log file setup (multi-coin mode) ---
     # Add a dedicated RotatingFileHandler for this symbol so its log records
@@ -270,44 +277,55 @@ def run_strategy_terminal(
     try:
         while True:
             try:
-                # 1. Fetch Data (1h candles for aggregation to 3h)
-                # Check for strategy-specific historical days, otherwise use default
-                strategy_config = config.settings.get("strategies", {}).get(strategy_name.replace("-", "_").replace("rsi_200_ema", "rsi_200_ema"), {})
-                days_lookback = strategy_config.get("historical_days", getattr(config, 'default_historical_days', 30))
-                
-                end_time = int(time.time())
-                start_time = end_time - (days_lookback * 24 * 3600) 
-                
-                logger.info(f"Fetching {days_lookback} days of historical data for {strategy_name}") 
-                
-                # Fetch history using the paginated get_historical_candles method.
-                # The Delta Exchange API caps responses at ~2000 candles per request,
-                # so for large lookbacks (e.g. 180 days = ~4320 1H candles) we need
-                # automatic pagination to retrieve the full dataset.
-                # For 3h candles (180m), we fetch 1h and aggregate afterwards.
-                fetch_resolution = "1h" if timeframe == "180m" else timeframe
-                
-                candles = client.get_historical_candles(
-                    symbol=symbol,
-                    resolution=fetch_resolution,
-                    start=start_time,
-                    end=end_time,
-                )
-                
-                if not candles:
-                    logger.warning(f"No candle data fetched for {symbol}")
-                    time.sleep(10)
-                    continue
-                
-                # Aggregate 1h to 3h if needed
-                if timeframe == "180m":
-                    logger.info(f"Aggregating {len(candles)} 1h candles to 3h...")
-                    candles = aggregate_candles_to_3h(candles)
-                    logger.info(f"Aggregation complete: {len(candles)} 3h candles")
-                
-                # Parse
-                df = pd.DataFrame(candles)
-                if 'close' in df.columns and 'time' in df.columns:
+                # Acquire the cycle lock before any API work.
+                # In multi-coin mode, this ensures only ONE symbol thread runs its
+                # API-intensive phase at a time (candle fetch + signal check +
+                # position fetch). Other threads block here until the lock is released
+                # just before sleeping. Single-coin mode: cycle_lock is None (no-op).
+                if cycle_lock is not None:
+                    logger.info(f"[{symbol}] Waiting for cycle lock...")
+                    cycle_lock.acquire()
+                    logger.info(f"[{symbol}] Cycle lock acquired. Starting API work.")
+
+                try:
+                    # 1. Fetch Data (1h candles for aggregation to 3h)
+                    # Check for strategy-specific historical days, otherwise use default
+                    strategy_config = config.settings.get("strategies", {}).get(strategy_name.replace("-", "_").replace("rsi_200_ema", "rsi_200_ema"), {})
+                    days_lookback = strategy_config.get("historical_days", getattr(config, 'default_historical_days', 30))
+
+                    end_time = int(time.time())
+                    start_time = end_time - (days_lookback * 24 * 3600)
+                    
+                    logger.info(f"Fetching {days_lookback} days of historical data for {strategy_name}")
+                    
+                    # Fetch history using the paginated get_historical_candles method.
+                    # The Delta Exchange API caps responses at ~2000 candles per request,
+                    # so for large lookbacks (e.g. 180 days = ~4320 1H candles) we need
+                    # automatic pagination to retrieve the full dataset.
+                    # For 3h candles (180m), we fetch 1h and aggregate afterwards.
+                    fetch_resolution = "1h" if timeframe == "180m" else timeframe
+                    
+                    candles = client.get_historical_candles(
+                        symbol=symbol,
+                        resolution=fetch_resolution,
+                        start=start_time,
+                        end=end_time,
+                    )
+                    
+                    if not candles:
+                        logger.warning(f"No candle data fetched for {symbol}")
+                        time.sleep(10)
+                        continue
+                    
+                    # Aggregate 1h to 3h if needed
+                    if timeframe == "180m":
+                        logger.info(f"Aggregating {len(candles)} 1h candles to 3h...")
+                        candles = aggregate_candles_to_3h(candles)
+                        logger.info(f"Aggregation complete: {len(candles)} 3h candles")
+                    
+                    # Parse
+                    df = pd.DataFrame(candles)
+                    if 'close' in df.columns and 'time' in df.columns:
                      # Ensure correct sort order (ascending time)
                      # Check first and last time
                      first_time = df['time'].iloc[0]
@@ -518,12 +536,22 @@ def run_strategy_terminal(
                          
                          # Execute Action (Update State) with CORRECT ARGUMENTS
                          strategy.update_position_state(action, current_time_ms, indicators, exec_price, reason=reason)
-                else:
-                     logger.error(f"Unexpected candle data format: {df.columns}")
-                     time.sleep(10)
-                     continue
+                    else:
+                        logger.error(f"Unexpected candle data format: {df.columns}")
+                        time.sleep(10)
+                        continue
 
-                # Responsive Sleep (Align to next 10-minute mark)
+                finally:
+                    # Release the cycle lock BEFORE sleeping so the next thread can
+                    # immediately start its API work while this thread just sleeps.
+                    if cycle_lock is not None and cycle_lock.locked():
+                        cycle_lock.release()
+                        logger.info(f"[{symbol}] Cycle lock released. Going to sleep.")
+
+                # Sleep until the next 10-minute candle boundary.
+                # We do NOT add a per-thread offset here because the cycle_lock
+                # naturally staggers threads: each thread starts only after the
+                # previous one releases the lock, so they are already spread out.
                 current_ts = int(time.time())
                 sleep_seconds = 600 - (current_ts % 600)
                 
@@ -914,9 +942,15 @@ def run_multi_symbol_terminal(
         logger.info(f"Shared wallet balance for all threads: {shared_wallet_balance_str}")
     except Exception as e:
         logger.warning(f"Failed to fetch shared wallet balance: {e}")
+    # Cycle lock — ensures only ONE symbol thread runs its API-heavy phase at a time.
+    # Each thread acquires this lock at the start of its candle fetch and releases it
+    # just before sleeping, so the next thread can immediately start its cycle.
+    # This completely eliminates the API burst that occurred when all 5 threads woke
+    # on the same 10-minute candle boundary simultaneously.
+    cycle_lock = threading.Lock()
 
     threads: List[threading.Thread] = []
-    for sym_cfg in symbols_config:
+    for idx, sym_cfg in enumerate(symbols_config):
         symbol = sym_cfg["symbol"]
         timeframe = sym_cfg.get("timeframe", "1h")
         candle_type = sym_cfg.get("candle_type", "heikin-ashi")
@@ -931,6 +965,8 @@ def run_multi_symbol_terminal(
                 "log_file": log_file,
                 # Pass the pre-fetched balance so each thread skips its own API call.
                 "prefetched_wallet_balance_str": shared_wallet_balance_str,
+                # Shared cycle lock — only one symbol runs its API cycle at a time.
+                "cycle_lock": cycle_lock,
             },
             # Thread name = symbol so it appears in stack traces / debug output.
             name=symbol,
