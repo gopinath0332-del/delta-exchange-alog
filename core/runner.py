@@ -2,10 +2,15 @@
 
 import time
 import math
-import pandas as pd
-from typing import Optional
+import threading
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Optional, List, Dict, Any
 
-from core.logger import get_logger
+import pandas as pd
+
+from core.logger import get_logger, HumanReadableFormatter
 from core.config import Config
 from notifications.manager import NotificationManager
 from api.rest_client import DeltaRestClient
@@ -14,7 +19,17 @@ from core.candle_aggregator import aggregate_candles_to_3h
 
 logger = get_logger(__name__)
 
-def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode: str, candle_type: str = "heikin-ashi", timeframe: str = "1h"):
+def run_strategy_terminal(
+    config: Config,
+    strategy_name: str,
+    symbol: str,
+    mode: str,
+    candle_type: str = "heikin-ashi",
+    timeframe: str = "1h",
+    shared_client: Optional["DeltaRestClient"] = None,
+    shared_notifier: Optional["NotificationManager"] = None,
+    log_file: Optional[str] = None,
+):
     """
     Run strategy in terminal mode with dashboard output.
     
@@ -25,10 +40,31 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         mode: 'live' or 'paper'
         candle_type: 'heikin-ashi' or 'standard'
         timeframe: Candle timeframe (e.g., '1h', '3h', '4h')
+        shared_client: Optional pre-created DeltaRestClient to share across threads.
+                       When provided, its internal RateLimiter (with threading.Lock)
+                       automatically serializes API calls across all coin threads.
+        shared_notifier: Optional pre-created NotificationManager to share.
+        log_file: Optional per-symbol log file path (used in multi-coin mode).
+                  When set, a dedicated RotatingFileHandler is added just for this
+                  symbol's thread so its logs go to a separate file.
     """
-    # Initialize API and Notifications
-    client = DeltaRestClient(config)
-    notifier = NotificationManager(config)
+    # --- Per-symbol log file setup (multi-coin mode) ---
+    # Add a dedicated RotatingFileHandler for this symbol so its log records
+    # are written to their own file regardless of what other threads are doing.
+    # A ThreadFilter is applied so only records originating from this thread
+    # reach this file handler, keeping the per-coin files clean and separate.
+    if log_file:
+        _add_per_symbol_log_handler(
+            symbol=symbol,
+            log_file=log_file,
+            log_max_bytes=config.log_max_bytes,
+            log_backup_count=config.log_backup_count,
+        )
+
+    # Use shared client/notifier if provided (multi-coin mode), otherwise create
+    # independent instances (single-coin mode, backward compatible).
+    client = shared_client if shared_client is not None else DeltaRestClient(config)
+    notifier = shared_notifier if shared_notifier is not None else NotificationManager(config)
     
     # Resolve Product & Precision
     logger.info(f"Resolving product details for {symbol}...")
@@ -729,3 +765,149 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     except KeyboardInterrupt:
         logger.info("Stopping strategy...")
         notifier.send_status_message(f"Strategy Stopped (Terminal)", f"{symbol} {strategy_name} stopped by user.")
+
+
+# ---------------------------------------------------------------------------
+# Per-symbol log handler helper (used in multi-coin mode)
+# ---------------------------------------------------------------------------
+
+class _ThreadFilter(logging.Filter):
+    """
+    logging.Filter that accepts only records emitted from the calling thread.
+
+    In multi-coin mode every coin runs in its own thread.  Attaching this
+    filter to a per-symbol RotatingFileHandler ensures that only log records
+    produced by that thread are written to the symbol's log file, even though
+    all threads share the same root logger.
+    """
+
+    def __init__(self, thread_id: int):
+        super().__init__()
+        self._thread_id = thread_id
+
+    def filter(self, record: logging.LogRecord) -> bool:  # type: ignore[override]
+        return threading.get_ident() == self._thread_id
+
+
+def _add_per_symbol_log_handler(
+    symbol: str,
+    log_file: str,
+    log_max_bytes: int,
+    log_backup_count: int,
+) -> None:
+    """
+    Attach a RotatingFileHandler to the root logger that writes only this
+    thread's log records to `log_file`.
+
+    Called once per symbol thread during startup in multi-coin mode.
+    The handler is filtered to the current thread so each coin's records
+    stay in their own file (e.g. logs/pi.log, logs/pippin.log, ...).
+
+    Args:
+        symbol:           Trading symbol (used for log messages only).
+        log_file:         Destination log file path.
+        log_max_bytes:    Max file size before rotation (from config).
+        log_backup_count: Number of backup files to keep (from config).
+    """
+    log_path = Path(log_file)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    handler = RotatingFileHandler(
+        log_file, maxBytes=log_max_bytes, backupCount=log_backup_count
+    )
+    handler.setFormatter(HumanReadableFormatter(use_colors=False))
+    # Only write log records that originate from this specific thread.
+    handler.addFilter(_ThreadFilter(threading.get_ident()))
+
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+
+    logger.info(f"[{symbol}] Per-symbol log handler attached: {log_file}")
+
+
+# ---------------------------------------------------------------------------
+# Multi-coin runner
+# ---------------------------------------------------------------------------
+
+def run_multi_symbol_terminal(
+    config: Config,
+    strategy_name: str,
+    symbols_config: List[Dict[str, Any]],
+    mode: str,
+) -> None:
+    """
+    Run one strategy instance per symbol, each in its own daemon thread.
+
+    All threads share a **single** DeltaRestClient instance.  Because
+    DeltaRestClient's internal RateLimiter uses threading.Lock, API calls
+    are automatically serialized across threads — no file-lock or external
+    mutex needed.  This prevents the simultaneous API burst that occurs when
+    five separate services all start at reboot.
+
+    Each symbol gets:
+      - Its own strategy instance (independent state, no cross-coin interference).
+      - Its own per-symbol log file (same files as the old dedicated services).
+      - Its own Discord startup message (same behaviour as before).
+
+    Args:
+        config:         Application configuration.
+        strategy_name:  Strategy key (e.g. 'donchian_channel').
+        symbols_config: List of dicts from settings.yaml multi_coin section:
+                          [{'symbol': 'PIUSD', 'timeframe': '1h',
+                            'candle_type': 'heikin-ashi', 'log_file': 'logs/pi.log'}, ...]
+        mode:           'live' or 'paper'.
+    """
+    if not symbols_config:
+        logger.error("run_multi_symbol_terminal: no symbols configured — nothing to run.")
+        return
+
+    # One shared DeltaRestClient → one shared RateLimiter with threading.Lock.
+    # All per-coin threads call the same client, so API calls are serialised
+    # by the existing lock without any additional machinery.
+    shared_client = DeltaRestClient(config)
+    # NotificationManager is stateless (sends webhooks); safe to share.
+    shared_notifier = NotificationManager(config)
+
+    logger.info(
+        f"Starting multi-coin service: strategy={strategy_name}, "
+        f"symbols={[s['symbol'] for s in symbols_config]}, mode={mode}"
+    )
+
+    threads: List[threading.Thread] = []
+    for sym_cfg in symbols_config:
+        symbol = sym_cfg["symbol"]
+        timeframe = sym_cfg.get("timeframe", "1h")
+        candle_type = sym_cfg.get("candle_type", "heikin-ashi")
+        log_file = sym_cfg.get("log_file")  # e.g. "logs/pi.log"
+
+        t = threading.Thread(
+            target=run_strategy_terminal,
+            args=(config, strategy_name, symbol, mode, candle_type, timeframe),
+            kwargs={
+                "shared_client": shared_client,
+                "shared_notifier": shared_notifier,
+                "log_file": log_file,
+            },
+            # Thread name = symbol so it appears in stack traces / debug output.
+            name=symbol,
+            # Daemon threads are terminated automatically when the main thread exits
+            # (e.g. on Ctrl-C / SIGTERM from systemd).
+            daemon=True,
+        )
+        threads.append(t)
+        logger.info(f"Prepared thread for {symbol} ({strategy_name}, {timeframe}, {candle_type})")
+
+    # Start all threads.  They will block on the first API call if the shared
+    # RateLimiter lock is already held by another thread — no burst.
+    for t in threads:
+        t.start()
+        logger.info(f"Thread started: {t.name}")
+
+    # Block the main thread until all symbol threads finish (they run forever
+    # unless interrupted).  KeyboardInterrupt / SIGTERM will propagate and the
+    # daemon threads will be cleaned up automatically.
+    try:
+        for t in threads:
+            t.join()
+    except KeyboardInterrupt:
+        logger.info("Multi-coin service interrupted — shutting down all symbol threads.")

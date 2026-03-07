@@ -127,6 +127,35 @@ strategies:
     slow_ema_length: 20 # Slow EMA period
     allow_flip: true # Allow same-bar close & reverse
 
+# Multi-Coin Service Configuration
+# Defines symbol groups that can be run together in a single process via
+# `python run_terminal.py --multi-coin <strategy_name> --non-interactive`.
+# Each symbol runs in its own thread sharing one DeltaRestClient, so the
+# in-process threading.Lock in RateLimiter naturally serializes all API calls.
+multi_coin:
+  donchian_channel:
+    symbols:
+      - symbol: PIUSD
+        timeframe: 1h
+        candle_type: heikin-ashi
+        log_file: logs/pi.log           # Per-coin log file (same as the old dedicated service)
+      - symbol: PIPPINUSD
+        timeframe: 1h
+        candle_type: heikin-ashi
+        log_file: logs/pippin.log
+      - symbol: RIVERUSD
+        timeframe: 1h
+        candle_type: heikin-ashi
+        log_file: logs/river.log
+      - symbol: BERAUSD
+        timeframe: 1h
+        candle_type: heikin-ashi
+        log_file: logs/bera.log
+      - symbol: PAXGUSD
+        timeframe: 1h
+        candle_type: heikin-ashi
+        log_file: logs/paxg.log
+
 # Firestore Configuration (for trade journaling)
 firestore:
   enabled: true # Enable/disable trade journaling to Firestore

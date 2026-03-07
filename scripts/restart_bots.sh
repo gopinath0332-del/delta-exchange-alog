@@ -10,20 +10,11 @@
 #echo "Restarting XRP Service..."
 #sudo systemctl restart delta-bot-xrp.service
 
-echo "Restarting River Service..."
-sudo systemctl restart delta-bot-river.service
-
-echo "Restarting Pippin Service..."
-sudo systemctl restart delta-bot-pippin.service
-
-echo "Restarting PIUSD Service..."
-sudo systemctl restart delta-bot-pi.service
-
-echo "Restarting BERAUSD Service..."
-sudo systemctl restart delta-bot-bera.service
-
-echo "Restarting PAXGUSD Service..."
-sudo systemctl restart delta-bot-paxg.service
+# Donchian Channel — all 5 coins (PIUSD, PIPPINUSD, RIVERUSD, BERAUSD, PAXGUSD)
+# run in a single multi-threaded service. API calls are serialized via the
+# shared DeltaRestClient's threading.Lock — no startup rate-limit burst.
+echo "Restarting Donchian multi-coin service (PI, PIPPIN, RIVER, BERA, PAXG)..."
+sudo systemctl restart delta-bot-donchian.service
 
 #echo "Restarting BTC EMA Service..."
 #sudo systemctl restart delta-bot-btc-ema.service
