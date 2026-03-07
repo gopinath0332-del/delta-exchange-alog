@@ -158,24 +158,25 @@ def main():
             "timeframe": "1h",
             "candle_type": "heikin-ashi",
             "desc": "Donchian breakout with 100 EMA trend filter and ATR trailing stop. $30 target margin."
+        },
+        {
+            # Multi-coin Donchian Channel service.
+            # Runs PI, PIPPIN, RIVER, BERA, PAXG in parallel threads sharing one
+            # DeltaRestClient so API calls are serialized automatically (no rate-limit burst).
+            # Each coin gets its own log file and its own Discord startup message.
+            # Symbols/log-files are configured in settings.yaml under multi_coin.donchian_channel.
+            # On Raspberry Pi this is the entry used by delta-bot-donchian.service.
+            "id": 14,
+            "name": "Donchian Channel — Multi-Coin (PI, PIPPIN, RIVER, BERA, PAXG)",
+            "multi_coin_key": "donchian_channel",  # key under multi_coin in settings.yaml
+            "desc": "Runs Donchian Channel for all 5 coins in parallel threads. API calls serialized via shared client."
         }
     ]
 
     import argparse
     parser = argparse.ArgumentParser(description="Delta Exchange Trading Bot - Terminal Mode")
     parser.add_argument("--strategy", type=int, help="Strategy ID to run (e.g. 1)")
-    parser.add_argument("--non-interactive", action="store_true", help="Run in non-interactive mode (requires --strategy or --multi-coin)")
-    parser.add_argument(
-        "--multi-coin",
-        type=str,
-        metavar="STRATEGY_NAME",
-        help=(
-            "Run a single strategy across multiple coins in parallel threads. "
-            "The STRATEGY_NAME must match a key under 'multi_coin' in settings.yaml "
-            "(e.g. 'donchian_channel'). Each coin runs in its own thread sharing one "
-            "DeltaRestClient so API calls are serialized automatically."
-        ),
-    )
+    parser.add_argument("--non-interactive", action="store_true", help="Run in non-interactive mode (requires --strategy)")
     args = parser.parse_args()
 
     # Strategy Selection Logic
@@ -216,18 +217,18 @@ def main():
     mode = "live"
 
     # -----------------------------------------------------------------------
-    # Multi-coin mode: run one strategy across multiple symbols in threads
+    # Multi-coin mode — triggered when the strategy entry has 'multi_coin_key'
     # -----------------------------------------------------------------------
-    if args.multi_coin:
-        strategy_key = args.multi_coin.lower().replace("-", "_")
+    if selected_strat.get("multi_coin_key"):
+        strategy_key = selected_strat["multi_coin_key"]
 
-        # Load multi_coin config from settings.yaml
+        # Load symbol list from settings.yaml multi_coin section
         multi_coin_cfg = config.settings.get("multi_coin", {})
         strategy_coin_cfg = multi_coin_cfg.get(strategy_key)
 
         if not strategy_coin_cfg:
             print(
-                f"Error: No multi_coin configuration found for strategy '{strategy_key}' "
+                f"Error: No multi_coin configuration found for '{strategy_key}' "
                 f"in settings.yaml. Available: {list(multi_coin_cfg.keys())}"
             )
             sys.exit(1)
@@ -237,7 +238,6 @@ def main():
             print(f"Error: 'symbols' list is empty for multi_coin.{strategy_key} in settings.yaml.")
             sys.exit(1)
 
-        print(f"\nLaunching multi-coin {strategy_key} for {[s['symbol'] for s in symbols_config]}...")
         logger.info(f"Multi-coin mode: strategy={strategy_key}, symbols={[s['symbol'] for s in symbols_config]}")
 
         try:
@@ -249,7 +249,7 @@ def main():
             logger.exception("Fatal error in multi-coin terminal mode")
             print(f"\nFatal Error: {e}")
             sys.exit(1)
-        return  # Done — multi-coin mode handled above
+        return  # multi-coin handled above
 
     # -----------------------------------------------------------------------
     # Single-coin mode: original strategy selection flow

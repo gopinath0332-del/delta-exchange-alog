@@ -12,9 +12,7 @@ WorkingDirectory=/home/pi/delta-exchange-alog
 # because _add_per_symbol_log_handler() in runner.py attaches a thread-filtered
 # RotatingFileHandler per coin.  The shared DeltaRestClient serialises all API
 # calls via the in-process threading.Lock in RateLimiter — no startup burst.
-ExecStart=/home/pi/delta-exchange-alog/venv/bin/python3 -u \
-  /home/pi/delta-exchange-alog/run_terminal.py \
-  --multi-coin donchian_channel --non-interactive
+ExecStart=/home/pi/delta-exchange-alog/venv/bin/python3 -u /home/pi/delta-exchange-alog/run_terminal.py --strategy 14 --non-interactive
 Restart=on-failure
 RestartSec=60
 EnvironmentFile=/home/pi/delta-exchange-alog/config/.env
