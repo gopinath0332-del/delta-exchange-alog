@@ -12,7 +12,7 @@ sys.path.insert(0, str(project_root))
 
 from core.config import get_config
 from core.logger import setup_logging, get_logger
-from core.runner import run_strategy_terminal
+from core.runner import run_strategy_terminal, run_multi_symbol_terminal
 
 def main():
     # Load configuration
@@ -158,6 +158,18 @@ def main():
             "timeframe": "1h",
             "candle_type": "heikin-ashi",
             "desc": "Donchian breakout with 100 EMA trend filter and ATR trailing stop. $30 target margin."
+        },
+        {
+            # Multi-coin Donchian Channel service.
+            # Runs PI, PIPPIN, RIVER, BERA, PAXG in parallel threads sharing one
+            # DeltaRestClient so API calls are serialized automatically (no rate-limit burst).
+            # Each coin gets its own log file and its own Discord startup message.
+            # Symbols/log-files are configured in settings.yaml under multi_coin.donchian_channel.
+            # On Raspberry Pi this is the entry used by delta-bot-donchian.service.
+            "id": 14,
+            "name": "Donchian Channel — Multi-Coin (PI, PIPPIN, RIVER, BERA, PAXG)",
+            "multi_coin_key": "donchian_channel",  # key under multi_coin in settings.yaml
+            "desc": "Runs Donchian Channel for all 5 coins in parallel threads. API calls serialized via shared client."
         }
     ]
 
@@ -201,16 +213,54 @@ def main():
             
     print(f"\nLaunching {selected_strat['name']}...")
     
+    # Hardcoded for now as we only have one mode
+    mode = "live"
+
+    # -----------------------------------------------------------------------
+    # Multi-coin mode — triggered when the strategy entry has 'multi_coin_key'
+    # -----------------------------------------------------------------------
+    if selected_strat.get("multi_coin_key"):
+        strategy_key = selected_strat["multi_coin_key"]
+
+        # Load symbol list from settings.yaml multi_coin section
+        multi_coin_cfg = config.settings.get("multi_coin", {})
+        strategy_coin_cfg = multi_coin_cfg.get(strategy_key)
+
+        if not strategy_coin_cfg:
+            print(
+                f"Error: No multi_coin configuration found for '{strategy_key}' "
+                f"in settings.yaml. Available: {list(multi_coin_cfg.keys())}"
+            )
+            sys.exit(1)
+
+        symbols_config = strategy_coin_cfg.get("symbols", [])
+        if not symbols_config:
+            print(f"Error: 'symbols' list is empty for multi_coin.{strategy_key} in settings.yaml.")
+            sys.exit(1)
+
+        logger.info(f"Multi-coin mode: strategy={strategy_key}, symbols={[s['symbol'] for s in symbols_config]}")
+
+        try:
+            run_multi_symbol_terminal(config, strategy_key, symbols_config, mode)
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            sys.exit(0)
+        except Exception as e:
+            logger.exception("Fatal error in multi-coin terminal mode")
+            print(f"\nFatal Error: {e}")
+            sys.exit(1)
+        return  # multi-coin handled above
+
+    # -----------------------------------------------------------------------
+    # Single-coin mode: original strategy selection flow
+    # -----------------------------------------------------------------------
     try:
-        # Hardcoded for now as we only have one mode
-        mode = "live" 
-        
         # Get timeframe and candle_type from strategy, default to 1h and heikin-ashi
         timeframe = selected_strat.get('timeframe', '1h')
         candle_type = selected_strat.get('candle_type', 'heikin-ashi')
-        
+
         run_strategy_terminal(config, selected_strat['monitor'], selected_strat['symbol'], mode, candle_type, timeframe)
-        
+
     except KeyboardInterrupt:
         print("\nExiting...")
         sys.exit(0)

@@ -10,22 +10,11 @@
 #echo "Stopping XRP Service..."
 #sudo systemctl stop delta-bot-xrp.service
 
-echo "Stopping River Service..."
-sudo systemctl stop delta-bot-river.service
-
-echo "Stopping Pippin Service..."
-sudo systemctl stop delta-bot-pippin.service
+# Donchian Channel — all 5 coins run in a single multi-threaded service
+echo "Stopping Donchian multi-coin service (PI, PIPPIN, RIVER, BERA, PAXG)..."
+sudo systemctl stop delta-bot-donchian.service
 
 #echo "Stopping BTC EMA Service..."
 #sudo systemctl stop delta-bot-btc-ema.service
-
-echo "Stopping PIUSD Service..."
-sudo systemctl stop delta-bot-pi.service
-
-echo "Stopping BERAUSD Service..."
-sudo systemctl stop delta-bot-bera.service
-
-echo "Stopping PAXGUSD Service..."
-sudo systemctl stop delta-bot-paxg.service
 
 echo "All services stopped."

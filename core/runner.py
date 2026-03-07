@@ -2,10 +2,15 @@
 
 import time
 import math
-import pandas as pd
-from typing import Optional
+import threading
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Optional, List, Dict, Any
 
-from core.logger import get_logger
+import pandas as pd
+
+from core.logger import get_logger, HumanReadableFormatter
 from core.config import Config
 from notifications.manager import NotificationManager
 from api.rest_client import DeltaRestClient
@@ -14,7 +19,19 @@ from core.candle_aggregator import aggregate_candles_to_3h
 
 logger = get_logger(__name__)
 
-def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode: str, candle_type: str = "heikin-ashi", timeframe: str = "1h"):
+def run_strategy_terminal(
+    config: Config,
+    strategy_name: str,
+    symbol: str,
+    mode: str,
+    candle_type: str = "heikin-ashi",
+    timeframe: str = "1h",
+    shared_client: Optional["DeltaRestClient"] = None,
+    shared_notifier: Optional["NotificationManager"] = None,
+    log_file: Optional[str] = None,
+    prefetched_wallet_balance_str: Optional[str] = None,
+    cycle_lock: Optional[threading.Lock] = None,
+):
     """
     Run strategy in terminal mode with dashboard output.
     
@@ -25,12 +42,47 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
         mode: 'live' or 'paper'
         candle_type: 'heikin-ashi' or 'standard'
         timeframe: Candle timeframe (e.g., '1h', '3h', '4h')
+        shared_client: Optional pre-created DeltaRestClient to share across threads.
+                       When provided, its internal RateLimiter (with threading.Lock)
+                       automatically serializes API calls across all coin threads.
+        shared_notifier: Optional pre-created NotificationManager to share.
+        log_file: Optional per-symbol log file path (used in multi-coin mode).
+                  When set, a dedicated RotatingFileHandler is added just for this
+                  symbol's thread so its logs go to a separate file.
+        prefetched_wallet_balance_str: Optional pre-fetched wallet balance string.
+                  In multi-coin mode this is fetched ONCE by run_multi_symbol_terminal()
+                  and passed to all symbol threads to avoid redundant API calls.
+                  When None the balance is fetched normally (single-coin mode).
+        cycle_lock: Optional shared threading.Lock passed from run_multi_symbol_terminal().
+                  Each thread acquires this lock at the START of its API work phase
+                  (candle fetch + signal check + position fetch) and releases it just
+                  before sleeping. This ensures only ONE symbol runs its API-heavy
+                  cycle at a time, preventing concurrent bursts that exhaust the
+                  150 req/5min rate limit. None = no locking (single-coin mode).
     """
-    # Initialize API and Notifications
-    client = DeltaRestClient(config)
-    notifier = NotificationManager(config)
+    # --- Per-symbol log file setup (multi-coin mode) ---
+    # Add a dedicated RotatingFileHandler for this symbol so its log records
+    # are written to their own file regardless of what other threads are doing.
+    # A ThreadFilter is applied so only records originating from this thread
+    # reach this file handler, keeping the per-coin files clean and separate.
+    if log_file:
+        _add_per_symbol_log_handler(
+            symbol=symbol,
+            log_file=log_file,
+            log_max_bytes=config.log_max_bytes,
+            log_backup_count=config.log_backup_count,
+        )
+
+    # Use shared client/notifier if provided (multi-coin mode), otherwise create
+    # independent instances (single-coin mode, backward compatible).
+    client = shared_client if shared_client is not None else DeltaRestClient(config)
+    notifier = shared_notifier if shared_notifier is not None else NotificationManager(config)
     
     # Resolve Product & Precision
+    # Fetch products ONCE at startup and cache the product_id for this symbol.
+    # This avoids repeated get_products() calls inside the main loop (which burned
+    # ~10 extra API requests per 10-min cycle across 5 symbol-threads, exhausting
+    # the 150 req/5min rate limit).
     logger.info(f"Resolving product details for {symbol}...")
     try:
         products_init = client.get_products()
@@ -38,6 +90,11 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     except Exception as e:
         logger.warning(f"Failed to fetch initial products: {e}")
         target_prod_init = None
+
+    # Cache product_id so reconciliation and dashboard can reuse it without
+    # calling get_products() on every loop iteration.
+    cached_product_id: Optional[int] = target_prod_init.get('id') if target_prod_init else None
+    logger.info(f"Cached product_id={cached_product_id} for {symbol}")
 
     p_decimals = 2 # Default
     if target_prod_init and 'tick_size' in target_prod_init:
@@ -131,67 +188,74 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     # \u001b[0;32m = Green, \u001b[0;31m = Red, \u001b[0m = Reset
     ansi_enabled_str = f"\u001b[0;32m{enabled_str}\u001b[0m" if trade_config['enabled'] else f"\u001b[0;31m{enabled_str}\u001b[0m"
     
-    # Fetch wallet balance for startup message
-    wallet_balance_str = "N/A"
-    try:
-        logger.info("Fetching wallet balance for startup message...")
-        wallet_data = client.get_wallet_balance()
-        
-        # Get the collateral currency
-        # Delta Exchange uses 'USD' as the symbol (not USDT)
-        collateral_currency = "USD"
-        
-        balance_obj = {}
-        if isinstance(wallet_data, list):
-            # Log all available assets
-            available_assets = [b.get('asset_symbol', 'unknown') for b in wallet_data]
-            logger.info(f"Available assets in wallet (list): {available_assets}")
-            balance_obj = next((b for b in wallet_data if b.get('asset_symbol') == collateral_currency), {})
-        elif isinstance(wallet_data, dict):
-            data_source = wallet_data.get('result', wallet_data)
-            if isinstance(data_source, list):
+    # Wallet balance for startup message.
+    # In multi-coin mode this is passed in pre-fetched (fetched ONCE in
+    # run_multi_symbol_terminal) to avoid 5 redundant API calls at startup.
+    # In single-coin mode we fetch it here as usual.
+    if prefetched_wallet_balance_str is not None:
+        wallet_balance_str = prefetched_wallet_balance_str
+        logger.info(f"Using pre-fetched wallet balance: {wallet_balance_str}")
+    else:
+        wallet_balance_str = "N/A"
+        try:
+            logger.info("Fetching wallet balance for startup message...")
+            wallet_data = client.get_wallet_balance()
+            
+            # Get the collateral currency
+            # Delta Exchange uses 'USD' as the symbol (not USDT)
+            collateral_currency = "USD"
+            
+            balance_obj = {}
+            if isinstance(wallet_data, list):
                 # Log all available assets
-                available_assets = [b.get('asset_symbol', 'unknown') for b in data_source]
-                logger.info(f"Available assets in wallet (dict->list): {available_assets}")
-                balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency), {})
-            elif isinstance(data_source, dict):
-                # Log all keys in the dict
-                logger.info(f"Wallet data keys: {list(data_source.keys())}")
-                if data_source.get('asset_symbol') == collateral_currency:
-                    balance_obj = data_source
-                else:
-                    balance_obj = data_source.get(collateral_currency, {})
-        
-        if balance_obj:
-            available_balance = float(balance_obj.get('available_balance', 0.0))
-            wallet_balance_str = f"${available_balance:,.2f}"
-            logger.info(f"Startup wallet balance: {wallet_balance_str}")
-        else:
-            # Try fallback to USDT if USD not found
-            collateral_currency_fallback = "USDT"
-            if isinstance(wallet_data, dict):
+                available_assets = [b.get('asset_symbol', 'unknown') for b in wallet_data]
+                logger.info(f"Available assets in wallet (list): {available_assets}")
+                balance_obj = next((b for b in wallet_data if b.get('asset_symbol') == collateral_currency), {})
+            elif isinstance(wallet_data, dict):
                 data_source = wallet_data.get('result', wallet_data)
                 if isinstance(data_source, list):
-                    balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency_fallback), {})
-                    if balance_obj:
-                        available_balance = float(balance_obj.get('available_balance', 0.0))
-                        wallet_balance_str = f"${available_balance:,.2f}"
-                        logger.info(f"Startup wallet balance ({collateral_currency_fallback}): {wallet_balance_str}")
+                    # Log all available assets
+                    available_assets = [b.get('asset_symbol', 'unknown') for b in data_source]
+                    logger.info(f"Available assets in wallet (dict->list): {available_assets}")
+                    balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency), {})
+                elif isinstance(data_source, dict):
+                    # Log all keys in the dict
+                    logger.info(f"Wallet data keys: {list(data_source.keys())}")
+                    if data_source.get('asset_symbol') == collateral_currency:
+                        balance_obj = data_source
+                    else:
+                        balance_obj = data_source.get(collateral_currency, {})
             
-            if not balance_obj:
-                logger.warning(f"Could not find {collateral_currency} or {collateral_currency_fallback} balance in wallet data")
-                # Try to find ANY balance as fallback
-            if isinstance(wallet_data, dict):
-                data_source = wallet_data.get('result', wallet_data)
-                if isinstance(data_source, list) and len(data_source) > 0:
-                    # Use first available balance
-                    first_balance = data_source[0]
-                    asset_sym = first_balance.get('asset_symbol', 'Unknown')
-                    available_balance = float(first_balance.get('available_balance', 0.0))
-                    wallet_balance_str = f"${available_balance:,.2f} ({asset_sym})"
-                    logger.info(f"Using first available balance: {wallet_balance_str}")
-    except Exception as e:
-        logger.warning(f"Failed to fetch wallet balance for startup: {e}")
+            if balance_obj:
+                available_balance = float(balance_obj.get('available_balance', 0.0))
+                wallet_balance_str = f"${available_balance:,.2f}"
+                logger.info(f"Startup wallet balance: {wallet_balance_str}")
+            else:
+                # Try fallback to USDT if USD not found
+                collateral_currency_fallback = "USDT"
+                if isinstance(wallet_data, dict):
+                    data_source = wallet_data.get('result', wallet_data)
+                    if isinstance(data_source, list):
+                        balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency_fallback), {})
+                        if balance_obj:
+                            available_balance = float(balance_obj.get('available_balance', 0.0))
+                            wallet_balance_str = f"${available_balance:,.2f}"
+                            logger.info(f"Startup wallet balance ({collateral_currency_fallback}): {wallet_balance_str}")
+                
+                if not balance_obj:
+                    logger.warning(f"Could not find {collateral_currency} or {collateral_currency_fallback} balance in wallet data")
+                    # Try to find ANY balance as fallback
+                if isinstance(wallet_data, dict):
+                    data_source = wallet_data.get('result', wallet_data)
+                    if isinstance(data_source, list) and len(data_source) > 0:
+                        # Use first available balance
+                        first_balance = data_source[0]
+                        asset_sym = first_balance.get('asset_symbol', 'Unknown')
+                        available_balance = float(first_balance.get('available_balance', 0.0))
+                        wallet_balance_str = f"${available_balance:,.2f} ({asset_sym})"
+                        logger.info(f"Using first available balance: {wallet_balance_str}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch wallet balance for startup: {e}")
     
     start_msg = (
         f"{symbol} {strategy_name} started on host: {hostname}\n"
@@ -213,44 +277,55 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     try:
         while True:
             try:
-                # 1. Fetch Data (1h candles for aggregation to 3h)
-                # Check for strategy-specific historical days, otherwise use default
-                strategy_config = config.settings.get("strategies", {}).get(strategy_name.replace("-", "_").replace("rsi_200_ema", "rsi_200_ema"), {})
-                days_lookback = strategy_config.get("historical_days", getattr(config, 'default_historical_days', 30))
-                
-                end_time = int(time.time())
-                start_time = end_time - (days_lookback * 24 * 3600) 
-                
-                logger.info(f"Fetching {days_lookback} days of historical data for {strategy_name}") 
-                
-                # Fetch history using the paginated get_historical_candles method.
-                # The Delta Exchange API caps responses at ~2000 candles per request,
-                # so for large lookbacks (e.g. 180 days = ~4320 1H candles) we need
-                # automatic pagination to retrieve the full dataset.
-                # For 3h candles (180m), we fetch 1h and aggregate afterwards.
-                fetch_resolution = "1h" if timeframe == "180m" else timeframe
-                
-                candles = client.get_historical_candles(
-                    symbol=symbol,
-                    resolution=fetch_resolution,
-                    start=start_time,
-                    end=end_time,
-                )
-                
-                if not candles:
-                    logger.warning(f"No candle data fetched for {symbol}")
-                    time.sleep(10)
-                    continue
-                
-                # Aggregate 1h to 3h if needed
-                if timeframe == "180m":
-                    logger.info(f"Aggregating {len(candles)} 1h candles to 3h...")
-                    candles = aggregate_candles_to_3h(candles)
-                    logger.info(f"Aggregation complete: {len(candles)} 3h candles")
-                
-                # Parse
-                df = pd.DataFrame(candles)
-                if 'close' in df.columns and 'time' in df.columns:
+                # Acquire the cycle lock before any API work.
+                # In multi-coin mode, this ensures only ONE symbol thread runs its
+                # API-intensive phase at a time (candle fetch + signal check +
+                # position fetch). Other threads block here until the lock is released
+                # just before sleeping. Single-coin mode: cycle_lock is None (no-op).
+                if cycle_lock is not None:
+                    logger.info(f"[{symbol}] Waiting for cycle lock...")
+                    cycle_lock.acquire()
+                    logger.info(f"[{symbol}] Cycle lock acquired. Starting API work.")
+
+                try:
+                    # 1. Fetch Data (1h candles for aggregation to 3h)
+                    # Check for strategy-specific historical days, otherwise use default
+                    strategy_config = config.settings.get("strategies", {}).get(strategy_name.replace("-", "_").replace("rsi_200_ema", "rsi_200_ema"), {})
+                    days_lookback = strategy_config.get("historical_days", getattr(config, 'default_historical_days', 30))
+
+                    end_time = int(time.time())
+                    start_time = end_time - (days_lookback * 24 * 3600)
+                    
+                    logger.info(f"Fetching {days_lookback} days of historical data for {strategy_name}")
+                    
+                    # Fetch history using the paginated get_historical_candles method.
+                    # The Delta Exchange API caps responses at ~2000 candles per request,
+                    # so for large lookbacks (e.g. 180 days = ~4320 1H candles) we need
+                    # automatic pagination to retrieve the full dataset.
+                    # For 3h candles (180m), we fetch 1h and aggregate afterwards.
+                    fetch_resolution = "1h" if timeframe == "180m" else timeframe
+                    
+                    candles = client.get_historical_candles(
+                        symbol=symbol,
+                        resolution=fetch_resolution,
+                        start=start_time,
+                        end=end_time,
+                    )
+                    
+                    if not candles:
+                        logger.warning(f"No candle data fetched for {symbol}")
+                        time.sleep(10)
+                        continue
+                    
+                    # Aggregate 1h to 3h if needed
+                    if timeframe == "180m":
+                        logger.info(f"Aggregating {len(candles)} 1h candles to 3h...")
+                        candles = aggregate_candles_to_3h(candles)
+                        logger.info(f"Aggregation complete: {len(candles)} 3h candles")
+                    
+                    # Parse
+                    df = pd.DataFrame(candles)
+                    if 'close' in df.columns and 'time' in df.columns:
                      # Ensure correct sort order (ascending time)
                      # Check first and last time
                      first_time = df['time'].iloc[0]
@@ -322,15 +397,11 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                              try:
                                  logger.info("Reconciling state with live positions...")
                                  
-                                 # We need product_id for get_positions
-                                 products = client.get_products()
-                                 target_product = next((p for p in products if p.get('symbol') == symbol), None)
-                                 
+                                 # Reuse the product_id cached at startup — no extra get_products() call.
                                  positions = []
-                                 if target_product:
-                                     pid = target_product.get('id')
-                                     logger.info(f"Resolved {symbol} to Product ID: {pid}")
-                                     positions = client.get_positions(product_id=pid)
+                                 if cached_product_id is not None:
+                                     logger.info(f"Reconciliation: Using cached product_id={cached_product_id} for {symbol}")
+                                     positions = client.get_positions(product_id=cached_product_id)
                                  else:
                                      logger.warning(f"Could not resolve product ID for {symbol}. Trying without ID (might fail)...")
                                      positions = client.get_positions()
@@ -353,9 +424,8 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                                          logger.error(f"Position data is primitive type {type(p)}, expected dict: {p}")
                                          continue
                                      
-                                     # If we already filtered by Product ID, this is likely the one.
-                                     # But let's verify if possible, or just take it if it's the only one.
-                                     if len(positions) == 1 and target_product:
+                                     # If we filtered by product_id, a single result is our position.
+                                     if len(positions) == 1 and cached_product_id is not None:
                                           current_pos = p
                                           break
                                           
@@ -466,24 +536,31 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
                          
                          # Execute Action (Update State) with CORRECT ARGUMENTS
                          strategy.update_position_state(action, current_time_ms, indicators, exec_price, reason=reason)
-                else:
-                     logger.error(f"Unexpected candle data format: {df.columns}")
-                     time.sleep(10)
-                     continue
+                    else:
+                        logger.error(f"Unexpected candle data format: {df.columns}")
+                        time.sleep(10)
+                        continue
 
-                # Responsive Sleep (Align to next 10-minute mark)
+                finally:
+                    # Release the cycle lock BEFORE sleeping so the next thread can
+                    # immediately start its API work while this thread just sleeps.
+                    if cycle_lock is not None and cycle_lock.locked():
+                        cycle_lock.release()
+                        logger.info(f"[{symbol}] Cycle lock released. Going to sleep.")
+
+                # Sleep until the next 10-minute candle boundary.
+                # We do NOT add a per-thread offset here because the cycle_lock
+                # naturally staggers threads: each thread starts only after the
+                # previous one releases the lock, so they are already spread out.
                 current_ts = int(time.time())
                 sleep_seconds = 600 - (current_ts % 600)
                 
                 # --- FETCH LIVE POSITION FOR DASHBOARD ---
+                # Reuse cached_product_id from startup — avoids get_products() on every cycle.
                 live_pos_data = None
                 try:
-                    # Resolve product ID first
-                    products = client.get_products()
-                    target_product = next((p for p in products if p.get('symbol') == symbol), None)
-                    
-                    if target_product:
-                        pid = target_product.get('id')
+                    if cached_product_id is not None:
+                        pid = cached_product_id
                         # Use get_positions (plural) which now hits /v2/positions/margined
                         all_positions = client.get_positions(product_id=pid)
                         
@@ -729,3 +806,188 @@ def run_strategy_terminal(config: Config, strategy_name: str, symbol: str, mode:
     except KeyboardInterrupt:
         logger.info("Stopping strategy...")
         notifier.send_status_message(f"Strategy Stopped (Terminal)", f"{symbol} {strategy_name} stopped by user.")
+
+
+# ---------------------------------------------------------------------------
+# Per-symbol log handler helper (used in multi-coin mode)
+# ---------------------------------------------------------------------------
+
+class _ThreadFilter(logging.Filter):
+    """
+    logging.Filter that accepts only records emitted from the calling thread.
+
+    In multi-coin mode every coin runs in its own thread.  Attaching this
+    filter to a per-symbol RotatingFileHandler ensures that only log records
+    produced by that thread are written to the symbol's log file, even though
+    all threads share the same root logger.
+    """
+
+    def __init__(self, thread_id: int):
+        super().__init__()
+        self._thread_id = thread_id
+
+    def filter(self, record: logging.LogRecord) -> bool:  # type: ignore[override]
+        return threading.get_ident() == self._thread_id
+
+
+def _add_per_symbol_log_handler(
+    symbol: str,
+    log_file: str,
+    log_max_bytes: int,
+    log_backup_count: int,
+) -> None:
+    """
+    Attach a RotatingFileHandler to the root logger that writes only this
+    thread's log records to `log_file`.
+
+    Called once per symbol thread during startup in multi-coin mode.
+    The handler is filtered to the current thread so each coin's records
+    stay in their own file (e.g. logs/pi.log, logs/pippin.log, ...).
+
+    Args:
+        symbol:           Trading symbol (used for log messages only).
+        log_file:         Destination log file path.
+        log_max_bytes:    Max file size before rotation (from config).
+        log_backup_count: Number of backup files to keep (from config).
+    """
+    log_path = Path(log_file)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    handler = RotatingFileHandler(
+        log_file, maxBytes=log_max_bytes, backupCount=log_backup_count
+    )
+    handler.setFormatter(HumanReadableFormatter(use_colors=False))
+    # Only write log records that originate from this specific thread.
+    handler.addFilter(_ThreadFilter(threading.get_ident()))
+
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+
+    logger.info(f"[{symbol}] Per-symbol log handler attached: {log_file}")
+
+
+# ---------------------------------------------------------------------------
+# Multi-coin runner
+# ---------------------------------------------------------------------------
+
+def run_multi_symbol_terminal(
+    config: Config,
+    strategy_name: str,
+    symbols_config: List[Dict[str, Any]],
+    mode: str,
+) -> None:
+    """
+    Run one strategy instance per symbol, each in its own daemon thread.
+
+    All threads share a **single** DeltaRestClient instance.  Because
+    DeltaRestClient's internal RateLimiter uses threading.Lock, API calls
+    are automatically serialized across threads — no file-lock or external
+    mutex needed.  This prevents the simultaneous API burst that occurs when
+    five separate services all start at reboot.
+
+    Each symbol gets:
+      - Its own strategy instance (independent state, no cross-coin interference).
+      - Its own per-symbol log file (same files as the old dedicated services).
+      - Its own Discord startup message (same behaviour as before).
+
+    Args:
+        config:         Application configuration.
+        strategy_name:  Strategy key (e.g. 'donchian_channel').
+        symbols_config: List of dicts from settings.yaml multi_coin section:
+                          [{'symbol': 'PIUSD', 'timeframe': '1h',
+                            'candle_type': 'heikin-ashi', 'log_file': 'logs/pi.log'}, ...]
+        mode:           'live' or 'paper'.
+    """
+    if not symbols_config:
+        logger.error("run_multi_symbol_terminal: no symbols configured — nothing to run.")
+        return
+
+    # One shared DeltaRestClient → one shared RateLimiter with threading.Lock.
+    # All per-coin threads call the same client, so API calls are serialised
+    # by the existing lock without any additional machinery.
+    shared_client = DeltaRestClient(config)
+    # NotificationManager is stateless (sends webhooks); safe to share.
+    shared_notifier = NotificationManager(config)
+
+    logger.info(
+        f"Starting multi-coin service: strategy={strategy_name}, "
+        f"symbols={[s['symbol'] for s in symbols_config]}, mode={mode}"
+    )
+
+    # Fetch wallet balance ONCE here — all threads display the same account balance,
+    # so there is no need for each of the 5 symbol threads to call get_wallet_balance()
+    # independently. This saves 4 redundant authenticated API calls at startup.
+    shared_wallet_balance_str = "N/A"
+    try:
+        logger.info("Fetching wallet balance once for all symbol threads...")
+        wallet_data = shared_client.get_wallet_balance()
+        collateral_currency = "USD"
+        balance_obj = {}
+        if isinstance(wallet_data, list):
+            balance_obj = next((b for b in wallet_data if b.get('asset_symbol') == collateral_currency), {})
+        elif isinstance(wallet_data, dict):
+            data_source = wallet_data.get('result', wallet_data)
+            if isinstance(data_source, list):
+                balance_obj = next((b for b in data_source if b.get('asset_symbol') == collateral_currency), {})
+            elif isinstance(data_source, dict):
+                balance_obj = data_source if data_source.get('asset_symbol') == collateral_currency else data_source.get(collateral_currency, {})
+        if balance_obj:
+            shared_wallet_balance_str = f"${float(balance_obj.get('available_balance', 0.0)):,.2f}"
+        else:
+            # Fallback: use the first available asset balance
+            data_source = wallet_data.get('result', wallet_data) if isinstance(wallet_data, dict) else wallet_data
+            if isinstance(data_source, list) and data_source:
+                fb = data_source[0]
+                shared_wallet_balance_str = f"${float(fb.get('available_balance', 0.0)):,.2f} ({fb.get('asset_symbol', '?')})"
+        logger.info(f"Shared wallet balance for all threads: {shared_wallet_balance_str}")
+    except Exception as e:
+        logger.warning(f"Failed to fetch shared wallet balance: {e}")
+    # Cycle lock — ensures only ONE symbol thread runs its API-heavy phase at a time.
+    # Each thread acquires this lock at the start of its candle fetch and releases it
+    # just before sleeping, so the next thread can immediately start its cycle.
+    # This completely eliminates the API burst that occurred when all 5 threads woke
+    # on the same 10-minute candle boundary simultaneously.
+    cycle_lock = threading.Lock()
+
+    threads: List[threading.Thread] = []
+    for idx, sym_cfg in enumerate(symbols_config):
+        symbol = sym_cfg["symbol"]
+        timeframe = sym_cfg.get("timeframe", "1h")
+        candle_type = sym_cfg.get("candle_type", "heikin-ashi")
+        log_file = sym_cfg.get("log_file")  # e.g. "logs/pi.log"
+
+        t = threading.Thread(
+            target=run_strategy_terminal,
+            args=(config, strategy_name, symbol, mode, candle_type, timeframe),
+            kwargs={
+                "shared_client": shared_client,
+                "shared_notifier": shared_notifier,
+                "log_file": log_file,
+                # Pass the pre-fetched balance so each thread skips its own API call.
+                "prefetched_wallet_balance_str": shared_wallet_balance_str,
+                # Shared cycle lock — only one symbol runs its API cycle at a time.
+                "cycle_lock": cycle_lock,
+            },
+            # Thread name = symbol so it appears in stack traces / debug output.
+            name=symbol,
+            # Daemon threads are terminated automatically when the main thread exits
+            # (e.g. on Ctrl-C / SIGTERM from systemd).
+            daemon=True,
+        )
+        threads.append(t)
+        logger.info(f"Prepared thread for {symbol} ({strategy_name}, {timeframe}, {candle_type})")
+
+    # Start all threads.  They will block on the first API call if the shared
+    # RateLimiter lock is already held by another thread — no burst.
+    for t in threads:
+        t.start()
+        logger.info(f"Thread started: {t.name}")
+
+    # Block the main thread until all symbol threads finish (they run forever
+    # unless interrupted).  KeyboardInterrupt / SIGTERM will propagate and the
+    # daemon threads will be cleaned up automatically.
+    try:
+        for t in threads:
+            t.join()
+    except KeyboardInterrupt:
+        logger.info("Multi-coin service interrupted — shutting down all symbol threads.")
