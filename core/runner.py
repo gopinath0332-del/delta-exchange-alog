@@ -851,19 +851,26 @@ def _add_per_symbol_log_handler(
         log_backup_count: Number of backup files to keep (from config).
     """
     log_path = Path(log_file)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError as e:
+        logger.warning(f"[{symbol}] Permission denied creating log directory {log_path.parent}: {e}")
+        return
 
-    handler = RotatingFileHandler(
-        log_file, maxBytes=log_max_bytes, backupCount=log_backup_count
-    )
-    handler.setFormatter(HumanReadableFormatter(use_colors=False))
-    # Only write log records that originate from this specific thread.
-    handler.addFilter(_ThreadFilter(threading.get_ident()))
+    try:
+        handler = RotatingFileHandler(
+            log_file, maxBytes=log_max_bytes, backupCount=log_backup_count
+        )
+        handler.setFormatter(HumanReadableFormatter(use_colors=False))
+        # Only write log records that originate from this specific thread.
+        handler.addFilter(_ThreadFilter(threading.get_ident()))
 
-    root_logger = logging.getLogger()
-    root_logger.addHandler(handler)
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
 
-    logger.info(f"[{symbol}] Per-symbol log handler attached: {log_file}")
+        logger.info(f"[{symbol}] Per-symbol log handler attached: {log_file}")
+    except PermissionError as e:
+        logger.warning(f"[{symbol}] Permission denied attaching log handler to {log_file}. Run with sudo if owned by root. Skipping file log. Error: {e}")
 
 
 # ---------------------------------------------------------------------------
