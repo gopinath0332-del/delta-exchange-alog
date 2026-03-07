@@ -585,15 +585,16 @@ def run_strategy_terminal(
                     logger.warning(f"Failed to fetch live dashboard position: {e}")
                 
                 # --- DASHBOARD OUTPUT ---
-                print("\n" + "="*80)
-                print(f" {symbol} STRATEGY DASHBOARD  |  {time.strftime('%Y-%m-%d %H:%M:%S')}")
-                print("="*80)
+                dashboard_lines = []
+                dashboard_lines.append("\n" + "="*80)
+                dashboard_lines.append(f" {symbol} STRATEGY DASHBOARD  |  {time.strftime('%Y-%m-%d %H:%M:%S')}")
+                dashboard_lines.append("="*80)
                 
                 pos_map = {0: "FLAT", 1: "LONG", -1: "SHORT"}
                 pos_str = pos_map.get(strategy.current_position, "UNKNOWN")
-                print(f" Strategy:     {strategy_name.upper()}")
-                print(f" Status:       RUNNING ({mode.upper()})")
-                print(f" Position:     {pos_str}")
+                dashboard_lines.append(f" Strategy:     {strategy_name.upper()}")
+                dashboard_lines.append(f" Status:       RUNNING ({mode.upper()})")
+                dashboard_lines.append(f" Position:     {pos_str}")
                 
                 if live_pos_data and float(live_pos_data.get('size', 0)) != 0:
                     sz = float(live_pos_data.get('size', 0))
@@ -603,118 +604,118 @@ def run_strategy_terminal(
                     margin = float(live_pos_data.get('margin', 0))
 
                     side_str = "LONG" if sz > 0 else "SHORT"
-                    print(f" Exchange Pos: {side_str} ({abs(sz)} @ ${ep:,.{p_decimals}f})")
-                    print(f" PnL (Unreal): {pnl:+.{p_decimals}f} USD")
+                    dashboard_lines.append(f" Exchange Pos: {side_str} ({abs(sz)} @ ${ep:,.{p_decimals}f})")
+                    dashboard_lines.append(f" PnL (Unreal): {pnl:+.{p_decimals}f} USD")
 
                     # Compute and display PnL% (only meaningful when margin > 0)
                     if margin > 0:
                         live_pnl_pct = (pnl / margin) * 100.0
-                        print(f" PnL %:        {live_pnl_pct:+.2f}%")
+                        dashboard_lines.append(f" PnL %:        {live_pnl_pct:+.2f}%")
 
-                    print(f" Margin Used:  ${margin:,.2f}")
-                    print(f" Liq Price:    ${liq:,.{p_decimals}f}")
+                    dashboard_lines.append(f" Margin Used:  ${margin:,.2f}")
+                    dashboard_lines.append(f" Liq Price:    ${liq:,.{p_decimals}f}")
                 else:
-                    print(f" Exchange Pos: FLAT")
+                    dashboard_lines.append(f" Exchange Pos: FLAT")
 
 
-                print(f" Candle Type:  {'Heikin Ashi' if use_ha else 'Standard'}")
-                print("-" * 80)
+                dashboard_lines.append(f" Candle Type:  {'Heikin Ashi' if use_ha else 'Standard'}")
+                dashboard_lines.append("-" * 80)
                 if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
-                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
-                    print(f"   RSI (14):   {getattr(strategy, 'last_rsi', 0.0):.2f}")
-                    print(f"   ATR (14):   {getattr(strategy, 'last_atr', 0.0):.2f}")
+                    dashboard_lines.append(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   RSI (14):   {getattr(strategy, 'last_rsi', 0.0):.2f}")
+                    dashboard_lines.append(f"   ATR (14):   {getattr(strategy, 'last_atr', 0.0):.2f}")
                     if getattr(strategy, 'trailing_stop_level', None):
-                        print(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
+                        dashboard_lines.append(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
                     if getattr(strategy, 'next_partial_target', None):
-                        print(f"   Partial TP: ${strategy.next_partial_target:,.{p_decimals}f}")
+                        dashboard_lines.append(f"   Partial TP: ${strategy.next_partial_target:,.{p_decimals}f}")
 
                 elif hasattr(strategy, 'last_cci'): # Check for CCI Strategy
                     cci_len = getattr(strategy, 'cci_length', 30)
                     atr_len = getattr(strategy, 'atr_length', 14)
-                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
-                    print(f"   CCI ({cci_len}):   {strategy.last_cci:.2f} (Live)")
-                    print(f"   EMA (50):   {strategy.last_ema:.{p_decimals}f}")
-                    print(f"   ATR ({atr_len}):   {strategy.last_atr:.4f}")
+                    dashboard_lines.append(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   CCI ({cci_len}):   {strategy.last_cci:.2f} (Live)")
+                    dashboard_lines.append(f"   EMA (50):   {strategy.last_ema:.{p_decimals}f}")
+                    dashboard_lines.append(f"   ATR ({atr_len}):   {strategy.last_atr:.4f}")
                     if hasattr(strategy, 'last_closed_cci'):
-                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
-                         print(f"     CCI:      {strategy.last_closed_cci:.2f}")
-                         print(f"     EMA:      {strategy.last_closed_ema:.{p_decimals}f}")
+                         dashboard_lines.append(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         dashboard_lines.append(f"     CCI:      {strategy.last_closed_cci:.2f}")
+                         dashboard_lines.append(f"     EMA:      {strategy.last_closed_ema:.{p_decimals}f}")
                 elif hasattr(strategy, 'last_rsi') and hasattr(strategy, 'last_ema'): # Check for RSI+EMA Strategy
-                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
-                    print(f"   RSI (14):   {strategy.last_rsi:.2f}")
-                    print(f"   EMA (50):   {strategy.last_ema:.{p_decimals}f}")
+                    dashboard_lines.append(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   RSI (14):   {strategy.last_rsi:.2f}")
+                    dashboard_lines.append(f"   EMA (50):   {strategy.last_ema:.{p_decimals}f}")
                     if hasattr(strategy, 'last_closed_rsi'):
-                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
-                         print(f"     RSI:      {strategy.last_closed_rsi:.2f}")
-                         print(f"     EMA:      {strategy.last_closed_ema:.{p_decimals}f}")
+                         dashboard_lines.append(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         dashboard_lines.append(f"     RSI:      {strategy.last_closed_rsi:.2f}")
+                         dashboard_lines.append(f"     EMA:      {strategy.last_closed_ema:.{p_decimals}f}")
 
                 elif hasattr(strategy, 'last_macd_line'): # Check for MACD PSAR Strategy
-                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
-                    print(f"   MACD Fast:  {getattr(strategy, 'macd_fast', 14)} | Slow: {getattr(strategy, 'macd_slow', 26)} | Sig: {getattr(strategy, 'macd_signal', 9)}")
-                    print(f"   MACD Hist:  {strategy.last_hist:.4f}")
-                    print(f"   EMA ({getattr(strategy, 'ema_length', 100)}): {strategy.last_ema:.{p_decimals}f}")
-                    print(f"   PSAR:       {strategy.last_sar:.{p_decimals}f}")
+                    dashboard_lines.append(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   MACD Fast:  {getattr(strategy, 'macd_fast', 14)} | Slow: {getattr(strategy, 'macd_slow', 26)} | Sig: {getattr(strategy, 'macd_signal', 9)}")
+                    dashboard_lines.append(f"   MACD Hist:  {strategy.last_hist:.4f}")
+                    dashboard_lines.append(f"   EMA ({getattr(strategy, 'ema_length', 100)}): {strategy.last_ema:.{p_decimals}f}")
+                    dashboard_lines.append(f"   PSAR:       {strategy.last_sar:.{p_decimals}f}")
                 elif strategy_name.lower() in ["rsi-200-ema", "rsi_200_ema", "rsi200ema"]: # RSI-200-EMA Strategy
-                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
-                    print(f"   RSI ({getattr(strategy, 'rsi_length', 17)}):   {strategy.last_rsi:.2f}")
-                    print(f"   EMA ({getattr(strategy, 'ema_length', 200)}):  {strategy.last_ema:.{p_decimals}f}")
-                    print(f"   ATR ({getattr(strategy, 'atr_length', 17)}):   {strategy.last_atr:.4f}")
+                    dashboard_lines.append(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   RSI ({getattr(strategy, 'rsi_length', 17)}):   {strategy.last_rsi:.2f}")
+                    dashboard_lines.append(f"   EMA ({getattr(strategy, 'ema_length', 200)}):  {strategy.last_ema:.{p_decimals}f}")
+                    dashboard_lines.append(f"   ATR ({getattr(strategy, 'atr_length', 17)}):   {strategy.last_atr:.4f}")
                     if getattr(strategy, 'tp_level', None):
-                        print(f"   TP Level:   ${strategy.tp_level:,.{p_decimals}f}")
+                        dashboard_lines.append(f"   TP Level:   ${strategy.tp_level:,.{p_decimals}f}")
                     if getattr(strategy, 'trailing_stop_level', None):
-                        print(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
+                        dashboard_lines.append(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
                     if hasattr(strategy, 'last_closed_rsi'):
-                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})") 
-                         print(f"     RSI:      {strategy.last_closed_rsi:.2f}")
-                         print(f"     EMA:      {strategy.last_closed_ema:.{p_decimals}f}")
+                         dashboard_lines.append(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})") 
+                         dashboard_lines.append(f"     RSI:      {strategy.last_closed_rsi:.2f}")
+                         dashboard_lines.append(f"     EMA:      {strategy.last_closed_ema:.{p_decimals}f}")
                 elif strategy_name.lower() in ["rsi-supertrend", "rsi_supertrend", "rsisupertrend"]: # RSI-Supertrend Strategy
-                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
-                    print(f"   RSI ({getattr(strategy, 'rsi_length', 14)}):   {strategy.last_rsi:.2f}")
-                    print(f"   Supertrend: ${strategy.last_supertrend:.{p_decimals}f} ({'BULL' if strategy.last_supertrend_dir < 0 else 'BEAR'})")
+                    dashboard_lines.append(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   RSI ({getattr(strategy, 'rsi_length', 14)}):   {strategy.last_rsi:.2f}")
+                    dashboard_lines.append(f"   Supertrend: ${strategy.last_supertrend:.{p_decimals}f} ({'BULL' if strategy.last_supertrend_dir < 0 else 'BEAR'})")
                     if hasattr(strategy, 'last_closed_rsi'):
-                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})") 
-                         print(f"     RSI:      {strategy.last_closed_rsi:.2f}")
-                         print(f"     ST:       ${strategy.last_closed_supertrend:.{p_decimals}f} ({'BULL' if strategy.last_closed_supertrend_dir < 0 else 'BEAR'})")
+                         dashboard_lines.append(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})") 
+                         dashboard_lines.append(f"     RSI:      {strategy.last_closed_rsi:.2f}")
+                         dashboard_lines.append(f"     ST:       ${strategy.last_closed_supertrend:.{p_decimals}f} ({'BULL' if strategy.last_closed_supertrend_dir < 0 else 'BEAR'})")
                 elif strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]: # Donchian Channel Strategy
-                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
-                    print(f"   Upper Ch ({getattr(strategy, 'enter_period', 20)}): ${strategy.last_upper_channel:.{p_decimals}f}")
-                    print(f"   Lower Ch ({getattr(strategy, 'exit_period', 10)}):  ${strategy.last_lower_channel:.{p_decimals}f}")
-                    print(f"   ATR ({getattr(strategy, 'atr_period', 16)}):     {strategy.last_atr:.4f}")
+                    dashboard_lines.append(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   Upper Ch ({getattr(strategy, 'enter_period', 20)}): ${strategy.last_upper_channel:.{p_decimals}f}")
+                    dashboard_lines.append(f"   Lower Ch ({getattr(strategy, 'exit_period', 10)}):  ${strategy.last_lower_channel:.{p_decimals}f}")
+                    dashboard_lines.append(f"   ATR ({getattr(strategy, 'atr_period', 16)}):     {strategy.last_atr:.4f}")
                     if getattr(strategy, 'tp_level', None):
-                        print(f"   TP Level:   ${strategy.tp_level:,.{p_decimals}f}")
+                        dashboard_lines.append(f"   TP Level:   ${strategy.tp_level:,.{p_decimals}f}")
                     if getattr(strategy, 'trailing_stop_level', None):
-                        print(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
+                        dashboard_lines.append(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
                     if hasattr(strategy, 'last_closed_upper'):
-                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
-                         print(f"     Upper:    ${strategy.last_closed_upper:.{p_decimals}f}")
-                         print(f"     Lower:    ${strategy.last_closed_lower:.{p_decimals}f}")
+                         dashboard_lines.append(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         dashboard_lines.append(f"     Upper:    ${strategy.last_closed_upper:.{p_decimals}f}")
+                         dashboard_lines.append(f"     Lower:    ${strategy.last_closed_lower:.{p_decimals}f}")
                 elif strategy_name.lower() in ["ema-cross", "ema_cross", "emacross"]: # EMA Cross Strategy
-                    print(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
-                    print(f"   Fast EMA ({getattr(strategy, 'fast_ema_length', 10)}): ${strategy.last_fast_ema:.{p_decimals}f}")
-                    print(f"   Slow EMA ({getattr(strategy, 'slow_ema_length', 20)}): ${strategy.last_slow_ema:.{p_decimals}f}")
+                    dashboard_lines.append(f"   Price:      ${closes.iloc[-1]:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   Fast EMA ({getattr(strategy, 'fast_ema_length', 10)}): ${strategy.last_fast_ema:.{p_decimals}f}")
+                    dashboard_lines.append(f"   Slow EMA ({getattr(strategy, 'slow_ema_length', 20)}): ${strategy.last_slow_ema:.{p_decimals}f}")
                     trend = "BULLISH" if strategy.last_fast_ema > strategy.last_slow_ema else "BEARISH"
-                    print(f"   Trend:      {trend}")
+                    dashboard_lines.append(f"   Trend:      {trend}")
                     if hasattr(strategy, 'last_closed_fast_ema'):
-                         print(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
-                         print(f"     Fast EMA: ${strategy.last_closed_fast_ema:.{p_decimals}f}")
-                         print(f"     Slow EMA: ${strategy.last_closed_slow_ema:.{p_decimals}f}")
+                         dashboard_lines.append(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
+                         dashboard_lines.append(f"     Fast EMA: ${strategy.last_closed_fast_ema:.{p_decimals}f}")
+                         dashboard_lines.append(f"     Slow EMA: ${strategy.last_closed_slow_ema:.{p_decimals}f}")
                 
-                print("-" * 80)
+                dashboard_lines.append("-" * 80)
                 
                 if action:
-                    print(f" >>> SIGNAL TRIGGERED: {action}")
-                    print(f"     Reason: {reason}")
+                    dashboard_lines.append(f" >>> SIGNAL TRIGGERED: {action}")
+                    dashboard_lines.append(f"     Reason: {reason}")
                 else:
-                    print(f" Last Signal: {reason or 'None'}")
+                    dashboard_lines.append(f" Last Signal: {reason or 'None'}")
                     
-                print("-" * 80)
-                print(" RECENT TRADE HISTORY")
-                print("-" * 80)
+                dashboard_lines.append("-" * 80)
+                dashboard_lines.append(" RECENT TRADE HISTORY")
+                dashboard_lines.append("-" * 80)
                 # Header
                 label = getattr(strategy, 'indicator_label', "RSI")
                 ind_label = f"Ent. {label}"
                 x_ind_label = f"Exit {label}"
-                print(f" {'Type':<8} {'Entry Time':<16} {'Ent. Price':<12} {ind_label:<10} {'Exit Time':<16} {'Exit Price':<12} {x_ind_label:<10} {'Points':<10} {'Status':<10}")
+                dashboard_lines.append(f" {'Type':<8} {'Entry Time':<16} {'Ent. Price':<12} {ind_label:<10} {'Exit Time':<16} {'Exit Price':<12} {x_ind_label:<10} {'Points':<10} {'Status':<10}")
                 
                 # Helper to calc points
                 def get_points_str(trade, current_price=None):
@@ -763,7 +764,7 @@ def run_strategy_terminal(
                     e_price = f"{float(t.get('entry_price', 0)):.{p_decimals}f}"
                     pts_str = get_points_str(t, closes.iloc[-1])
                     status = "OPEN (P)" if t.get('partial_exit') else "OPEN"
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {status:<10}")
+                    dashboard_lines.append(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {status:<10}")
                 
                 # Past trades (last 5, reversed)
                 recent_trades = strategy.trades[-5:] if strategy.trades else []
@@ -780,9 +781,17 @@ def run_strategy_terminal(
                     status = t['status']
                     if t.get('partial_exit'):
                          status += " (P)"
-                    print(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {x_time:<16} {x_price:<12} {x_ind:<10} {pts_str:<10} {status:<10}")
+                    dashboard_lines.append(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {x_time:<16} {x_price:<12} {x_ind:<10} {pts_str:<10} {status:<10}")
                     
-                print("-" * 80)
+                dashboard_lines.append("-" * 80)
+                
+                # Print to terminal directly if someone uses `python run_terminal.py` directly on command line
+                for line in dashboard_lines:
+                    print(line)
+                
+                # Finally, log the dashboard properly as a single multiline string so it goes to the correct specific symbol file
+                logger.info("\n".join(dashboard_lines))
+                
                 print(f"sleeping for {sleep_seconds}s...")
                 time.sleep(sleep_seconds)
                 
