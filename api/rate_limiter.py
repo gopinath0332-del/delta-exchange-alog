@@ -58,7 +58,7 @@ class RateLimiter:
                 oldest_request = self.requests[0]
                 wait_time = self.time_window - (current_time - oldest_request)
 
-                logger.warning(
+                logger.error(
                     "Rate limit reached",
                     endpoint=endpoint,
                     wait_time=f"{wait_time:.2f}s",
