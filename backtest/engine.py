@@ -10,12 +10,18 @@ logger = get_logger(__name__)
 class BacktestEngine:
     """Engine to simulate execution of trades and calculate equity over time."""
     
-    def __init__(self, strategy, symbol: str, timeframe: str):
+    def __init__(self, strategy, symbol: str, timeframe: str, strategy_name: str = ""):
         self.strategy = strategy
         self.symbol = symbol
         self.timeframe = timeframe
+        self.strategy_name = strategy_name if strategy_name else type(strategy).__name__.lower()
         self.config = get_config()
         self.bt_config = self.config.backtesting
+        
+        # Determine strategy stop loss if set in settings.yaml
+        strat_key = self.strategy_name.replace("-", "_")
+        strat_config = self.config.settings.get("strategies", {}).get(strat_key, {})
+        self.stop_loss_pct = strat_config.get("stop_loss_pct", None)
         
         self.initial_capital = self.bt_config.initial_capital
         self.equity = self.initial_capital
@@ -49,6 +55,9 @@ class BacktestEngine:
         self.strategy.run_backtest(df)
         raw_trades = getattr(self.strategy, 'trades', [])
         
+        # Keep track of active partials to apply to the next matching trade exit
+        partial_remaining_size_map = {}
+        
         for trade in raw_trades:
             # Only process closed or partial closed trades
             if trade['status'] not in ['CLOSED', 'PARTIAL', 'TRAIL STOP', 'CHANNEL EXIT'] and not ('exit_price' in trade and trade['exit_price']):
@@ -63,7 +72,23 @@ class BacktestEngine:
                 
             # Sizing (Flat Sizing based on Initial Capital to match TradingView)
             trade_capital = self.initial_capital * self.order_size_pct
-            position_size = trade_capital / entry_price
+            
+            # Identify the trade ID or unique entry for tracking partials
+            # Since the strategy trades sequentially, we can track by entry_time + type
+            trade_key = f"{trade['type']}_{trade.get('entry_time', '')}"
+            
+            if trade_key in partial_remaining_size_map and trade['status'] != 'PARTIAL':
+                # This is the final 50% closing exit of a previously partially closed position
+                position_size = partial_remaining_size_map[trade_key]
+                del partial_remaining_size_map[trade_key]
+            else:
+                # Standard full position sizing
+                position_size = trade_capital / entry_price
+                if trade['status'] == 'PARTIAL':
+                    # Only calculate PnL on 50% size if partial, and save the other 50% for later
+                    half_size = position_size / 2.0
+                    partial_remaining_size_map[trade_key] = half_size
+                    position_size = half_size
             
             # PnL
             if trade['type'] == 'LONG':
@@ -71,8 +96,23 @@ class BacktestEngine:
             else: # SHORT
                 pnl = (entry_price - exit_price) * position_size
                 
+            # Exchange Hard Stop Loss Check
+            if self.stop_loss_pct is not None:
+                # Calculate max loss based on the fractional trade capital of this specific exit segment
+                segment_capital = trade_capital * (position_size / (trade_capital / entry_price))
+                max_loss = segment_capital * self.stop_loss_pct
+                
+                if pnl < -max_loss:
+                    pnl = -max_loss
+                    # Overwrite exit price logically where the stop loss hit
+                    price_diff = max_loss / position_size
+                    exit_price = (entry_price - price_diff) if trade['type'] == 'LONG' else (entry_price + price_diff)
+                    trade['status'] = 'EXCHANGE SL'
+                
             # Commission
-            comm_cost = (trade_capital * self.commission) + ((exit_price * position_size) * self.commission)
+            # Fee is based on the dollar volume of the portion of the position being exited/entered
+            trade_dollar_volume = entry_price * position_size
+            comm_cost = (trade_dollar_volume * self.commission) + ((exit_price * position_size) * self.commission)
             pnl -= comm_cost
             
             self.equity += pnl

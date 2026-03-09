@@ -91,7 +91,7 @@ def run_backtest_for_file(filepath: Path, strategy_name: str, loader: DataLoader
         logger.error(str(e))
         return None
         
-    engine = BacktestEngine(strategy, symbol, timeframe)
+    engine = BacktestEngine(strategy, symbol, timeframe, strategy_name)
     trades, equity_df = engine.run(df)
     
     metrics = calculate_metrics(
