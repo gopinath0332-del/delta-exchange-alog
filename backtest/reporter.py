@@ -104,6 +104,7 @@ class Reporter:
                     <th>Entry Time</th>
                     <th>Exit Time</th>
                     <th>Type</th>
+                    <th>Exit Type</th>
                     <th>Size</th>
                     <th>Entry Price</th>
                     <th>Exit Price</th>
@@ -117,6 +118,7 @@ class Reporter:
                     <td>{{ trade['Entry Time'] }}</td>
                     <td>{{ trade['Exit Time'] }}</td>
                     <td>{{ trade['Position Type'] }}</td>
+                    <td>{{ trade['Exit Type'] }}</td>
                     <td>{{ "%.4f"|format(trade['Position Size']) }}</td>
                     <td>{{ "%.4f"|format(trade['Entry Price']) }}</td>
                     <td>{{ "%.4f"|format(trade['Exit Price']) }}</td>

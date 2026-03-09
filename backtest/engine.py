@@ -96,18 +96,18 @@ class BacktestEngine:
             else: # SHORT
                 pnl = (entry_price - exit_price) * position_size
                 
-            # Exchange Hard Stop Loss Check
-            if self.stop_loss_pct is not None:
-                # Calculate max loss based on the fractional trade capital of this specific exit segment
-                segment_capital = trade_capital * (position_size / (trade_capital / entry_price))
-                max_loss = segment_capital * self.stop_loss_pct
-                
-                if pnl < -max_loss:
-                    pnl = -max_loss
-                    # Overwrite exit price logically where the stop loss hit
-                    price_diff = max_loss / position_size
-                    exit_price = (entry_price - price_diff) if trade['type'] == 'LONG' else (entry_price + price_diff)
-                    trade['status'] = 'EXCHANGE SL'
+            # Exchange Hard Stop Loss Check (IGNORED per user request)
+            # if self.stop_loss_pct is not None:
+            #     # Calculate max loss based on the fractional trade capital of this specific exit segment
+            #     segment_capital = trade_capital * (position_size / (trade_capital / entry_price))
+            #     max_loss = segment_capital * self.stop_loss_pct
+            #     
+            #     if pnl < -max_loss:
+            #         pnl = -max_loss
+            #         # Overwrite exit price logically where the stop loss hit
+            #         price_diff = max_loss / position_size
+            #         exit_price = (entry_price - price_diff) if trade['type'] == 'LONG' else (entry_price + price_diff)
+            #         trade['status'] = 'EXCHANGE SL'
                 
             # Commission
             # Fee is based on the dollar volume of the portion of the position being exited/entered
@@ -130,10 +130,11 @@ class BacktestEngine:
                 'Symbol': self.symbol,
                 'Entry Time': trade.get('entry_time', ''),
                 'Exit Time': trade.get('exit_time', ''),
+                'Position Type': trade['type'],
+                'Exit Type': trade.get('status', 'CLOSED'),
+                'Position Size': position_size,
                 'Entry Price': entry_price,
                 'Exit Price': exit_price,
-                'Position Type': trade['type'],
-                'Position Size': position_size,
                 'Profit/Loss': pnl,
                 'Return %': return_pct,
                 'Duration': duration_str
