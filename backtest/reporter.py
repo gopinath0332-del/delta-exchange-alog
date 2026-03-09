@@ -18,6 +18,14 @@ class Reporter:
         self.reports_dir = Path(reports_dir)
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         
+        # Clear existing reports
+        for file in self.reports_dir.glob("*"):
+            if file.is_file() and file.suffix in [".html", ".csv"]:
+                try:
+                    file.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to delete old report file {file}: {e}")
+        
         # Create a simple default template if one doesn't exist
         self.templates_dir = Path("backtest/templates")
         self.templates_dir.mkdir(parents=True, exist_ok=True)

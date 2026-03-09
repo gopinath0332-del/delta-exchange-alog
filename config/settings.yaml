@@ -10,11 +10,10 @@ timeframes:
 
 # Backtesting Configuration
 backtesting:
-  initial_capital: 100000
-  # Delta Exchange fees (as of 2024)
-  commission_maker: 0.0004 # 0.04% maker fee
-  commission_taker: 0.0006 # 0.06% taker fee
-  slippage: 0.0001 # 0.01% conservative estimate
+  initial_capital: 1000
+  # Delta Exchange fees unified (avg maker/taker + slippage)
+  commission: 0.0006 # 0.06% combined fixed fee estimate
+  order_size_pct: 1.0 # Use 100% of flat initial capital per trade
 
 # Risk Management Rules
 risk_management:
@@ -138,7 +137,7 @@ multi_coin:
       - symbol: PIUSD
         timeframe: 1h
         candle_type: heikin-ashi
-        log_file: logs/pi.log           # Per-coin log file (same as the old dedicated service)
+        log_file: logs/pi.log # Per-coin log file (same as the old dedicated service)
       - symbol: PIPPINUSD
         timeframe: 1h
         candle_type: heikin-ashi

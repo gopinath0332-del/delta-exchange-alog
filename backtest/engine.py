@@ -33,10 +33,14 @@ class BacktestEngine:
         
     def _parse_time(self, time_str: str) -> datetime:
         try:
-            # Often formatted as '%d-%m-%y %H:%M' by the strategy's run_backtest
+            # First try the %d-%m-%y %H:%M format from strategy's active_trade format
             return datetime.strptime(time_str.split(' (')[0], '%d-%m-%y %H:%M')
         except:
-            return None
+            try:
+                # Fallback to standard ISO format if outputting default pandas timestamps
+                return pd.to_datetime(time_str.split(' (')[0]).to_pydatetime()
+            except:
+                return None
 
     def run(self, df: pd.DataFrame) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
         logger.info(f"Running backtest for {self.symbol} on {self.timeframe} timeframe")
@@ -57,8 +61,8 @@ class BacktestEngine:
                 # Might be unbroken trade due to end of data, skip if no real exit
                 continue
                 
-            # Sizing
-            trade_capital = self.equity * self.order_size_pct
+            # Sizing (Flat Sizing based on Initial Capital to match TradingView)
+            trade_capital = self.initial_capital * self.order_size_pct
             position_size = trade_capital / entry_price
             
             # PnL
