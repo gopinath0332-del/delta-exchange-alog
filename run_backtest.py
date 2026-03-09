@@ -109,6 +109,8 @@ def run_backtest_for_file(filepath: Path, strategy_name: str, loader: DataLoader
         trades=trades,
         equity_df=equity_df
     )
+    # Add symbol for summary reporting
+    metrics['Symbol'] = symbol
     
     print_summary(metrics)
     
@@ -221,9 +223,29 @@ def main():
             
     if len(all_metrics) > 1:
         logger.info(f"Successfully backtested {len(all_metrics)} datasets.")
-        # In a very advanced setup, we would generate a Portfolio report here
         
-    logger.info(f"All reports saved to {reporter.reports_dir.absolute()}")
+        # Sort by Profit Factor descending
+        sorted_metrics = sorted(all_metrics, key=lambda x: x.get('Profit Factor', 0), reverse=True)
+        
+        print("\n" + "="*100)
+        print(f"{'OVERVIEW OF SYMBOL BACKTESTS (Sorted by Profit Factor)':^100}")
+        print("="*100)
+        header = f"{'Symbol':<15} | {'Net PnL':<12} | {'Max Drawdown':<15} | {'Trades':<8} | {'Win Rate':<10} | {'Profit Factor':<13}"
+        print(header)
+        print("-" * 100)
+        
+        for m in sorted_metrics:
+            net_pnl = m.get('Final Capital', 0) - m.get('Initial Capital', 0)
+            row = (f"{m.get('Symbol', 'N/A'):<15} | "
+                   f"${net_pnl:>10.2f} | "
+                   f"{m.get('Max Drawdown %', 0):>14.2f}% | "
+                   f"{m.get('Number of Trades', 0):>8} | "
+                   f"{m.get('Win Rate %', 0):>9.2f}% | "
+                   f"{m.get('Profit Factor', 0):>13.2f}")
+            print(row)
+        print("="*100 + "\n")
+        
+    logger.info(f"All reports saved to {os.path.abspath(reporter.reports_dir)}")
 
 if __name__ == "__main__":
     main()
