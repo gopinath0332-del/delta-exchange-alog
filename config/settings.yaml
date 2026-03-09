@@ -117,7 +117,7 @@ strategies:
     #   stop_price (SHORT) = entry_price + distance
     # Example: margin=1000, 10%, 100 contracts, contract_value=0.001
     #   distance = (1000 * 0.10) / (100 * 0.001) = $1000 -> exactly -10% of margin at trigger.
-    stop_loss_pct: 0.10 # 10% of target margin used as exchange stop-loss distance
+    stop_loss_pct: 0.25 # 25% of target margin used as exchange stop-loss distance
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:
