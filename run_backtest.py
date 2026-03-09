@@ -63,6 +63,8 @@ def print_summary(metrics: dict):
     print("\n" + "="*50)
     print(f"BACKTEST RESULTS: {metrics['Strategy Name']}")
     print("="*50)
+    print(f"Test Period:         {metrics.get('Start Date', 'N/A')} to {metrics.get('End Date', 'N/A')}")
+    print("-"*50)
     
     # Financials
     print(f"Initial Capital:     ${metrics['Initial Capital']:,.2f}")
@@ -107,7 +109,8 @@ def run_backtest_for_file(filepath: Path, strategy_name: str, loader: DataLoader
         initial_capital=engine.initial_capital,
         final_capital=engine.equity,
         trades=trades,
-        equity_df=equity_df
+        equity_df=equity_df,
+        data_df=df
     )
     # Add symbol for summary reporting
     metrics['Symbol'] = symbol

@@ -12,7 +12,8 @@ def calculate_metrics(
     initial_capital: float, 
     final_capital: float, 
     trades: List[Dict[str, Any]], 
-    equity_df: pd.DataFrame
+    equity_df: pd.DataFrame,
+    data_df: pd.DataFrame = None
 ) -> Dict[str, Any]:
     """Calculate performance metrics for the backtest."""
     
@@ -21,10 +22,20 @@ def calculate_metrics(
         total_return = ((final_capital - initial_capital) / initial_capital) * 100
 
     num_trades = len(trades)
-    
     if num_trades == 0:
+        start_date = "N/A"
+        end_date = "N/A"
+        if data_df is not None and not data_df.empty and 'time' in data_df.columns:
+            import datetime
+            ts_min = data_df['time'].min()
+            ts_max = data_df['time'].max()
+            start_date = datetime.datetime.fromtimestamp(ts_min).strftime('%d-%m-%y %H:%M')
+            end_date = datetime.datetime.fromtimestamp(ts_max).strftime('%d-%m-%y %H:%M')
+
         return {
             'Strategy Name': strategy_name,
+            'Start Date': start_date,
+            'End Date': end_date,
             'Initial Capital': initial_capital,
             'Final Capital': final_capital,
             'Total Return %': 0.0,
@@ -103,9 +114,36 @@ def calculate_metrics(
         downside = returns[returns < 0]
         if not downside.empty and downside.std() != 0:
             sortino_ratio = (returns.mean() / downside.std())
+            
+    # Extract Start and End Dates
+    start_date = "N/A"
+    end_date = "N/A"
+    
+    # Priority 1: Use full input data coverage if provided
+    if data_df is not None and not data_df.empty and 'time' in data_df.columns:
+        import datetime
+        ts_min = data_df['time'].min()
+        ts_max = data_df['time'].max()
+        # Since TZ=UTC is set globally in run_backtest.py, this will be UTC
+        start_date = datetime.datetime.fromtimestamp(ts_min).strftime('%d-%m-%y %H:%M')
+        end_date = datetime.datetime.fromtimestamp(ts_max).strftime('%d-%m-%y %H:%M')
+        
+    # Priority 2: Fallback to equity timeline if data_df not provided
+    elif not equity_df.empty and 'time' in equity_df.columns:
+        # Convert to string format if valid
+        times = equity_df['time'].dropna()
+        if not times.empty:
+            if pd.api.types.is_datetime64_any_dtype(times):
+                start_date = times.min().strftime('%d-%m-%y %H:%M')
+                end_date = times.max().strftime('%d-%m-%y %H:%M')
+            else:
+                start_date = str(times.iloc[0])
+                end_date = str(times.iloc[-1])
 
     metrics = {
         'Strategy Name': strategy_name,
+        'Start Date': start_date,
+        'End Date': end_date,
         'Initial Capital': initial_capital,
         'Final Capital': final_capital,
         'Total Return %': total_return,
