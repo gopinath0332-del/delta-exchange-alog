@@ -6,9 +6,17 @@ CLI script to run the backtesting framework.
 import argparse
 import sys
 import os
+import time
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
+
+# Set global timezone to UTC for consistent backtest reporting
+# This ensures datetime.fromtimestamp() calls in strategies use UTC
+# without modifying the shared strategy files.
+os.environ['TZ'] = 'UTC'
+if hasattr(time, 'tzset'):
+    time.tzset()
 
 from core.logger import setup_logging, get_logger
 from core.config import get_config
