@@ -65,13 +65,20 @@ class DataLoader:
                 logger.error(f"Missing 'time' column in {filepath}")
                 raise ValueError(f"Missing 'time' column in {filepath}")
                 
-            # Convert time to datetime.
-            # Handle standard UTC times if 'utc=True' can parse it, 
-            # otherwise allow pandas to infer the datetime format.
+            # Combine date and time if 'date' column exists
+            if 'date' in df.columns:
+                datetime_str = df['date'].astype(str) + ' ' + df['time'].astype(str)
+            else:
+                datetime_str = df['time']
+
+            # Convert to datetime.
             try:
-                df['time'] = pd.to_datetime(df['time'], utc=True)
+                df['time'] = pd.to_datetime(datetime_str, utc=True, format='mixed', dayfirst=True)
             except Exception as e:
-                df['time'] = pd.to_datetime(df['time'])
+                df['time'] = pd.to_datetime(datetime_str, format='mixed', dayfirst=True)
+            
+            # Convert timezone-aware/naive datetimes to Unix epoch seconds (float)
+            df['time'] = df['time'].astype('int64') / 10**9
             
             # Sort by time to ensure chronological order
             df = df.sort_values('time').reset_index(drop=True)

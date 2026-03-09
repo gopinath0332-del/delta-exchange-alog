@@ -93,3 +93,5 @@ dmypy.json
 config/*firebase-adminsdk*.json
 config/firestore-service-account.json
 **/firestore-service-account.json
+
+reports/
