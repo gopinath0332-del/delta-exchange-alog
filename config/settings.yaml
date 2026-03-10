@@ -112,6 +112,7 @@ strategies:
     # to match TradingView's HA values.  With only 30 days the HA smoothing is
     # insufficient and signals can fire on effectively-standard-candle values.
     historical_days: 90
+    channel_source: "body" # "wick" or "body" (smoothed HA midpoints)
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:

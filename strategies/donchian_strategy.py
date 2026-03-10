@@ -41,6 +41,12 @@ class DonchianChannelStrategy:
         # NEW: EMA Filter
         self.ema_length = cfg.get("ema_length", 100)
         self.ema_source = cfg.get("ema_source", "close")  # close, open, high, low
+        
+        # NEW: Channel Source (wick or body)
+        # 'wick' uses standard High/Low columns (which in HA mode include standard wicks)
+        # 'body' uses max(Open, Close) and min(Open, Close) for a smoother HA experience
+        self.channel_source = cfg.get("channel_source", "wick")
+        
         # Mode Flags
         self.allow_long = self.trade_mode in ["Long", "Both"]
         self.allow_short = self.trade_mode in ["Short", "Both"]
@@ -89,8 +95,17 @@ class DonchianChannelStrategy:
                 current_time = time.time()
                 
             # Donchian Channels
-            upper_channel = df['high'].rolling(window=self.enter_period).max()
-            lower_channel = df['low'].rolling(window=self.exit_period).min()
+            if self.channel_source == "body":
+                # Use body midpoints for smoothed HA look
+                upper_src = df[['open', 'close']].max(axis=1)
+                lower_src = df[['open', 'close']].min(axis=1)
+            else:
+                # Use standard High/Low columns
+                upper_src = df['high']
+                lower_src = df['low']
+                
+            upper_channel = upper_src.rolling(window=self.enter_period).max()
+            lower_channel = lower_src.rolling(window=self.exit_period).min()
             
             # ATR (EMA based)
             high_low = df['high'] - df['low']
@@ -171,8 +186,15 @@ class DonchianChannelStrategy:
         # Previous Index for Channel Logic (Channel[1])
         prev_idx = closed_idx - 1
         
-        upper_channel_series = df['high'].rolling(window=self.enter_period).max()
-        lower_channel_series = df['low'].rolling(window=self.exit_period).min()
+        if self.channel_source == "body":
+            upper_src = df[['open', 'close']].max(axis=1)
+            lower_src = df[['open', 'close']].min(axis=1)
+        else:
+            upper_src = df['high']
+            lower_src = df['low']
+            
+        upper_channel_series = upper_src.rolling(window=self.enter_period).max()
+        lower_channel_series = lower_src.rolling(window=self.exit_period).min()
         upper_prev = upper_channel_series.iloc[prev_idx]
         lower_prev = lower_channel_series.iloc[prev_idx]
         
@@ -440,8 +462,15 @@ class DonchianChannelStrategy:
         if df.empty: return
         
         # Pre-calculate
-        upper_channel = df['high'].rolling(window=self.enter_period).max()
-        lower_channel = df['low'].rolling(window=self.exit_period).min()
+        if self.channel_source == "body":
+            upper_src = df[['open', 'close']].max(axis=1)
+            lower_src = df[['open', 'close']].min(axis=1)
+        else:
+            upper_src = df['high']
+            lower_src = df['low']
+            
+        upper_channel = upper_src.rolling(window=self.enter_period).max()
+        lower_channel = lower_src.rolling(window=self.exit_period).min()
         
         #  ATR
         high_low = df['high'] - df['low']

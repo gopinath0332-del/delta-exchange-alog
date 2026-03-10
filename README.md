@@ -553,6 +553,8 @@ donchian_channel:
   # NEW: EMA Trend Filter
   ema_length: 100 # EMA period for entry filter
   ema_source: "close" # Source for EMA calculation
+  # NEW: Channel Source
+  channel_source: "body" # "wick" (high/low) or "body" (smoothed HA midpoints)
 ```
 
 **Entry Logic**:
