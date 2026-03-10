@@ -1,7 +1,7 @@
 """
 Dry run verification script for order placement logic.
 """
-import sys
+
 import unittest
 from unittest.mock import MagicMock, patch
 from core.trading import execute_strategy_signal
@@ -139,66 +139,6 @@ class TestTradingExecution(unittest.TestCase):
         
         print("ENTRY_SKIPPED Verified successfully.")
 
-    def test_bracket_sl_placed_after_donchian_entry(self):
-        """
-        Verify that after a Donchian ENTRY_LONG, a bracket stop-loss order is placed
-        on the exchange at a price below the entry fill price.
-
-        Setup: Use a high mock entry price ($100,000) so the SL distance is meaningful
-        relative to tick_size=0.5. We patch the ticker response to return $100,000 so
-        position_size = (40 * 5) / (100000 * 0.001) = 2 contracts.
-
-        Formula: distance = (target_margin * stop_loss_pct) / (order_size * contract_value)
-                          = (40 * 0.10) / (2 * 0.001) = 4 / 0.002 = $2000
-        Stop price (LONG) = 100000 - 2000 = $98000
-        """
-        print("\nTesting bracket SL placed after Donchian ENTRY_LONG...")
-
-        entry_price = 100000.0
-
-        # Patch ticker so the price-based position sizing uses $100,000
-        self.mock_client.get_ticker.return_value = {"close": str(entry_price), "mark_price": str(entry_price)}
-
-        # Mock fill at entry_price
-        self.mock_client.place_order.return_value = {
-            "id": "ORDER_SL_TEST",
-            "avg_fill_price": str(entry_price)
-        }
-
-        result = execute_strategy_signal(
-            client=self.mock_client,
-            notifier=self.mock_notifier,
-            symbol="BTCUSD",
-            action="ENTRY_LONG",
-            price=entry_price,
-            rsi=55.0,
-            reason="Test SL Placement",
-            strategy_name="DonchianChannel",
-            stop_loss_pct=0.10  # Activates bracket SL
-        )
-
-        # The entry order must have been placed
-        self.assertTrue(self.mock_client.place_order.called, "place_order not called")
-
-        # The bracket SL must have been placed
-        self.assertTrue(
-            self.mock_client.place_bracket_order.called,
-            "place_bracket_order was NOT called despite stop_loss_pct being provided"
-        )
-
-        # Verify stop_price in the SL call is BELOW the entry fill price
-        kwargs = self.mock_client.place_bracket_order.call_args[1]
-        actual_stop = float(kwargs["stop_price"])
-        self.assertLess(
-            actual_stop, entry_price,
-            f"Stop price {actual_stop} should be < entry {entry_price} for LONG"
-        )
-
-        # The order type should be market (for guaranteed fill)
-        self.assertEqual(kwargs.get("stop_order_type", "market_order"), "market_order")
-
-        print(f"Bracket SL confirmed at {actual_stop} (entry={entry_price}, distance={entry_price - actual_stop})")
-        print("test_bracket_sl_placed_after_donchian_entry Verified successfully.")
 
 if __name__ == '__main__':
     unittest.main()

@@ -111,14 +111,6 @@ strategies:
     # to match TradingView's HA values.  With only 30 days the HA smoothing is
     # insufficient and signals can fire on effectively-standard-candle values.
     historical_days: 90
-    # Exchange Stop-Loss: after every entry a bracket stop-loss order is placed on the
-    # exchange. The stop price is computed as:
-    #   distance = (TARGET_MARGIN_ASSET * stop_loss_pct) / (position_size * contract_value)
-    #   stop_price (LONG)  = entry_price - distance
-    #   stop_price (SHORT) = entry_price + distance
-    # Example: margin=1000, 10%, 100 contracts, contract_value=0.001
-    #   distance = (1000 * 0.10) / (100 * 0.001) = $1000 -> exactly -10% of margin at trigger.
-    stop_loss_pct: 0.25 # 25% of target margin used as exchange stop-loss distance
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:
@@ -138,7 +130,7 @@ multi_coin:
       - symbol: PIUSD
         timeframe: 1h
         candle_type: heikin-ashi
-        log_file: logs/pi.log           # Per-coin log file (same as the old dedicated service)
+        log_file: logs/pi.log # Per-coin log file (same as the old dedicated service)
       - symbol: PIPPINUSD
         timeframe: 1h
         candle_type: heikin-ashi
@@ -147,10 +139,6 @@ multi_coin:
         timeframe: 1h
         candle_type: heikin-ashi
         log_file: logs/bera.log
-      - symbol: PAXGUSD
-        timeframe: 1h
-        candle_type: heikin-ashi
-        log_file: logs/paxg.log
 
 # Firestore Configuration (for trade journaling)
 firestore:
