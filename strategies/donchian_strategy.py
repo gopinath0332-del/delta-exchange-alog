@@ -97,7 +97,7 @@ class DonchianChannelStrategy:
             high_close = np.abs(df['high'] - df['close'].shift())
             low_close = np.abs(df['low'] - df['close'].shift())
             true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-            atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
+            atr_series = true_range.ewm(alpha=1.0/self.atr_period, adjust=False).mean()
             
             # NEW: EMA Calculation
             ema_src = df[self.ema_source] if self.ema_source in df.columns else df['close']
@@ -181,7 +181,7 @@ class DonchianChannelStrategy:
         high_close = np.abs(df['high'] - df['close'].shift())
         low_close = np.abs(df['low'] - df['close'].shift())
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
+        atr_series = true_range.ewm(alpha=1.0/self.atr_period, adjust=False).mean()
         atr_closed = atr_series.iloc[closed_idx]
         
         # Calculate EMA at closed index
@@ -448,7 +448,7 @@ class DonchianChannelStrategy:
         high_close = np.abs(df['high'] - df['close'].shift())
         low_close = np.abs(df['low'] - df['close'].shift())
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
+        atr_series = true_range.ewm(alpha=1.0/self.atr_period, adjust=False).mean()
         
         # NEW: EMA Calculation for Backtest
         ema_src = df[self.ema_source] if self.ema_source in df.columns else df['close']
@@ -459,6 +459,8 @@ class DonchianChannelStrategy:
             
             current_time_ms = df['time'].iloc[i] * 1000
             close = df['close'].iloc[i]
+            high = df['high'].iloc[i]
+            low = df['low'].iloc[i]
             upper = upper_channel.iloc[i]
             lower = lower_channel.iloc[i]
             atr = atr_series.iloc[i]
@@ -492,12 +494,10 @@ class DonchianChannelStrategy:
             
             # Partial TP Check (if enabled and not already done)
             if self.enable_partial_tp and not self.partial_exit_done and self.tp_level is not None:
-                if self.current_position == 1 and close >= self.tp_level:
-                    self.update_position_state("PARTIAL_EXIT", current_time_ms, indicators, close, f"Partial TP Hit: {close:.4f}")
-                    continue
-                elif self.current_position == -1 and close <= self.tp_level:
-                    self.update_position_state("PARTIAL_EXIT", current_time_ms, indicators, close, f"Partial TP Hit: {close:.4f}")
-                    continue
+                if self.current_position == 1 and high >= self.tp_level:
+                    self.update_position_state("PARTIAL_EXIT", current_time_ms, indicators, self.tp_level, f"Partial TP Hit: {self.tp_level:.4f}")
+                elif self.current_position == -1 and low <= self.tp_level:
+                    self.update_position_state("PARTIAL_EXIT", current_time_ms, indicators, self.tp_level, f"Partial TP Hit: {self.tp_level:.4f}")
             
             # Channel Logic: Use Prev Candle
             upper_prev = upper_channel.iloc[i-1]

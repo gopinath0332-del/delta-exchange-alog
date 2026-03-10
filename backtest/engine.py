@@ -70,8 +70,8 @@ class BacktestEngine:
                 # Might be unbroken trade due to end of data, skip if no real exit
                 continue
                 
-            # Sizing (Flat Sizing based on Initial Capital to match TradingView)
-            trade_capital = self.initial_capital * self.order_size_pct
+            # Sizing (Compound Sizing based on current Equity to match TradingView)
+            trade_capital = self.equity * self.order_size_pct
             
             # Identify the trade ID or unique entry for tracking partials
             # Since the strategy trades sequentially, we can track by entry_time + type
