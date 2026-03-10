@@ -49,7 +49,8 @@ def calculate_metrics(
             'Average Loss': 0.0,
             'Average Win %': 0.0,
             'Average Loss %': 0.0,
-            'Profitable Trades %': 0.0
+            'Profitable Trades %': 0.0,
+            'Total Fees': 0.0
         }
 
     # Trade stats
@@ -71,6 +72,8 @@ def calculate_metrics(
     
     avg_win_pct = np.mean([t['Return %'] for t in winning_trades]) if winning_trades else 0.0
     avg_loss_pct = np.mean([t['Return %'] for t in losing_trades]) if losing_trades else 0.0
+    
+    total_fees = sum(t.get('Fee', 0.0) for t in trades)
     
     # Equity curve stats
     sharpe_ratio = 0.0
@@ -157,7 +160,8 @@ def calculate_metrics(
         'Average Loss': avg_loss,
         'Average Win %': avg_win_pct,
         'Average Loss %': avg_loss_pct,
-        'Profitable Trades %': profitable_trades_pct
+        'Profitable Trades %': profitable_trades_pct,
+        'Total Fees': total_fees
     }
     
     return metrics

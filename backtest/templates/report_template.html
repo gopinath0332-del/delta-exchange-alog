@@ -93,8 +93,8 @@
               class="{{ 'success' if value > 0 else 'danger' if value < 0 else '' }}"
               >{{ "%.2f"|format(value) }}%</span
             >
-            {% elif 'Capital' in key or 'Win' in key or 'Loss' in key %} {{
-            "%.2f"|format(value) }} {% else %} {{ value }} {% endif %} {% else
+            {% elif 'Capital' in key or 'Win' in key or 'Loss' in key or 'Fee' in key %}
+            {{ "%.2f"|format(value) }} {% else %} {{ value }} {% endif %} {% else
             %} {{ value }} {% endif %}
           </div>
         </div>
@@ -114,6 +114,7 @@
             <th>Size</th>
             <th>Entry Price</th>
             <th>Exit Price</th>
+            <th>Fee</th>
             <th>PnL</th>
             <th>Return %</th>
           </tr>
@@ -130,6 +131,7 @@
             <td>{{ "%.4f"|format(trade['Position Size']) }}</td>
             <td>{{ "%.4f"|format(trade['Entry Price']) }}</td>
             <td>{{ "%.4f"|format(trade['Exit Price']) }}</td>
+            <td>{{ "%.2f"|format(trade['Fee']) }}</td>
             <td
               class="{{ 'success' if trade['Profit/Loss'] > 0 else 'danger' }}"
             >

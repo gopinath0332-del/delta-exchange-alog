@@ -137,6 +137,7 @@ class BacktestEngine:
                 'Position Size': position_size,
                 'Entry Price': entry_price,
                 'Exit Price': exit_price,
+                'Fee': comm_cost,
                 'Profit/Loss': pnl,
                 'Return %': return_pct,
                 'Duration': duration_str
