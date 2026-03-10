@@ -259,6 +259,96 @@ def calculate_metrics(
     def fmt_num(n):
         return f'<span class="val-neu">{n}</span>'
 
+    # Runups and Drawdowns
+    dd_events = []
+    ru_events = []
+    
+    if equity_df is not None and not equity_df.empty and len(equity_df) > 1:
+        def try_parse(t):
+            try:
+                from datetime import datetime
+                return datetime.strptime(str(t).split(' (')[0], '%d-%m-%y %H:%M')
+            except:
+                return None
+        
+        times = equity_df['time'].apply(try_parse)
+        equities = equity_df['equity'].values
+        
+        peak_val = equities[0]
+        peak_idx = 0
+        trough_val_for_dd = equities[0]
+        
+        # Drawdowns
+        for i in range(1, len(equities)):
+            if equities[i] >= peak_val:
+                if peak_val > trough_val_for_dd:
+                    dd_val = peak_val - trough_val_for_dd
+                    dd_pct = (dd_val / peak_val) * 100 if peak_val > 0 else 0
+                    if dd_val > 0:
+                        dur = times.iloc[i] - times.iloc[peak_idx] if pd.notnull(times.iloc[i]) and pd.notnull(times.iloc[peak_idx]) else pd.Timedelta(0)
+                        dd_events.append({'val': dd_val, 'pct': dd_pct, 'dur': dur})
+                peak_val = equities[i]
+                peak_idx = i
+                trough_val_for_dd = equities[i]
+            else:
+                if equities[i] < trough_val_for_dd:
+                    trough_val_for_dd = equities[i]
+        
+        if peak_val > trough_val_for_dd:
+            dd_val = peak_val - trough_val_for_dd
+            dd_pct = (dd_val / peak_val) * 100 if peak_val > 0 else 0
+            dur = times.iloc[-1] - times.iloc[peak_idx] if pd.notnull(times.iloc[-1]) and pd.notnull(times.iloc[peak_idx]) else pd.Timedelta(0)
+            dd_events.append({'val': dd_val, 'pct': dd_pct, 'dur': dur})
+            
+        # Run-ups
+        trough_val = equities[0]
+        trough_idx = 0
+        peak_val_for_ru = equities[0]
+        
+        for i in range(1, len(equities)):
+            if equities[i] <= trough_val:
+                if peak_val_for_ru > trough_val:
+                    ru_val = peak_val_for_ru - trough_val
+                    ru_pct = (ru_val / trough_val) * 100 if trough_val > 0 else 0
+                    if ru_val > 0:
+                        dur = times.iloc[i] - times.iloc[trough_idx] if pd.notnull(times.iloc[i]) and pd.notnull(times.iloc[trough_idx]) else pd.Timedelta(0)
+                        ru_events.append({'val': ru_val, 'pct': ru_pct, 'dur': dur})
+                trough_val = equities[i]
+                trough_idx = i
+                peak_val_for_ru = equities[i]
+            else:
+                if equities[i] > peak_val_for_ru:
+                    peak_val_for_ru = equities[i]
+                    
+        if peak_val_for_ru > trough_val:
+            ru_val = peak_val_for_ru - trough_val
+            ru_pct = (ru_val / trough_val) * 100 if trough_val > 0 else 0
+            dur = times.iloc[-1] - times.iloc[trough_idx] if pd.notnull(times.iloc[-1]) and pd.notnull(times.iloc[trough_idx]) else pd.Timedelta(0)
+            ru_events.append({'val': ru_val, 'pct': ru_pct, 'dur': dur})
+
+    def format_dur(td):
+        if not td or pd.isnull(td): return "N/A"
+        days = td.days
+        if days > 0: return f"{days} days"
+        hours = td.seconds // 3600
+        if hours > 0: return f"{hours} hours"
+        mins = (td.seconds % 3600) // 60
+        return f"{mins} mins"
+
+    avg_dd_dur = format_dur(sum((e['dur'] for e in dd_events), pd.Timedelta(0)) / len(dd_events)) if dd_events else "N/A"
+    avg_dd_val = sum(e['val'] for e in dd_events) / len(dd_events) if dd_events else 0.0
+    avg_dd_pct = sum(e['pct'] for e in dd_events) / len(dd_events) if dd_events else 0.0
+    
+    max_dd_val = max((e['val'] for e in dd_events), default=0.0)
+    max_dd_pct = max((e['pct'] for e in dd_events), default=0.0)
+    
+    avg_ru_dur = format_dur(sum((e['dur'] for e in ru_events), pd.Timedelta(0)) / len(ru_events)) if ru_events else "N/A"
+    avg_ru_val = sum(e['val'] for e in ru_events) / len(ru_events) if ru_events else 0.0
+    avg_ru_pct = sum(e['pct'] for e in ru_events) / len(ru_events) if ru_events else 0.0
+    
+    max_ru_val = max((e['val'] for e in ru_events), default=0.0)
+    max_ru_pct = max((e['pct'] for e in ru_events), default=0.0)
+
     detailed_metrics = [
         {'Metric': 'Initial capital', 'All': fmt_cur_neut(initial_capital), 'Long': '', 'Short': ''},
         {'Metric': 'Open P&L', 'All': fmt_cur_pct(0, 0), 'Long': '', 'Short': ''},
@@ -293,7 +383,22 @@ def calculate_metrics(
         {'Metric': 'Largest loser as % of gross loss', 'All': fmt_pct(stats_all['max_loss_pct_gross']), 'Long': fmt_pct(stats_long['max_loss_pct_gross']), 'Short': fmt_pct(stats_short['max_loss_pct_gross'])},
         {'Metric': 'Avg # bars in trades', 'All': fmt_num(stats_all['avg_bars']), 'Long': fmt_num(stats_long['avg_bars']), 'Short': fmt_num(stats_short['avg_bars'])},
         {'Metric': 'Avg # bars in winning trades', 'All': fmt_num(stats_all['avg_bars_win']), 'Long': fmt_num(stats_long['avg_bars_win']), 'Short': fmt_num(stats_short['avg_bars_win'])},
-        {'Metric': 'Avg # bars in losing trades', 'All': fmt_num(stats_all['avg_bars_loss']), 'Long': fmt_num(stats_long['avg_bars_loss']), 'Short': fmt_num(stats_short['avg_bars_loss'])}
+        {'Metric': 'Avg # bars in losing trades', 'All': fmt_num(stats_all['avg_bars_loss']), 'Long': fmt_num(stats_long['avg_bars_loss']), 'Short': fmt_num(stats_short['avg_bars_loss'])},
+        {'is_header': True, 'Metric': 'Run-ups and drawdowns', 'All': '', 'Long': '', 'Short': ''},
+        {'is_header': True, 'Metric': 'Run-ups', 'All': '', 'Long': '', 'Short': ''},
+        {'Metric': 'Avg equity run-up duration (close-to-close)', 'All': f'<span class="val-neu">{avg_ru_dur}</span>', 'Long': '', 'Short': ''},
+        {'Metric': 'Avg equity run-up (close-to-close)', 'All': fmt_cur_pct_no_sign(avg_ru_val, avg_ru_pct), 'Long': '', 'Short': ''},
+        {'Metric': 'Max equity run-up (close-to-close)', 'All': fmt_cur_pct_no_sign(max_ru_val, max_ru_pct), 'Long': '', 'Short': ''},
+        {'Metric': 'Max equity run-up (intrabar)', 'All': fmt_cur_pct_no_sign(max_ru_val, max_ru_pct), 'Long': '', 'Short': ''},
+        {'Metric': 'Max equity run-up as % of initial capital (intrabar)', 'All': fmt_pct((max_ru_val/initial_capital)*100 if initial_capital > 0 else 0), 'Long': '', 'Short': ''},
+
+        {'is_header': True, 'Metric': 'Drawdowns', 'All': '', 'Long': '', 'Short': ''},
+        {'Metric': 'Avg equity drawdown duration (close-to-close)', 'All': f'<span class="val-neu">{avg_dd_dur}</span>', 'Long': '', 'Short': ''},
+        {'Metric': 'Avg equity drawdown (close-to-close)', 'All': fmt_cur_pct_no_sign(avg_dd_val, avg_dd_pct), 'Long': '', 'Short': ''},
+        {'Metric': 'Max equity drawdown (close-to-close)', 'All': fmt_cur_pct_no_sign(max_dd_val, max_dd_pct), 'Long': '', 'Short': ''},
+        {'Metric': 'Max equity drawdown (intrabar)', 'All': fmt_cur_pct_no_sign(max_dd_val, max_dd_pct), 'Long': '', 'Short': ''},
+        {'Metric': 'Max equity drawdown as % of initial capital (intrabar)', 'All': fmt_pct((max_dd_val/initial_capital)*100 if initial_capital > 0 else 0), 'Long': '', 'Short': ''},
+        {'Metric': 'Return of max equity drawdown', 'All': fmt_cur_neut(0), 'Long': '', 'Short': ''}
     ]
 
     metrics = {
