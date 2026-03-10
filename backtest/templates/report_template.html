@@ -160,6 +160,9 @@
         {% endfor %}
       </div>
       
+      <h2>Charts</h2>
+      <div class="chart-container">{{ chart_html | safe }}</div>
+      
       {% if 'Detailed Table' in metrics %}
       <h2>Detailed Strategy Metrics</h2>
       <table class="detailed-metrics-table">
@@ -191,9 +194,6 @@
         </tbody>
       </table>
       {% endif %}
-
-      <h2>Charts</h2>
-      <div class="chart-container">{{ chart_html | safe }}</div>
       
       {% if trades_analysis_html %}
       <h2>Trades Analysis</h2>
