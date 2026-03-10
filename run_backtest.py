@@ -233,14 +233,14 @@ def main():
         print("\n" + "="*100)
         print(f"{'OVERVIEW OF SYMBOL BACKTESTS (Sorted by Profit Factor)':^100}")
         print("="*100)
-        header = f"{'Symbol':<15} | {'Net PnL':<12} | {'Max Drawdown':<15} | {'Trades':<8} | {'Win Rate':<10} | {'Profit Factor':<13}"
+        header = f"{'Symbol':<15} | {'Total Return %':<14} | {'Max Drawdown':<15} | {'Trades':<8} | {'Win Rate':<10} | {'Profit Factor':<13}"
         print(header)
         print("-" * 100)
         
         for m in sorted_metrics:
-            net_pnl = m.get('Final Capital', 0) - m.get('Initial Capital', 0)
+            total_return_pct = m.get('Total Return %', 0)
             row = (f"{m.get('Symbol', 'N/A'):<15} | "
-                   f"${net_pnl:>10.2f} | "
+                   f"{total_return_pct:>13.2f}% | "
                    f"{m.get('Max Drawdown %', 0):>14.2f}% | "
                    f"{m.get('Number of Trades', 0):>8} | "
                    f"{m.get('Win Rate %', 0):>9.2f}% | "
