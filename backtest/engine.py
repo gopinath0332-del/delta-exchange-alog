@@ -26,6 +26,7 @@ class BacktestEngine:
         self.initial_capital = self.bt_config.initial_capital
         self.equity = self.initial_capital
         self.order_size_pct = self.bt_config.order_size_pct
+        self.use_compounding = getattr(self.bt_config, 'use_compounding', False)
         self.commission = self.bt_config.commission
         
         self.processed_trades = []
@@ -71,7 +72,8 @@ class BacktestEngine:
                 continue
                 
             # Sizing (Compound Sizing based on current Equity to match TradingView)
-            trade_capital = self.equity * self.order_size_pct
+            base_capital = self.equity if self.use_compounding else self.initial_capital
+            trade_capital = base_capital * self.order_size_pct
             
             # Identify the trade ID or unique entry for tracking partials
             # Since the strategy trades sequentially, we can track by entry_time + type

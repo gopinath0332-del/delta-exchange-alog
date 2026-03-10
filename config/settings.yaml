@@ -14,6 +14,8 @@ backtesting:
   # Delta Exchange fees unified (avg maker/taker + slippage)
   commission: 0.0006 # 0.06% combined fixed fee estimate
   order_size_pct: 1.0 # Use 100% of flat initial capital per trade
+  use_compounding: false # If true, use % of current equity instead of initial capital
+  #Setting use_compounding: false gives a conservative 232% return on PIPPINUSD that uses $1000 flat per trade. Setting use_compounding: true gives a dynamic 579% return on PIPPINUSD that mimics TradingView exponentially compounding your profits for position sizing.
 
 # Risk Management Rules
 risk_management:
