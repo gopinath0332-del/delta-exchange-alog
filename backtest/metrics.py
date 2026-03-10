@@ -148,6 +148,24 @@ def calculate_metrics(
                 start_date = str(times.iloc[0])
                 end_date = str(times.iloc[-1])
 
+    # Buy and Hold metrics
+    buy_hold_return_val = 0.0
+    buy_hold_rtn_pct = 0.0
+    strategy_outperformance = 0.0
+    if data_df is not None and not data_df.empty and 'close' in data_df.columns:
+        first_price = data_df['close'].iloc[0]
+        last_price = data_df['close'].iloc[-1]
+        
+        if first_price > 0:
+            # Assuming we bought initial_capital worth of asset at start
+            units_bought = initial_capital / first_price
+            buy_hold_final_value = units_bought * last_price
+            buy_hold_return_val = buy_hold_final_value - initial_capital
+            buy_hold_rtn_pct = (buy_hold_return_val / initial_capital) * 100
+            
+            # Outperformance is strategy return USD - buy/hold return USD
+            strategy_outperformance = (final_capital - initial_capital) - buy_hold_return_val
+
     # Detailed Metrics Block
     def calc_stats(subset):
         if not subset: return {'net_pnl': 0.0, 'gross_profit': 0.0, 'gross_loss': 0.0, 'pf': 0.0, 'comm': 0.0, 'payoff': 0.0}
@@ -174,20 +192,36 @@ def calculate_metrics(
         return f'<span class="val-neu">{amt:,.2f} <small>USD</small></span><span class="val-neu pct-val">{p:,.2f}%</span>'
         
     def fmt_cur(amt):
+        # Allow +/- formatting for outperformance/returns where generic cur applies
+        if amt > 0: return f'<span class="val-pos">+{amt:,.2f} <small>USD</small></span>'
+        elif amt < 0: return f'<span class="val-neg">{amt:,.2f} <small>USD</small></span>'
         return f'<span class="val-neu">{amt:,.2f} <small>USD</small></span>'
+        
+    def fmt_cur_neut(amt):
+        return f'<span class="val-neu">{amt:,.2f} <small>USD</small></span>'
+
+    def fmt_pct(p):
+        return f'<span class="val-neu">{p:,.2f}%</span>'
         
     def fmt_factor(pf):
         return f'<span class="val-neu">{"&infin;" if pf == float("inf") else f"{pf:.3f}"}</span>'
 
     detailed_metrics = [
-        {'Metric': 'Initial capital', 'All': fmt_cur(initial_capital), 'Long': '', 'Short': ''},
+        {'Metric': 'Initial capital', 'All': fmt_cur_neut(initial_capital), 'Long': '', 'Short': ''},
         {'Metric': 'Open P&L', 'All': fmt_cur_pct(0, 0), 'Long': '', 'Short': ''},
         {'Metric': 'Net P&L', 'All': fmt_cur_pct(stats_all['net_pnl'], pct(stats_all['net_pnl'])), 'Long': fmt_cur_pct(stats_long['net_pnl'], pct(stats_long['net_pnl'])), 'Short': fmt_cur_pct(stats_short['net_pnl'], pct(stats_short['net_pnl']))},
         {'Metric': 'Gross profit', 'All': fmt_cur_pct_no_sign(stats_all['gross_profit'], pct(stats_all['gross_profit'])), 'Long': fmt_cur_pct_no_sign(stats_long['gross_profit'], pct(stats_long['gross_profit'])), 'Short': fmt_cur_pct_no_sign(stats_short['gross_profit'], pct(stats_short['gross_profit']))},
         {'Metric': 'Gross loss', 'All': fmt_cur_pct_no_sign(stats_all['gross_loss'], pct(stats_all['gross_loss'])), 'Long': fmt_cur_pct_no_sign(stats_long['gross_loss'], pct(stats_long['gross_loss'])), 'Short': fmt_cur_pct_no_sign(stats_short['gross_loss'], pct(stats_short['gross_loss']))},
         {'Metric': 'Profit factor', 'All': fmt_factor(stats_all['pf']), 'Long': fmt_factor(stats_long['pf']), 'Short': fmt_factor(stats_short['pf'])},
-        {'Metric': 'Commission paid', 'All': fmt_cur(stats_all['comm']), 'Long': fmt_cur(stats_long['comm']), 'Short': fmt_cur(stats_short['comm'])},
-        {'Metric': 'Expected payoff', 'All': fmt_cur(stats_all['payoff']), 'Long': fmt_cur(stats_long['payoff']), 'Short': fmt_cur(stats_short['payoff'])}
+        {'Metric': 'Commission paid', 'All': fmt_cur_neut(stats_all['comm']), 'Long': fmt_cur_neut(stats_long['comm']), 'Short': fmt_cur_neut(stats_short['comm'])},
+        {'Metric': 'Expected payoff', 'All': fmt_cur_neut(stats_all['payoff']), 'Long': fmt_cur_neut(stats_long['payoff']), 'Short': fmt_cur_neut(stats_short['payoff'])},
+        {'is_header': True, 'Metric': 'Buy & Hold Comparison', 'All': '', 'Long': '', 'Short': ''},
+        {'Metric': 'Buy & hold return', 'All': fmt_cur_pct(buy_hold_return_val, buy_hold_rtn_pct), 'Long': '', 'Short': ''},
+        {'Metric': 'Buy & hold % gain', 'All': fmt_pct(buy_hold_rtn_pct), 'Long': '', 'Short': ''},
+        {'Metric': 'Strategy outperformance', 'All': fmt_cur(strategy_outperformance), 'Long': '', 'Short': ''},
+        {'is_header': True, 'Metric': 'Risk-adjusted performance', 'All': '', 'Long': '', 'Short': ''},
+        {'Metric': 'Sharpe ratio', 'All': fmt_factor(sharpe_ratio), 'Long': '', 'Short': ''},
+        {'Metric': 'Sortino ratio', 'All': fmt_factor(sortino_ratio), 'Long': '', 'Short': ''}
     ]
 
     metrics = {
