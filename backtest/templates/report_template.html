@@ -75,6 +75,61 @@
         font-size: 1.4em;
         font-weight: bold;
       }
+      
+      /* Detailed Metrics Table */
+      .detailed-metrics-table {
+        background: white;
+        color: #333;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 40px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .detailed-metrics-table th, .detailed-metrics-table td {
+        padding: 12px 20px;
+        border-bottom: 1px solid #ddd;
+        text-align: right;
+      }
+      .detailed-metrics-table th {
+        background-color: #f8f9fa;
+        color: #6c757d;
+        font-weight: 600;
+        border-bottom: 1px solid #ddd;
+      }
+      .detailed-metrics-table th:first-child, .detailed-metrics-table td:first-child {
+        text-align: left;
+      }
+      .detailed-metrics-table td:first-child {
+        color: #6c757d;
+      }
+      .val-pos { color: #28a745; }
+      .val-neg { color: #dc3545; }
+      .val-neu { color: #333; }
+      .detailed-metrics-table .pct-val {
+        font-size: 0.85em;
+        display: block;
+        margin-top: 4px;
+      }
+      .detailed-metrics-table small {
+        color: #6c757d;
+        font-size: 0.8em;
+      }
+      .detailed-metrics-table tr:hover, .detailed-metrics-table tr:hover td {
+        background-color: #f1f1f1;
+      }
+      
+      /* Default Trade List Table override */
+      .trade-table {
+        background: white;
+        color: #333;
+      }
+      .trade-table th {
+        background-color: #f8f9fa;
+        color: #333;
+      }
     </style>
   </head>
   <body>
@@ -84,6 +139,7 @@
       <h2>Performance Summary</h2>
       <div class="summary-grid">
         {% for key, value in metrics.items() %}
+        {% if key != 'Detailed Table' %}
         <div class="stat-card">
           <div class="stat-title">{{ key }}</div>
           <div class="stat-value">
@@ -98,14 +154,39 @@
             %} {{ value }} {% endif %}
           </div>
         </div>
+        {% endif %}
         {% endfor %}
       </div>
+      
+      {% if 'Detailed Table' in metrics %}
+      <h2>Detailed Strategy Metrics</h2>
+      <table class="detailed-metrics-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>All</th>
+            <th>Long</th>
+            <th>Short</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in metrics['Detailed Table'] %}
+          <tr>
+            <td>{{ row['Metric'] }}</td>
+            <td>{{ row['All'] | safe }}</td>
+            <td>{{ row['Long'] | safe }}</td>
+            <td>{{ row['Short'] | safe }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
 
       <h2>Charts</h2>
       <div class="chart-container">{{ chart_html | safe }}</div>
 
       <h2>Trade List</h2>
-      <table>
+      <table class="trade-table">
         <thead>
           <tr>
             <th>Entry Time</th>

@@ -29,6 +29,8 @@ def calculate_metrics(
             import datetime
             ts_min = data_df['time'].min()
             ts_max = data_df['time'].max()
+            if ts_min > 1e11: ts_min /= 1000
+            if ts_max > 1e11: ts_max /= 1000
             start_date = datetime.datetime.fromtimestamp(ts_min).strftime('%d-%m-%y %H:%M')
             end_date = datetime.datetime.fromtimestamp(ts_max).strftime('%d-%m-%y %H:%M')
 
@@ -50,7 +52,8 @@ def calculate_metrics(
             'Average Win %': 0.0,
             'Average Loss %': 0.0,
             'Profitable Trades %': 0.0,
-            'Total Fees': 0.0
+            'Total Fees': 0.0,
+            'Detailed Table': []
         }
 
     # Trade stats
@@ -127,6 +130,8 @@ def calculate_metrics(
         import datetime
         ts_min = data_df['time'].min()
         ts_max = data_df['time'].max()
+        if ts_min > 1e11: ts_min /= 1000
+        if ts_max > 1e11: ts_max /= 1000
         # Since TZ=UTC is set globally in run_backtest.py, this will be UTC
         start_date = datetime.datetime.fromtimestamp(ts_min).strftime('%d-%m-%y %H:%M')
         end_date = datetime.datetime.fromtimestamp(ts_max).strftime('%d-%m-%y %H:%M')
@@ -142,6 +147,48 @@ def calculate_metrics(
             else:
                 start_date = str(times.iloc[0])
                 end_date = str(times.iloc[-1])
+
+    # Detailed Metrics Block
+    def calc_stats(subset):
+        if not subset: return {'net_pnl': 0.0, 'gross_profit': 0.0, 'gross_loss': 0.0, 'pf': 0.0, 'comm': 0.0, 'payoff': 0.0}
+        gp = sum(t.get('Profit/Loss', 0) for t in subset if t.get('Profit/Loss', 0) > 0)
+        gl = abs(sum(t.get('Profit/Loss', 0) for t in subset if t.get('Profit/Loss', 0) < 0))
+        npnl = sum(t.get('Profit/Loss', 0) for t in subset)
+        comm = sum(t.get('Fee', 0.0) for t in subset)
+        pf = (gp / gl) if gl > 0 else (float('inf') if gp > 0 else 0.0)
+        payoff = npnl / len(subset)
+        return {'net_pnl': npnl, 'gross_profit': gp, 'gross_loss': gl, 'pf': pf, 'comm': comm, 'payoff': payoff}
+        
+    stats_all = calc_stats(trades)
+    stats_long = calc_stats([t for t in trades if t.get('Position Type') == 'LONG'])
+    stats_short = calc_stats([t for t in trades if t.get('Position Type') == 'SHORT'])
+    
+    def pct(val): return (val / initial_capital) * 100 if initial_capital > 0 else 0.0
+
+    def fmt_cur_pct(amt, p):
+        if amt > 0: return f'<span class="val-pos">+{amt:,.2f} <small>USD</small></span><span class="val-pos pct-val">+{p:,.2f}%</span>'
+        elif amt < 0: return f'<span class="val-neg">{amt:,.2f} <small>USD</small></span><span class="val-neg pct-val">{p:,.2f}%</span>'
+        else: return f'<span class="val-neu">0.00 <small>USD</small></span><span class="val-neu pct-val">0.00%</span>'
+
+    def fmt_cur_pct_no_sign(amt, p):
+        return f'<span class="val-neu">{amt:,.2f} <small>USD</small></span><span class="val-neu pct-val">{p:,.2f}%</span>'
+        
+    def fmt_cur(amt):
+        return f'<span class="val-neu">{amt:,.2f} <small>USD</small></span>'
+        
+    def fmt_factor(pf):
+        return f'<span class="val-neu">{"&infin;" if pf == float("inf") else f"{pf:.3f}"}</span>'
+
+    detailed_metrics = [
+        {'Metric': 'Initial capital', 'All': fmt_cur(initial_capital), 'Long': '', 'Short': ''},
+        {'Metric': 'Open P&L', 'All': fmt_cur_pct(0, 0), 'Long': '', 'Short': ''},
+        {'Metric': 'Net P&L', 'All': fmt_cur_pct(stats_all['net_pnl'], pct(stats_all['net_pnl'])), 'Long': fmt_cur_pct(stats_long['net_pnl'], pct(stats_long['net_pnl'])), 'Short': fmt_cur_pct(stats_short['net_pnl'], pct(stats_short['net_pnl']))},
+        {'Metric': 'Gross profit', 'All': fmt_cur_pct_no_sign(stats_all['gross_profit'], pct(stats_all['gross_profit'])), 'Long': fmt_cur_pct_no_sign(stats_long['gross_profit'], pct(stats_long['gross_profit'])), 'Short': fmt_cur_pct_no_sign(stats_short['gross_profit'], pct(stats_short['gross_profit']))},
+        {'Metric': 'Gross loss', 'All': fmt_cur_pct_no_sign(stats_all['gross_loss'], pct(stats_all['gross_loss'])), 'Long': fmt_cur_pct_no_sign(stats_long['gross_loss'], pct(stats_long['gross_loss'])), 'Short': fmt_cur_pct_no_sign(stats_short['gross_loss'], pct(stats_short['gross_loss']))},
+        {'Metric': 'Profit factor', 'All': fmt_factor(stats_all['pf']), 'Long': fmt_factor(stats_long['pf']), 'Short': fmt_factor(stats_short['pf'])},
+        {'Metric': 'Commission paid', 'All': fmt_cur(stats_all['comm']), 'Long': fmt_cur(stats_long['comm']), 'Short': fmt_cur(stats_short['comm'])},
+        {'Metric': 'Expected payoff', 'All': fmt_cur(stats_all['payoff']), 'Long': fmt_cur(stats_long['payoff']), 'Short': fmt_cur(stats_short['payoff'])}
+    ]
 
     metrics = {
         'Strategy Name': strategy_name,
@@ -161,7 +208,8 @@ def calculate_metrics(
         'Average Win %': avg_win_pct,
         'Average Loss %': avg_loss_pct,
         'Profitable Trades %': profitable_trades_pct,
-        'Total Fees': total_fees
+        'Total Fees': total_fees,
+        'Detailed Table': detailed_metrics
     }
     
     return metrics
