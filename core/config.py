@@ -17,10 +17,11 @@ logger = get_logger(__name__)
 class BacktestingConfig(BaseModel):
     """Backtesting configuration."""
 
-    initial_capital: float = Field(default=10000, gt=0)
-    commission_maker: float = Field(default=0.0004, ge=0)  # 0.04%
-    commission_taker: float = Field(default=0.0006, ge=0)  # 0.06%
-    slippage: float = Field(default=0.0001, ge=0)  # 0.01%
+    initial_capital: float = Field(default=1000.0, gt=0)
+    order_size_pct: float = Field(default=1.0, gt=0, le=1.0)  # 100% of equity
+    pyramiding: int = Field(default=0, ge=0)
+    commission: float = Field(default=0.0, ge=0)
+    data_folder: str = Field(default="data")
 
 
 class RiskManagementConfig(BaseModel):
@@ -181,6 +182,16 @@ class Config:
 
         # Backtesting
         backtesting_settings = self.settings.get("backtesting", {})
+        if "DATA_FOLDER" in os.environ:
+            backtesting_settings["data_folder"] = os.getenv("DATA_FOLDER")
+        if "BACKTEST_CAPITAL" in os.environ:
+            backtesting_settings["initial_capital"] = float(os.getenv("BACKTEST_CAPITAL", "1000"))
+        if "BACKTEST_ORDER_SIZE_PCT" in os.environ:
+            backtesting_settings["order_size_pct"] = float(os.getenv("BACKTEST_ORDER_SIZE_PCT", "1.0"))
+        if "BACKTEST_PYRAMIDING" in os.environ:
+            backtesting_settings["pyramiding"] = int(os.getenv("BACKTEST_PYRAMIDING", "0"))
+        if "BACKTEST_COMMISSION" in os.environ:
+            backtesting_settings["commission"] = float(os.getenv("BACKTEST_COMMISSION", "0.0"))
         self.backtesting = BacktestingConfig(**backtesting_settings)
 
         # Risk management
