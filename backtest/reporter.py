@@ -175,6 +175,118 @@ class Reporter:
         # Include plotly.js inline for standalone HTML
         return fig.to_html(full_html=False, include_plotlyjs='cdn')
         
+    def _create_trades_analysis_charts(self, trades: List[Dict[str, Any]]) -> str:
+        """Create P&L Distribution and Win/Loss ratio charts as HTML string."""
+        if not trades:
+            return ""
+            
+        import numpy as np
+        
+        # 1. Prepare data for P&L Distribution
+        # Extract percentage returns, keeping sign
+        returns = [t.get('Return %', 0) for t in trades]
+        profits = [r for r in returns if r > 0]
+        losses = [r for r in returns if r < 0]
+        
+        avg_profit = np.mean(profits) if profits else 0
+        avg_loss = np.mean(losses) if losses else 0
+        
+        # 2. Prepare data for Win/Loss ratio
+        win_count = len(profits)
+        loss_count = len(losses)
+        breakeven_count = len(returns) - win_count - loss_count
+        
+        total_trades = len(trades)
+        
+        # Setup subplot layout
+        fig = make_subplots(
+            rows=1, cols=2, 
+            specs=[[{"type": "xy"}, {"type": "domain"}]],
+            column_widths=[0.6, 0.4],
+            subplot_titles=("P&L Distribution", "Win/loss ratio")
+        )
+        
+        # Chart 1: P&L Distribution (Histogram)
+        # We process manually to color positives green, negatives red
+        if returns:
+            # Create a histogram using a combined array to get universal bins
+            counts, bins = np.histogram(returns, bins=10)
+            bin_centers = 0.5 * (bins[:-1] + bins[1:])
+            
+            # Split into colors
+            colors = ['#dc3545' if c < 0 else '#28a745' for c in bin_centers]
+            
+            fig.add_trace(go.Bar(
+                x=bin_centers,
+                y=counts,
+                marker_color=colors,
+                name="Trades",
+                hovertemplate="Return: %{x:.2f}%<br>Count: %{y}<extra></extra>"
+            ), row=1, col=1)
+            
+            # Add average lines
+            if avg_loss < 0:
+                fig.add_vline(x=avg_loss, line_dash="dash", line_color="#dc3545",
+                            annotation_text=f" Avg loss {avg_loss:.2f}%", 
+                            annotation_position="bottom left",
+                            annotation=dict(font_size=10, font_color="#dc3545"),
+                            row=1, col=1)
+            if avg_profit > 0:
+                fig.add_vline(x=avg_profit, line_dash="dash", line_color="#28a745",
+                            annotation_text=f" Avg profit {avg_profit:.2f}%", 
+                            annotation_position="bottom right",
+                            annotation=dict(font_size=10, font_color="#28a745"),
+                            row=1, col=1)
+        
+        # Chart 2: Win/Loss Ratio (Doughnut)
+        labels = ['Wins', 'Losses', 'Break even']
+        values = [win_count, loss_count, breakeven_count]
+        pie_colors = ['#28a745', '#dc3545', '#ffc107']
+        
+        # Remove empty categories
+        labels_f = [l for l, v in zip(labels, values) if v > 0]
+        colors_f = [c for c, v in zip(pie_colors, values) if v > 0]
+        values_f = [v for v in values if v > 0]
+        
+        fig.add_trace(go.Pie(
+            labels=labels_f,
+            values=values_f,
+            hole=0.6,
+            marker_colors=colors_f,
+            textinfo="none",
+            hoverinfo="label+value+percent"
+        ), row=1, col=2)
+        
+        # Center text for donut
+        fig.add_annotation(
+            text=f"<b>{total_trades}</b><br><span style='font-size:12px'>Total trades</span>",
+            x=0.825, y=0.5, # True center relative to the 0.6 to 1.0 paper domain space
+            xref="paper", yref="paper",
+            font_size=20,
+            showarrow=False,
+            font_color="#333"
+        )
+
+        fig.update_layout(
+            height=350,
+            showlegend=True,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            margin=dict(l=40, r=40, t=40, b=40),
+            legend=dict(
+                orientation="v",
+                yanchor="middle",
+                y=0.5,
+                xanchor="left",
+                x=1.0
+            )
+        )
+        
+        fig.update_xaxes(title_text="Return %", row=1, col=1, gridcolor='#f8f9fa', zerolinecolor='#ddd')
+        fig.update_yaxes(title_text="Number of trades", row=1, col=1, gridcolor='#f8f9fa')
+        
+        return fig.to_html(full_html=False, include_plotlyjs='cdn')
+        
     def generate_report(self, symbol: str, timeframe: str, metrics: Dict[str, Any], 
                         trades: List[Dict[str, Any]], equity_df: pd.DataFrame, 
                         filepath: str = None) -> str:
@@ -186,6 +298,7 @@ class Reporter:
         """
         template = self.env.get_template("report_template.html")
         chart_html = self._create_charts(equity_df)
+        trades_analysis_html = self._create_trades_analysis_charts(trades)
         
         # Render HTML
         html_out = template.render(
@@ -193,7 +306,8 @@ class Reporter:
             timeframe=timeframe,
             metrics=metrics,
             trades=trades,
-            chart_html=chart_html
+            chart_html=chart_html,
+            trades_analysis_html=trades_analysis_html
         )
         
         if filepath is None:

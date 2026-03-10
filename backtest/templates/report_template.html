@@ -194,6 +194,11 @@
 
       <h2>Charts</h2>
       <div class="chart-container">{{ chart_html | safe }}</div>
+      
+      {% if trades_analysis_html %}
+      <h2>Trades Analysis</h2>
+      <div class="chart-container">{{ trades_analysis_html | safe }}</div>
+      {% endif %}
 
       <h2>Trade List</h2>
       <table class="trade-table">
