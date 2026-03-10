@@ -32,9 +32,9 @@ class BacktestEngine:
         self.processed_trades = []
         self.equity_curve = []
         
-        # Initial point for equity curve
+        # Initial point for equity curve (time will be set in run())
         self.equity_curve.append({
-            'time': 'Start',
+            'time': None,
             'equity': self.equity
         })
         
@@ -52,6 +52,14 @@ class BacktestEngine:
     def run(self, df: pd.DataFrame) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
         logger.info(f"Running backtest for {self.symbol} on {self.timeframe} timeframe")
         
+        # Set start time for equity curve
+        if not df.empty and 'time' in df.columns:
+            import datetime
+            ts = df['time'].iloc[0]
+            if ts > 1e11: ts /= 1000
+            start_time_str = datetime.datetime.fromtimestamp(ts).strftime('%d-%m-%y %H:%M')
+            self.equity_curve[0]['time'] = start_time_str
+            
         # Run the strategy's built-in backtest logic to generate raw signals
         self.strategy.run_backtest(df)
         raw_trades = getattr(self.strategy, 'trades', [])
