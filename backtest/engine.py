@@ -130,11 +130,27 @@ class BacktestEngine:
             
             # Calculate duration if possible
             duration_str = "N/A"
+            bars_held = 0
             dt_entry = self._parse_time(trade.get('entry_time', ''))
             dt_exit = self._parse_time(trade.get('exit_time', ''))
             if dt_entry and dt_exit:
                 diff = dt_exit - dt_entry
                 duration_str = str(diff)
+                
+                # Estimate bars held based on timeframe (e.g., '1h', '15m')
+                try:
+                    import re
+                    match = re.match(r'(\d+)([hmdw])', self.timeframe.lower())
+                    if match:
+                        val = int(match.group(1))
+                        unit = match.group(2)
+                        sec = diff.total_seconds()
+                        if unit == 'h': bars_held = int(sec / (val * 3600))
+                        elif unit == 'm': bars_held = int(sec / (val * 60))
+                        elif unit == 'd': bars_held = int(sec / (val * 86400))
+                        elif unit == 'w': bars_held = int(sec / (val * 604800))
+                except Exception:
+                    pass
             
             processed_trade = {
                 'Symbol': self.symbol,
@@ -148,7 +164,8 @@ class BacktestEngine:
                 'Fee': comm_cost,
                 'Profit/Loss': pnl,
                 'Return %': return_pct,
-                'Duration': duration_str
+                'Duration': duration_str,
+                'Bars Held': bars_held
             }
             self.processed_trades.append(processed_trade)
             

@@ -167,15 +167,65 @@ def calculate_metrics(
             strategy_outperformance = (final_capital - initial_capital) - buy_hold_return_val
 
     # Detailed Metrics Block
+    # Detailed Metrics Block
     def calc_stats(subset):
-        if not subset: return {'net_pnl': 0.0, 'gross_profit': 0.0, 'gross_loss': 0.0, 'pf': 0.0, 'comm': 0.0, 'payoff': 0.0}
-        gp = sum(t.get('Profit/Loss', 0) for t in subset if t.get('Profit/Loss', 0) > 0)
-        gl = abs(sum(t.get('Profit/Loss', 0) for t in subset if t.get('Profit/Loss', 0) < 0))
+        if not subset:
+            return {
+                'net_pnl': 0.0, 'gross_profit': 0.0, 'gross_loss': 0.0, 'pf': 0.0, 'comm': 0.0, 'payoff': 0.0,
+                'total_trades': 0, 'open_trades': 0, 'winning_trades': 0, 'losing_trades': 0, 'pct_profitable': 0.0,
+                'avg_pnl': 0.0, 'avg_pnl_pct': 0.0, 'avg_win': 0.0, 'avg_win_pct': 0.0, 'avg_loss': 0.0, 'avg_loss_pct': 0.0,
+                'ratio_win_loss': 0.0, 'max_win': 0.0, 'max_win_pct': 0.0, 'max_win_pct_gross': 0.0,
+                'max_loss': 0.0, 'max_loss_pct': 0.0, 'max_loss_pct_gross': 0.0,
+                'avg_bars': 0, 'avg_bars_win': 0, 'avg_bars_loss': 0
+            }
+        
+        wins = [t for t in subset if t.get('Profit/Loss', 0) > 0]
+        losses = [t for t in subset if t.get('Profit/Loss', 0) < 0]
+        
+        gp = sum(t.get('Profit/Loss', 0) for t in wins)
+        gl = abs(sum(t.get('Profit/Loss', 0) for t in losses))
         npnl = sum(t.get('Profit/Loss', 0) for t in subset)
         comm = sum(t.get('Fee', 0.0) for t in subset)
         pf = (gp / gl) if gl > 0 else (float('inf') if gp > 0 else 0.0)
         payoff = npnl / len(subset)
-        return {'net_pnl': npnl, 'gross_profit': gp, 'gross_loss': gl, 'pf': pf, 'comm': comm, 'payoff': payoff}
+        
+        open_t = len([t for t in subset if t.get('Exit Type') == 'END OF DATA'])
+        
+        avg_pnl = npnl / len(subset)
+        avg_pnl_pct = float(np.mean([t.get('Return %', 0) for t in subset]))
+        
+        avg_win = gp / len(wins) if wins else 0.0
+        avg_win_pct = float(np.mean([t.get('Return %', 0) for t in wins])) if wins else 0.0
+        
+        avg_loss = sum(t.get('Profit/Loss', 0) for t in losses) / len(losses) if losses else 0.0
+        avg_loss_pct = float(np.mean([t.get('Return %', 0) for t in losses])) if losses else 0.0
+        
+        ratio_win_loss = abs(avg_win / avg_loss) if avg_loss != 0 else (float('inf') if avg_win > 0 else 0.0)
+        
+        max_win = max([t.get('Profit/Loss', 0) for t in wins]) if wins else 0.0
+        max_win_pct = max([t.get('Return %', 0) for t in wins]) if wins else 0.0
+        max_win_pct_gross = (max_win / gp)*100 if gp > 0 else 0.0
+        
+        max_loss = min([t.get('Profit/Loss', 0) for t in losses]) if losses else 0.0
+        max_loss_pct = min([t.get('Return %', 0) for t in losses]) if losses else 0.0
+        max_loss_pct_gross = (abs(max_loss) / gl)*100 if gl > 0 else 0.0
+        
+        avg_bars = int(np.mean([t.get('Bars Held', 0) for t in subset])) if subset else 0
+        avg_bars_win = int(np.mean([t.get('Bars Held', 0) for t in wins])) if wins else 0
+        avg_bars_loss = int(np.mean([t.get('Bars Held', 0) for t in losses])) if losses else 0
+        
+        return {
+            'net_pnl': npnl, 'gross_profit': gp, 'gross_loss': gl, 'pf': pf, 'comm': comm, 'payoff': payoff,
+            'total_trades': len(subset), 'open_trades': open_t, 'winning_trades': len(wins), 'losing_trades': len(losses),
+            'pct_profitable': (len(wins) / len(subset)) * 100,
+            'avg_pnl': avg_pnl, 'avg_pnl_pct': avg_pnl_pct,
+            'avg_win': avg_win, 'avg_win_pct': avg_win_pct,
+            'avg_loss': avg_loss, 'avg_loss_pct': avg_loss_pct,
+            'ratio_win_loss': ratio_win_loss,
+            'max_win': max_win, 'max_win_pct': max_win_pct, 'max_win_pct_gross': max_win_pct_gross,
+            'max_loss': max_loss, 'max_loss_pct': max_loss_pct, 'max_loss_pct_gross': max_loss_pct_gross,
+            'avg_bars': avg_bars, 'avg_bars_win': avg_bars_win, 'avg_bars_loss': avg_bars_loss
+        }
         
     stats_all = calc_stats(trades)
     stats_long = calc_stats([t for t in trades if t.get('Position Type') == 'LONG'])
@@ -205,6 +255,9 @@ def calculate_metrics(
         
     def fmt_factor(pf):
         return f'<span class="val-neu">{"&infin;" if pf == float("inf") else f"{pf:.3f}"}</span>'
+        
+    def fmt_num(n):
+        return f'<span class="val-neu">{n}</span>'
 
     detailed_metrics = [
         {'Metric': 'Initial capital', 'All': fmt_cur_neut(initial_capital), 'Long': '', 'Short': ''},
@@ -221,7 +274,26 @@ def calculate_metrics(
         {'Metric': 'Strategy outperformance', 'All': fmt_cur(strategy_outperformance), 'Long': '', 'Short': ''},
         {'is_header': True, 'Metric': 'Risk-adjusted performance', 'All': '', 'Long': '', 'Short': ''},
         {'Metric': 'Sharpe ratio', 'All': fmt_factor(sharpe_ratio), 'Long': '', 'Short': ''},
-        {'Metric': 'Sortino ratio', 'All': fmt_factor(sortino_ratio), 'Long': '', 'Short': ''}
+        {'Metric': 'Sortino ratio', 'All': fmt_factor(sortino_ratio), 'Long': '', 'Short': ''},
+        {'is_header': True, 'Metric': 'Details', 'All': '', 'Long': '', 'Short': ''},
+        {'Metric': 'Total trades', 'All': fmt_num(stats_all['total_trades']), 'Long': fmt_num(stats_long['total_trades']), 'Short': fmt_num(stats_short['total_trades'])},
+        {'Metric': 'Total open trades', 'All': fmt_num(stats_all['open_trades']), 'Long': fmt_num(stats_long['open_trades']), 'Short': fmt_num(stats_short['open_trades'])},
+        {'Metric': 'Winning trades', 'All': fmt_num(stats_all['winning_trades']), 'Long': fmt_num(stats_long['winning_trades']), 'Short': fmt_num(stats_short['winning_trades'])},
+        {'Metric': 'Losing trades', 'All': fmt_num(stats_all['losing_trades']), 'Long': fmt_num(stats_long['losing_trades']), 'Short': fmt_num(stats_short['losing_trades'])},
+        {'Metric': 'Percent profitable', 'All': fmt_pct(stats_all['pct_profitable']), 'Long': fmt_pct(stats_long['pct_profitable']), 'Short': fmt_pct(stats_short['pct_profitable'])},
+        {'Metric': 'Avg P&L', 'All': fmt_cur_pct_no_sign(stats_all['avg_pnl'], stats_all['avg_pnl_pct']), 'Long': fmt_cur_pct_no_sign(stats_long['avg_pnl'], stats_long['avg_pnl_pct']), 'Short': fmt_cur_pct_no_sign(stats_short['avg_pnl'], stats_short['avg_pnl_pct'])},
+        {'Metric': 'Avg winning trade', 'All': fmt_cur_pct_no_sign(stats_all['avg_win'], stats_all['avg_win_pct']), 'Long': fmt_cur_pct_no_sign(stats_long['avg_win'], stats_long['avg_win_pct']), 'Short': fmt_cur_pct_no_sign(stats_short['avg_win'], stats_short['avg_win_pct'])},
+        {'Metric': 'Avg losing trade', 'All': fmt_cur_pct_no_sign(stats_all['avg_loss'], stats_all['avg_loss_pct']), 'Long': fmt_cur_pct_no_sign(stats_long['avg_loss'], stats_long['avg_loss_pct']), 'Short': fmt_cur_pct_no_sign(stats_short['avg_loss'], stats_short['avg_loss_pct'])},
+        {'Metric': 'Ratio avg win / avg loss', 'All': fmt_factor(stats_all['ratio_win_loss']), 'Long': fmt_factor(stats_long['ratio_win_loss']), 'Short': fmt_factor(stats_short['ratio_win_loss'])},
+        {'Metric': 'Largest winning trade', 'All': fmt_cur_neut(stats_all['max_win']), 'Long': fmt_cur_neut(stats_long['max_win']), 'Short': fmt_cur_neut(stats_short['max_win'])},
+        {'Metric': 'Largest winning trade percent', 'All': fmt_pct(stats_all['max_win_pct']), 'Long': fmt_pct(stats_long['max_win_pct']), 'Short': fmt_pct(stats_short['max_win_pct'])},
+        {'Metric': 'Largest winner as % of gross profit', 'All': fmt_pct(stats_all['max_win_pct_gross']), 'Long': fmt_pct(stats_long['max_win_pct_gross']), 'Short': fmt_pct(stats_short['max_win_pct_gross'])},
+        {'Metric': 'Largest losing trade', 'All': fmt_cur_neut(stats_all['max_loss']), 'Long': fmt_cur_neut(stats_long['max_loss']), 'Short': fmt_cur_neut(stats_short['max_loss'])},
+        {'Metric': 'Largest losing trade percent', 'All': fmt_pct(stats_all['max_loss_pct']), 'Long': fmt_pct(stats_long['max_loss_pct']), 'Short': fmt_pct(stats_short['max_loss_pct'])},
+        {'Metric': 'Largest loser as % of gross loss', 'All': fmt_pct(stats_all['max_loss_pct_gross']), 'Long': fmt_pct(stats_long['max_loss_pct_gross']), 'Short': fmt_pct(stats_short['max_loss_pct_gross'])},
+        {'Metric': 'Avg # bars in trades', 'All': fmt_num(stats_all['avg_bars']), 'Long': fmt_num(stats_long['avg_bars']), 'Short': fmt_num(stats_short['avg_bars'])},
+        {'Metric': 'Avg # bars in winning trades', 'All': fmt_num(stats_all['avg_bars_win']), 'Long': fmt_num(stats_long['avg_bars_win']), 'Short': fmt_num(stats_short['avg_bars_win'])},
+        {'Metric': 'Avg # bars in losing trades', 'All': fmt_num(stats_all['avg_bars_loss']), 'Long': fmt_num(stats_long['avg_bars_loss']), 'Short': fmt_num(stats_short['avg_bars_loss'])}
     ]
 
     metrics = {
