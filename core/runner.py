@@ -483,14 +483,6 @@ def run_strategy_terminal(
                          logger.info(f"SIGNAL: {action} - {reason}")
                          
                          # Execute Signal (Order + Alert)
-                         # For Donchian: pass stop_loss_pct so a bracket SL order is placed
-                         # on the exchange after every entry. All other strategies pass None.
-                         donchian_cfg = config.settings.get("strategies", {}).get("donchian_channel", {})
-                         sl_pct = (
-                             donchian_cfg.get("stop_loss_pct", 0.10)
-                             if strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]
-                             else None
-                         )
                          result = execute_strategy_signal(
                              client=client,
                              notifier=notifier,
@@ -502,8 +494,7 @@ def run_strategy_terminal(
                              reason=reason,
                              mode=mode,
                              strategy_name=strategy_name,
-                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False),
-                             stop_loss_pct=sl_pct
+                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False)
                          )
                          
                          # Check for successful execution and actual fill price
