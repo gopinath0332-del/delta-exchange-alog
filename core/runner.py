@@ -776,11 +776,8 @@ def run_strategy_terminal(
                     
                 dashboard_lines.append("-" * 80)
                 
-                # Print to terminal directly if someone uses `python run_terminal.py` directly on command line
-                for line in dashboard_lines:
-                    print(line)
-                
-                # Finally, log the dashboard properly as a single multiline string so it goes to the correct specific symbol file
+                # Log the dashboard properly as a single multiline string so it goes to the correct specific symbol file
+                # The logger will automatically echo this to the terminal as well, preventing duplicate outputs.
                 logger.info("\n".join(dashboard_lines))
                 
                 print(f"sleeping for {sleep_seconds}s...")
