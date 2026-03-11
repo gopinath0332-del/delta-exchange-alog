@@ -97,7 +97,7 @@ class DonchianChannelStrategy:
             high_close = np.abs(df['high'] - df['close'].shift())
             low_close = np.abs(df['low'] - df['close'].shift())
             true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-            atr_series = true_range.ewm(alpha=1.0/self.atr_period, adjust=False).mean()
+            atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
             
             # NEW: EMA Calculation
             ema_src = df[self.ema_source] if self.ema_source in df.columns else df['close']
@@ -181,7 +181,7 @@ class DonchianChannelStrategy:
         high_close = np.abs(df['high'] - df['close'].shift())
         low_close = np.abs(df['low'] - df['close'].shift())
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        atr_series = true_range.ewm(alpha=1.0/self.atr_period, adjust=False).mean()
+        atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
         atr_closed = atr_series.iloc[closed_idx]
         
         # Calculate EMA at closed index
@@ -203,16 +203,16 @@ class DonchianChannelStrategy:
             if self.long_entry_bar is None:
                 self.long_entry_bar = len(df) + closed_idx  # Approximate bar index
 
-        # 1. Trailing Stop Update (uses current price for responsiveness)
+        # 1. Trailing Stop Update (evaluate on candle close, NOT live intra-bar wicks)
         if self.trailing_stop_level is not None:
             if self.current_position == 1:
-                # Long: Stop moves UP only
-                new_stop = current_price - (atr * self.atr_mult_trail)
+                # Long: Stop moves UP only (ratchets based on closed candle)
+                new_stop = close_closed - (atr_closed * self.atr_mult_trail)
                 if new_stop > self.trailing_stop_level:
                     self.trailing_stop_level = new_stop
             elif self.current_position == -1:
-                # Short: Stop moves DOWN only
-                new_stop = current_price + (atr * self.atr_mult_trail)
+                # Short: Stop moves DOWN only (ratchets based on closed candle)
+                new_stop = close_closed + (atr_closed * self.atr_mult_trail)
                 if new_stop < self.trailing_stop_level:
                     self.trailing_stop_level = new_stop
                     
@@ -448,7 +448,7 @@ class DonchianChannelStrategy:
         high_close = np.abs(df['high'] - df['close'].shift())
         low_close = np.abs(df['low'] - df['close'].shift())
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        atr_series = true_range.ewm(alpha=1.0/self.atr_period, adjust=False).mean()
+        atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
         
         # NEW: EMA Calculation for Backtest
         ema_src = df[self.ema_source] if self.ema_source in df.columns else df['close']
