@@ -54,28 +54,6 @@ class DonchianChannelStrategy:
         
         self.indicator_label = "Donchian"
         
-    def _update_bars_per_day(self, timeframe: str):
-        """Update bars_per_day and min_long_bars based on timeframe."""
-        self.timeframe = timeframe
-        if timeframe == "1h":
-            self.bars_per_day = 24
-        elif timeframe == "2h":
-            self.bars_per_day = 12
-        elif timeframe == "3h" or timeframe == "180m":
-            self.bars_per_day = 8
-        elif timeframe == "4h":
-            self.bars_per_day = 6
-        elif timeframe == "6h":
-            self.bars_per_day = 4
-        elif timeframe == "12h":
-            self.bars_per_day = 2
-        elif timeframe == "1d":
-            self.bars_per_day = 1
-        
-        self.min_long_bars = self.bars_per_day * self.min_long_days
-        logger.info(f"Updated Donchian strategy: timeframe={timeframe}, bars_per_day={self.bars_per_day}, min_long_bars={self.min_long_bars}")
-
-        
         # State
         self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat
         self.last_entry_price = 0.0
@@ -98,6 +76,27 @@ class DonchianChannelStrategy:
         # Trade History
         self.trades = []
         self.active_trade = None
+        
+    def _update_bars_per_day(self, timeframe: str):
+        """Update bars_per_day and min_long_bars based on timeframe."""
+        self.timeframe = timeframe
+        if timeframe == "1h":
+            self.bars_per_day = 24
+        elif timeframe == "2h":
+            self.bars_per_day = 12
+        elif timeframe == "3h" or timeframe == "180m":
+            self.bars_per_day = 8
+        elif timeframe == "4h":
+            self.bars_per_day = 6
+        elif timeframe == "6h":
+            self.bars_per_day = 4
+        elif timeframe == "12h":
+            self.bars_per_day = 2
+        elif timeframe == "1d":
+            self.bars_per_day = 1
+        
+        self.min_long_bars = self.bars_per_day * self.min_long_days
+        logger.info(f"Updated Donchian strategy: timeframe={timeframe}, bars_per_day={self.bars_per_day}, min_long_bars={self.min_long_bars}")
         
         # Closed Candle Cache
         self.last_closed_time_str = "-"

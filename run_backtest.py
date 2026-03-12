@@ -56,6 +56,8 @@ def get_strategy_instance(strategy_name: str, timeframe: str):
         raise ValueError(f"Unknown strategy: {strategy_name}")
         
     strategy.timeframe = timeframe
+    if hasattr(strategy, '_update_bars_per_day'):
+        strategy._update_bars_per_day(timeframe)
     return strategy
 
 def print_summary(metrics: dict):
