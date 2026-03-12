@@ -152,6 +152,10 @@ def run_strategy_terminal(
         strategy = EMACrossStrategy()
         strategy.timeframe = timeframe
         logger.info("Initialized EMACrossStrategy")
+
+    # Update strategy-specific parameters that depend on timeframe
+    if hasattr(strategy, '_update_bars_per_day'):
+        strategy._update_bars_per_day(timeframe)
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
@@ -259,6 +263,7 @@ def run_strategy_terminal(
     
     start_msg = (
         f"{symbol} {strategy_name} started on host: {hostname}\n"
+        f"Timeframe: {timeframe}\n"
         f"Candle Type: {candle_type}\n"
         f"Order Placement: {ansi_enabled_str}\n"
         f"Order Size: {trade_config['order_size']}\n"
@@ -494,7 +499,8 @@ def run_strategy_terminal(
                              reason=reason,
                              mode=mode,
                              strategy_name=strategy_name,
-                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False)
+                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False),
+                             timeframe=timeframe
                          )
                          
                          # Check for successful execution and actual fill price
@@ -586,6 +592,7 @@ def run_strategy_terminal(
                 dashboard_lines.append(f" Strategy:     {strategy_name.upper()}")
                 dashboard_lines.append(f" Status:       RUNNING ({mode.upper()})")
                 dashboard_lines.append(f" Position:     {pos_str}")
+                dashboard_lines.append(f" Timeframe:    {timeframe}")
                 
                 if live_pos_data and float(live_pos_data.get('size', 0)) != 0:
                     sz = float(live_pos_data.get('size', 0))
@@ -802,7 +809,7 @@ def run_strategy_terminal(
 
     except KeyboardInterrupt:
         logger.info("Stopping strategy...")
-        notifier.send_status_message(f"Strategy Stopped (Terminal)", f"{symbol} {strategy_name} stopped by user.")
+        notifier.send_status_message(f"Strategy Stopped (Terminal)", f"{symbol} {strategy_name} ({timeframe}) stopped by user.")
 
 
 # ---------------------------------------------------------------------------

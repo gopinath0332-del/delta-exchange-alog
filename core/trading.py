@@ -139,7 +139,8 @@ def execute_strategy_signal(
     mode: str = "live",
     strategy_name: Optional[str] = None,
     market_price: Optional[float] = None,
-    enable_partial_tp: bool = False
+    enable_partial_tp: bool = False,
+    timeframe: Optional[str] = None
 ):
     """
     Execute a strategy signal: Place order and send alert.
@@ -517,7 +518,8 @@ def execute_strategy_signal(
                 market_price=market_price,
                 lot_size=lot_size,
                 # Pass configured target margin so Discord/email shows the capital allocation setting
-                target_margin=target_margin if is_entry else None
+                target_margin=target_margin if is_entry else None,
+                timeframe=timeframe
             )
         except Exception as e:
             logger.error(f"Failed to send trade alert: {e}")

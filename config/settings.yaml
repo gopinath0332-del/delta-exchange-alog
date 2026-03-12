@@ -2,11 +2,17 @@
 
 # Supported timeframes for analysis
 timeframes:
-  - 5m
-  - 15m
-  - 1h
-  - 4h
-  - 1d
+  - "1m"
+  - "5m"
+  - "15m"
+  - "30m"
+  - "1h"
+  - "2h"
+  - "3h"
+  - "4h"
+  - "6h"
+  - "12h"
+  - "1d"
 
 # Backtesting Configuration
 backtesting:
@@ -129,17 +135,21 @@ multi_coin:
   donchian_channel:
     symbols:
       - symbol: PIUSD
-        timeframe: 1h
+        timeframe: 4h
         candle_type: heikin-ashi
         log_file: logs/pi.log # Per-coin log file (same as the old dedicated service)
       - symbol: PIPPINUSD
-        timeframe: 1h
+        timeframe: 2h
         candle_type: heikin-ashi
         log_file: logs/pippin.log
-      - symbol: BERAUSD
+      - symbol: SLVONUSD
         timeframe: 1h
         candle_type: heikin-ashi
-        log_file: logs/bera.log
+        log_file: logs/slvon.log
+      - symbol: RIVERUSD
+        timeframe: 6h
+        candle_type: heikin-ashi
+        log_file: logs/river.log
 
 # Firestore Configuration (for trade journaling)
 firestore:

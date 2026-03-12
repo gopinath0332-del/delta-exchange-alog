@@ -113,7 +113,8 @@ class EmailNotifier:
                         trading_fees: Optional[float] = None,
                         market_price: Optional[float] = None,
                         lot_size: Optional[int] = None,
-                        target_margin: Optional[float] = None):
+                        target_margin: Optional[float] = None,
+                        timeframe: Optional[str] = None):
         """
         Send a formatted trade alert email.
 
@@ -139,6 +140,7 @@ class EmailNotifier:
         lot_size_line = f"<li><strong>Lot Size:</strong> {lot_size} contracts</li>" if lot_size is not None else ""
         # Show the configured target margin so the recipient knows the capital allocation
         target_margin_line = f"<li><strong>Target Margin:</strong> ${target_margin:,.2f}</li>" if target_margin is not None else ""
+        timeframe_line = f"<li><strong>Timeframe:</strong> {timeframe}</li>" if timeframe else ""
 
         # HTML Body
         body = f"""
@@ -152,6 +154,7 @@ class EmailNotifier:
               <li><strong>Price:</strong> ${price:,.2f}</li>
               {lot_size_line}
               {target_margin_line}
+              {timeframe_line}
               <li><strong>RSI:</strong> {rsi:.2f}</li>
               <li><strong>Reason:</strong> {reason}</li>
             </ul>
