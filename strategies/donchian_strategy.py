@@ -35,7 +35,14 @@ class DonchianChannelStrategy:
         self.atr_mult_trail = cfg.get("atr_mult_trail", 2.0)
         self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Changed default to True
         self.partial_pct = cfg.get("partial_pct", 0.5)
-        self.bars_per_day = cfg.get("bars_per_day", 24)
+        
+        # Determine bars_per_day dynamically based on timeframe
+        # timeframe format e.g. "1h", "2h", "4h", "6h", "1d", "180m"
+        self.timeframe = "1h" # Default, will be set by runner
+        
+        # Use provided bars_per_day as fallback, otherwise calculate
+        default_bars = cfg.get("bars_per_day", 24)
+        self.bars_per_day = default_bars
         self.min_long_days = cfg.get("min_long_days", 0)  # Changed default to 0
         self.min_long_bars = self.bars_per_day * self.min_long_days
         # NEW: EMA Filter
@@ -46,7 +53,28 @@ class DonchianChannelStrategy:
         self.allow_short = self.trade_mode in ["Short", "Both"]
         
         self.indicator_label = "Donchian"
-        self.timeframe = "1h"
+        
+    def _update_bars_per_day(self, timeframe: str):
+        """Update bars_per_day and min_long_bars based on timeframe."""
+        self.timeframe = timeframe
+        if timeframe == "1h":
+            self.bars_per_day = 24
+        elif timeframe == "2h":
+            self.bars_per_day = 12
+        elif timeframe == "3h" or timeframe == "180m":
+            self.bars_per_day = 8
+        elif timeframe == "4h":
+            self.bars_per_day = 6
+        elif timeframe == "6h":
+            self.bars_per_day = 4
+        elif timeframe == "12h":
+            self.bars_per_day = 2
+        elif timeframe == "1d":
+            self.bars_per_day = 1
+        
+        self.min_long_bars = self.bars_per_day * self.min_long_days
+        logger.info(f"Updated Donchian strategy: timeframe={timeframe}, bars_per_day={self.bars_per_day}, min_long_bars={self.min_long_bars}")
+
         
         # State
         self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat

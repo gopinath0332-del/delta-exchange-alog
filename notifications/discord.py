@@ -74,7 +74,8 @@ class DiscordNotifier:
                         trading_fees: Optional[float] = None,
                         market_price: Optional[float] = None,
                         lot_size: Optional[int] = None,
-                        target_margin: Optional[float] = None):
+                        target_margin: Optional[float] = None,
+                        timeframe: Optional[str] = None):
         """
         Send a formatted trade alert with ANSI color codes.
 
@@ -108,6 +109,9 @@ class DiscordNotifier:
         message = ""
         if strategy_name:
             message += f"Strategy: \u001b[1;37m{strategy_name}\u001b[0m\n"
+        
+        if timeframe:
+            message += f"Timeframe: \u001b[1;37m{timeframe}\u001b[0m\n"
 
         message += (
             f"Price: \u001b[0;36m${price:,.2f}\u001b[0m\n"

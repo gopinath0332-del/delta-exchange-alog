@@ -494,7 +494,8 @@ def run_strategy_terminal(
                              reason=reason,
                              mode=mode,
                              strategy_name=strategy_name,
-                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False)
+                             enable_partial_tp=getattr(strategy, 'enable_partial_tp', False),
+                             timeframe=timeframe
                          )
                          
                          # Check for successful execution and actual fill price
@@ -586,6 +587,7 @@ def run_strategy_terminal(
                 dashboard_lines.append(f" Strategy:     {strategy_name.upper()}")
                 dashboard_lines.append(f" Status:       RUNNING ({mode.upper()})")
                 dashboard_lines.append(f" Position:     {pos_str}")
+                dashboard_lines.append(f" Timeframe:    {timeframe}")
                 
                 if live_pos_data and float(live_pos_data.get('size', 0)) != 0:
                     sz = float(live_pos_data.get('size', 0))
