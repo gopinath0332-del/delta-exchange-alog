@@ -95,7 +95,9 @@ class DiscordNotifier:
             lot_size: Number of contracts/lots in the order
             target_margin: Configured target margin from .env (e.g. TARGET_MARGIN_PAXG=30)
         """
-        title = f"🚀 TRADING SIGNAL: {side} {symbol}"
+        # Add timeframe to title if available
+        title_suffix = f" ({timeframe})" if timeframe else ""
+        title = f"🚀 TRADING SIGNAL: {side} {symbol}{title_suffix}"
         color = 5763719 if "LONG" in side.upper() else 15548997  # Green for Long, Red for Short
         
         # ANSI Color Codes

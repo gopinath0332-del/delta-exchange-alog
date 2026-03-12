@@ -263,6 +263,7 @@ def run_strategy_terminal(
     
     start_msg = (
         f"{symbol} {strategy_name} started on host: {hostname}\n"
+        f"Timeframe: {timeframe}\n"
         f"Candle Type: {candle_type}\n"
         f"Order Placement: {ansi_enabled_str}\n"
         f"Order Size: {trade_config['order_size']}\n"
@@ -808,7 +809,7 @@ def run_strategy_terminal(
 
     except KeyboardInterrupt:
         logger.info("Stopping strategy...")
-        notifier.send_status_message(f"Strategy Stopped (Terminal)", f"{symbol} {strategy_name} stopped by user.")
+        notifier.send_status_message(f"Strategy Stopped (Terminal)", f"{symbol} {strategy_name} ({timeframe}) stopped by user.")
 
 
 # ---------------------------------------------------------------------------
