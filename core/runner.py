@@ -152,6 +152,10 @@ def run_strategy_terminal(
         strategy = EMACrossStrategy()
         strategy.timeframe = timeframe
         logger.info("Initialized EMACrossStrategy")
+
+    # Update strategy-specific parameters that depend on timeframe
+    if hasattr(strategy, '_update_bars_per_day'):
+        strategy._update_bars_per_day(timeframe)
     else:
         logger.error(f"Unknown strategy: {strategy_name}")
         return
