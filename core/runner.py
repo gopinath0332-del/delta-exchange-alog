@@ -761,7 +761,14 @@ def run_strategy_terminal(
                     e_ind = get_ind_val(t, 'entry')
                     e_price = f"{float(t.get('entry_price', 0)):.{p_decimals}f}"
                     pts_str = get_points_str(t, closes.iloc[-1])
-                    status = "OPEN (P)" if t.get('partial_exit') else "OPEN"
+                    if t.get('milestone_exit'):
+                        # Count how many milestones hit
+                        m_count = sum(1 for h in getattr(strategy, 'milestones_hit', []) if h)
+                        status = f"OPEN (M{m_count})"
+                    elif t.get('partial_exit'):
+                        status = "OPEN (P)"
+                    else:
+                        status = "OPEN"
                     dashboard_lines.append(f" {t['type']:<8} {t['entry_time']:<16} {e_price:<12} {e_ind:<10} {'-':<16} {'-':<12} {'-':<10} {pts_str:<10} {status:<10}")
                 
                 # Past trades (last 5, reversed)

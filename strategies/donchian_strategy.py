@@ -35,6 +35,10 @@ class DonchianChannelStrategy:
         self.atr_mult_trail = cfg.get("atr_mult_trail", 2.0)
         self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Changed default to True
         self.partial_pct = cfg.get("partial_pct", 0.5)
+
+        # Profit Milestone Exits (works alongside ATR partial TP)
+        self.enable_profit_milestones = cfg.get("enable_profit_milestones", False)
+        self.profit_milestones = cfg.get("profit_milestones", [])
         
         # Determine bars_per_day dynamically based on timeframe
         # timeframe format e.g. "1h", "2h", "4h", "6h", "1d", "180m"
@@ -62,7 +66,8 @@ class DonchianChannelStrategy:
         self.tp_level = None
         self.trailing_stop_level = None
         self.partial_exit_done = False
-        
+        self.milestones_hit = [False] * len(self.profit_milestones)
+
         # Duration State
         self.last_long_duration_bars = 0
         self.long_entry_bar = None
@@ -259,6 +264,22 @@ class DonchianChannelStrategy:
             elif self.current_position == -1 and current_price <= self.tp_level:
                 return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} <= {self.tp_level:.4f}"
 
+        # 3b. Profit Milestone Exits (live price, independent of ATR partial TP)
+        if self.enable_profit_milestones and self.entry_price and self.current_position != 0:
+            for idx, milestone in enumerate(self.profit_milestones):
+                if self.milestones_hit[idx]:
+                    continue
+                pnl_threshold = milestone["pnl_pct"]
+                exit_pct = milestone["exit_pct"]
+                if self.current_position == 1:
+                    pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100
+                else:
+                    pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100
+                if pnl_pct >= pnl_threshold:
+                    return "MILESTONE_EXIT", (
+                        f"Milestone {idx + 1}: PnL {pnl_pct:.1f}% >= {pnl_threshold}%"
+                        f" | exit_pct={exit_pct}"
+                    )
 
         # 4. Entry/Exit Logic (Closed Candle)
         
@@ -359,6 +380,26 @@ class DonchianChannelStrategy:
                 self.partial_exit_done = True
                 self.active_trade["partial_exit"] = True
 
+        elif action == "MILESTONE_EXIT":
+            # Parse milestone index from reason string
+            milestone_idx = 0
+            if reason:
+                import re
+                match = re.search(r"Milestone (\d+):", reason)
+                if match:
+                    milestone_idx = int(match.group(1)) - 1
+            if 0 <= milestone_idx < len(self.milestones_hit):
+                self.milestones_hit[milestone_idx] = True
+            if self.active_trade:
+                milestone_trade = self.active_trade.copy()
+                milestone_trade["exit_time"] = format_time(current_time_ms)
+                milestone_trade["exit_price"] = price
+                milestone_trade["status"] = f"MILESTONE_{milestone_idx + 1}"
+                entry = float(self.active_trade['entry_price'])
+                milestone_trade["points"] = price - entry if self.current_position == 1 else entry - price
+                self.trades.append(milestone_trade)
+                self.active_trade["milestone_exit"] = True
+
         elif action == "EXIT_LONG":
             self.current_position = 0
             # Calculate Duration
@@ -394,6 +435,7 @@ class DonchianChannelStrategy:
             self.tp_level = None
             self.trailing_stop_level = None
             self.partial_exit_done = False
+            self.milestones_hit = [False] * len(self.profit_milestones)
             self.long_entry_bar = None
 
         elif action == "EXIT_SHORT":
@@ -404,15 +446,16 @@ class DonchianChannelStrategy:
                 self.active_trade["status"] = "CLOSED"
                 if "Trailing" in reason: self.active_trade["status"] = "TRAIL STOP"
                 elif "Breakout" in reason: self.active_trade["status"] = "CHANNEL EXIT"
-                
+
                 self.active_trade["points"] = self.active_trade["entry_price"] - price
                 self.trades.append(self.active_trade)
                 self.active_trade = None
-                
+
             self.entry_price = None
             self.tp_level = None
             self.trailing_stop_level = None
             self.partial_exit_done = False
+            self.milestones_hit = [False] * len(self.profit_milestones)
 
     def set_position(self, position: int):
         self.current_position = position
@@ -463,7 +506,8 @@ class DonchianChannelStrategy:
         self.trailing_stop_level = None
         self.last_long_duration_bars = 0
         self.long_entry_bar = None
-        
+        self.milestones_hit = [False] * len(self.profit_milestones)
+
         if df.empty: return
         
         # Pre-calculate
@@ -525,7 +569,27 @@ class DonchianChannelStrategy:
                     self.update_position_state("PARTIAL_EXIT", current_time_ms, indicators, self.tp_level, f"Partial TP Hit: {self.tp_level:.4f}")
                 elif self.current_position == -1 and low <= self.tp_level:
                     self.update_position_state("PARTIAL_EXIT", current_time_ms, indicators, self.tp_level, f"Partial TP Hit: {self.tp_level:.4f}")
-            
+
+            # Profit Milestone Check (works alongside ATR partial TP)
+            if self.enable_profit_milestones and self.entry_price and self.current_position != 0:
+                for idx, milestone in enumerate(self.profit_milestones):
+                    if self.milestones_hit[idx]:
+                        continue
+                    pnl_threshold = milestone["pnl_pct"]
+                    exit_pct = milestone["exit_pct"]
+                    if self.current_position == 1:
+                        milestone_price = self.entry_price * (1 + pnl_threshold / 100)
+                        if high >= milestone_price:
+                            reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
+                            self.update_position_state("MILESTONE_EXIT", current_time_ms, indicators, milestone_price, reason)
+                            break  # Only one milestone per bar
+                    else:
+                        milestone_price = self.entry_price * (1 - pnl_threshold / 100)
+                        if low <= milestone_price:
+                            reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
+                            self.update_position_state("MILESTONE_EXIT", current_time_ms, indicators, milestone_price, reason)
+                            break  # Only one milestone per bar
+
             # Channel Logic: Use Prev Candle
             upper_prev = upper_channel.iloc[i-1]
             lower_prev = lower_channel.iloc[i-1]
@@ -540,7 +604,8 @@ class DonchianChannelStrategy:
                     self.trailing_stop_level = close - (atr * self.atr_mult_trail)
                     self.long_entry_bar = i
                     self.partial_exit_done = False
-                
+                    self.milestones_hit = [False] * len(self.profit_milestones)
+
                 # Short: Breakdown AND close < EMA
                 elif self.allow_short and close <= lower_prev and close < ema:
                     # Check Duration
@@ -550,6 +615,7 @@ class DonchianChannelStrategy:
                         self.tp_level = close - (atr * self.atr_mult_tp)
                         self.trailing_stop_level = close + (atr * self.atr_mult_trail)
                         self.partial_exit_done = False
+                        self.milestones_hit = [False] * len(self.profit_milestones)
             
             # Exits (Channel) by Signal
             elif self.current_position == 1:
