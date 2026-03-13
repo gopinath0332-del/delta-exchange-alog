@@ -21,7 +21,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
   - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
   - Donchian Channel (RIVERUSD, PIPPINUSD) - Breakout strategy with 100 EMA trend filter and ATR trailing stop
-  - **Donchian Channel (PIUSD)** - 1H Heikin Ashi, 5x leverage, $50 target margin
+  - **Donchian Channel (PIUSD)** - 4H Standard, 5x leverage, $50 target margin
   - **Donchian Channel (BERAUSD)** - 1H Heikin Ashi, 5x leverage, $50 target margin
   - **Donchian Channel (PAXGUSD)** - 1H Heikin Ashi, 5x leverage, $30 target margin (NEW)
   - **EMA Cross (BTCUSD)** - 10/20 EMA crossover with position flipping
@@ -592,7 +592,7 @@ ENABLE_ORDER_PLACEMENT_PIPPIN=true
 
 Same Donchian Channel strategy, configured for the **PIUSD** futures pair.
 
-- **Timeframe**: 1H with **Heikin Ashi** candles
+- **Timeframe**: 4H with **Standard** candles
 - **Leverage**: 5x
 - **Target Margin**: $50
 - **Strategy ID**: 11 (`--strategy 11`)

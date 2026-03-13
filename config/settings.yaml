@@ -136,7 +136,7 @@ multi_coin:
     symbols:
       - symbol: PIUSD
         timeframe: 4h
-        candle_type: heikin-ashi
+        candle_type: standard
         log_file: logs/pi.log # Per-coin log file (same as the old dedicated service)
       - symbol: PIPPINUSD
         timeframe: 2h

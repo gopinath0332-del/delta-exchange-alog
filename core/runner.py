@@ -905,8 +905,8 @@ def run_multi_symbol_terminal(
         config:         Application configuration.
         strategy_name:  Strategy key (e.g. 'donchian_channel').
         symbols_config: List of dicts from settings.yaml multi_coin section:
-                          [{'symbol': 'PIUSD', 'timeframe': '1h',
-                            'candle_type': 'heikin-ashi', 'log_file': 'logs/pi.log'}, ...]
+                          [{'symbol': 'PIUSD', 'timeframe': '4h',
+                            'candle_type': 'standard', 'log_file': 'logs/pi.log'}, ...]
         mode:           'live' or 'paper'.
     """
     if not symbols_config:

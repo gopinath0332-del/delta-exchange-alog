@@ -123,15 +123,15 @@ def main():
             "desc": "Long/Short based on EMA 10/20 crossover."
         },
         {
-            # PIUSD Donchian Channel — 1H Heikin Ashi, 5x leverage, $50 target margin
+            # PIUSD Donchian Channel — 4H Standard, 5x leverage, $50 target margin
             # Reuses the existing DonchianChannelStrategy (no new strategy code needed).
             # Start/stop: sudo systemctl start/stop delta-bot-pi
             "id": 11,
-            "name": "PIUSD Donchian Channel (1H Heikin Ashi)",
+            "name": "PIUSD Donchian Channel (4H Standard)",
             "symbol": "PIUSD",
             "monitor": "donchian_channel",
-            "timeframe": "1h",
-            "candle_type": "heikin-ashi",
+            "timeframe": "4h",
+            "candle_type": "standard",
             "desc": "Donchian breakout with 100 EMA trend filter and ATR trailing stop."
         },
         {
