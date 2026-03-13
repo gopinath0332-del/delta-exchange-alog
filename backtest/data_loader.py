@@ -78,7 +78,8 @@ class DataLoader:
                 df['time'] = pd.to_datetime(datetime_str, format='mixed', dayfirst=True)
             
             # Convert timezone-aware/naive datetimes to Unix epoch seconds (float)
-            df['time'] = df['time'].astype('int64') / 10**9
+            # We explicitly cast to 'datetime64[s]' to handle ns/us/ms resolutions robustly
+            df['time'] = df['time'].dt.floor('s').view('int64') / 10**9
             
             # Sort by time to ensure chronological order
             df = df.sort_values('time').reset_index(drop=True)

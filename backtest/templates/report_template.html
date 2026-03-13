@@ -254,8 +254,8 @@
             <td>{{ trade['Entry Time'] }}</td>
             <td>{{ trade['Exit Time'] }}</td>
             <td>
-              {{ trade['Position Type'] }}{% if trade['Exit Type'] == 'PARTIAL'
-              %} (Partial){% endif %}
+              {{ trade['Position Type'] }}{% if 'PARTIAL' in trade['Exit Type']
+              %} (Partial){% elif 'MILESTONE' in trade['Exit Type'] %} ({{ trade['Exit Type'] | title | replace('_', ' ') }}){% endif %}
             </td>
             <td>{{ "%.4f"|format(trade['Position Size']) }}</td>
             <td>{{ "%.4f"|format(trade['Entry Price']) }}</td>
