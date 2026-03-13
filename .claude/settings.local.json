@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/admin/Projects/delta-exchange-alog -maxdepth 3 -type f \\\\\\(-name .pre-commit-config.yaml -o -name Dockerfile* -o -name docker-compose* -o -name .github -o -name *.sh \\\\\\))"
+    ]
+  }
+}
