@@ -155,7 +155,7 @@ multi_coin:
         log_file: logs/slvon.log
       - symbol: RIVERUSD
         timeframe: 6h
-        candle_type: heikin-ashi
+        candle_type: standard
         log_file: logs/river.log
 
 # Firestore Configuration (for trade journaling)
