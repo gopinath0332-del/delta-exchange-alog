@@ -1,6 +1,6 @@
 import pandas as pd
+import datetime
 from typing import List, Dict, Any, Tuple
-from datetime import datetime
 
 from core.logger import get_logger
 from core.config import get_config
@@ -54,7 +54,6 @@ class BacktestEngine:
         
         # Set start time for equity curve
         if not df.empty and 'time' in df.columns:
-            import datetime
             ts = df['time'].iloc[0]
             if ts > 1e10: ts /= 1000
             start_time_str = datetime.datetime.fromtimestamp(ts).strftime('%d-%m-%y %H:%M')

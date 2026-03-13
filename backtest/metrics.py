@@ -127,7 +127,6 @@ def calculate_metrics(
     
     # Priority 1: Use full input data coverage if provided
     if data_df is not None and not data_df.empty and 'time' in data_df.columns:
-        import datetime
         ts_min = data_df['time'].min()
         ts_max = data_df['time'].max()
         if ts_min > 1e10: ts_min /= 1000
@@ -266,8 +265,7 @@ def calculate_metrics(
     if equity_df is not None and not equity_df.empty and len(equity_df) > 1:
         def try_parse(t):
             try:
-                from datetime import datetime
-                return datetime.strptime(str(t).split(' (')[0], '%d-%m-%y %H:%M')
+                return datetime.datetime.strptime(str(t).split(' (')[0], '%d-%m-%y %H:%M')
             except:
                 return None
         
