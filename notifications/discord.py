@@ -2,7 +2,8 @@
 
 import time
 import requests
-from typing import Optional, Dict
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from core.logger import get_logger
 
@@ -191,6 +192,97 @@ class DiscordNotifier:
             logger.error("Discord connection failed", error=str(e))
         except Exception as e:
             logger.error("Failed to send Discord notification", error=str(e))
+
+    def _format_ts(self, created_at: Any) -> str:
+        """Parse a transaction timestamp (µs int or ISO string) to 'YYYY-MM-DD HH:MM UTC'."""
+        try:
+            if isinstance(created_at, (int, float)):
+                ts = float(created_at)
+                if ts > 1e15:        # microseconds
+                    ts /= 1_000_000
+                elif ts > 1e12:      # milliseconds
+                    ts /= 1_000
+                dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            else:
+                dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+            return dt.strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            return "unknown"
+
+    def send_fee_breakdown(
+        self,
+        symbol: str,
+        funding_txns: List[Dict[str, Any]],
+        trading_fee_txns: List[Dict[str, Any]],
+    ) -> None:
+        """
+        Send a combined fee breakdown message listing all per-transaction details.
+
+        Args:
+            symbol: Trading symbol (e.g. BTCUSD)
+            funding_txns: List of funding wallet transaction dicts
+            trading_fee_txns: List of trading fee wallet transaction dicts
+        """
+        if not self.webhook_url:
+            logger.warning("Discord webhook URL not configured")
+            return
+
+        if not funding_txns and not trading_fee_txns:
+            return
+
+        lines = []
+
+        if funding_txns:
+            lines.append("\u001b[1;37mFUNDING\u001b[0m")
+            funding_total = 0.0
+            for t in funding_txns:
+                ts = self._format_ts(t.get("created_at"))
+                amt = float(t.get("amount", 0))
+                funding_total += amt
+                color = "0;32" if amt >= 0 else "0;31"
+                lines.append(f"  {ts}  \u001b[{color}m${amt:+.4f}\u001b[0m")
+            subtotal_color = "0;32" if funding_total >= 0 else "0;31"
+            lines.append(f"Subtotal: \u001b[{subtotal_color}m${funding_total:+.4f}\u001b[0m")
+
+        if funding_txns and trading_fee_txns:
+            lines.append("")
+
+        if trading_fee_txns:
+            lines.append("\u001b[1;37mTRADING FEES\u001b[0m")
+            fee_total = 0.0
+            for t in trading_fee_txns:
+                ts = self._format_ts(t.get("created_at"))
+                amt = float(t.get("amount", 0))
+                fee_total += amt
+                lines.append(f"  {ts}  \u001b[0;31m${abs(amt):.4f}\u001b[0m")
+            lines.append(f"Subtotal: \u001b[0;31m${abs(fee_total):.4f}\u001b[0m")
+
+        # Net fees line
+        if funding_txns and trading_fee_txns:
+            lines.append("")
+            funding_sum = sum(float(t.get("amount", 0)) for t in funding_txns)
+            fee_sum = sum(float(t.get("amount", 0)) for t in trading_fee_txns)
+            net = funding_sum + fee_sum
+            net_color = "0;32" if net >= 0 else "0;31"
+            lines.append(f"Net Fees: \u001b[{net_color}m${net:+.4f}\u001b[0m")
+
+        body = "\n".join(lines)
+        formatted = f"```ansi\n{body}\n```"
+
+        try:
+            embed = {
+                "title": f"📋 Fee Breakdown — {symbol}",
+                "description": formatted,
+                "color": 3447003,  # Neutral blue
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            response = requests.post(self.webhook_url, json={"embeds": [embed]}, timeout=5)
+            response.raise_for_status()
+            logger.debug("Discord fee breakdown sent", symbol=symbol)
+        except requests.RequestException as e:
+            logger.error("Discord connection failed", error=str(e))
+        except Exception as e:
+            logger.error("Failed to send fee breakdown", error=str(e))
 
     def send_status_message_with_color(self, title: str, message: str, order_placement_enabled: Optional[bool] = None):
         """

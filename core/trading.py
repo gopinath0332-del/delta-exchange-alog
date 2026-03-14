@@ -543,7 +543,9 @@ def execute_strategy_signal(
         pnl = None
         funding_charges = None
         trading_fees = None
-        
+        funding_txns: list = []     # raw txns kept for fee breakdown message
+        trading_fee_txns: list = []
+
         if not is_entry and active_position:
             try:
                 # Extract unrealized PnL (will be realized after exit)
@@ -559,6 +561,7 @@ def execute_strategy_signal(
                     try:
                         txns = client.get_funding_transactions(entry_ts_us, exit_ts_us)
                         if txns:
+                            funding_txns = txns
                             funding_charges = sum(float(t.get("amount", 0)) for t in txns)
                             logger.info(
                                 f"Funding from wallet txns: ${funding_charges:+,.4f}"
@@ -577,6 +580,7 @@ def execute_strategy_signal(
                     try:
                         fee_txns = client.get_trading_fee_transactions(entry_ts_us, exit_ts_us)
                         if fee_txns:
+                            trading_fee_txns = fee_txns
                             # Fee amounts are negative debits; use abs() for display
                             trading_fees = sum(abs(float(t.get("amount", 0))) for t in fee_txns)
                             logger.info(
@@ -617,7 +621,14 @@ def execute_strategy_signal(
             )
         except Exception as e:
             logger.error(f"Failed to send trade alert: {e}")
-        
+
+        # 8b. Send fee breakdown as a separate Discord message (exit signals, live mode only)
+        if not is_entry and mode != "paper" and (funding_txns or trading_fee_txns):
+            try:
+                notifier.send_fee_breakdown(symbol, funding_txns, trading_fee_txns)
+            except Exception as e:
+                logger.warning(f"Failed to send fee breakdown: {e}")
+
         # 9. Journal Trade to Firestore
         # This happens after successful execution and notification
         # Determine entry_price and exit_price based on trade type
