@@ -2,7 +2,7 @@
 
 import time
 import requests
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from core.config import Config
 from core.logger import get_logger
@@ -91,6 +91,16 @@ class NotificationManager:
             self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe)
             
         logger.info(f"Alert sent: {side} {symbol} @ {price} (RSI: {rsi:.2f})")
+
+    def send_fee_breakdown(
+        self,
+        symbol: str,
+        funding_txns: List[Dict[str, Any]],
+        trading_fee_txns: List[Dict[str, Any]],
+    ) -> None:
+        """Send per-transaction fee breakdown to Discord."""
+        if self.discord:
+            self.discord.send_fee_breakdown(symbol, funding_txns, trading_fee_txns)
 
     def send_error(self, title: str, error: str):
         """Send error alert to error webhook (or main webhook if not configured)."""

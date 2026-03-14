@@ -1,5 +1,9 @@
 # CLAUDE.md — Delta Exchange Algo Trading Platform
 
+## Workflow Rules
+
+- **Always use Plan Mode** before making any edits. Present a plan and wait for user approval before writing any code or modifying files.
+
 Python 3.9+ algorithmic trading platform for Delta Exchange crypto futures. Supports backtesting, paper trading, and live trading with 8 strategies, Discord/email alerts, and Firestore trade journaling.
 
 ## Common Commands
