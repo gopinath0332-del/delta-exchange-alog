@@ -319,7 +319,38 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.error(f"Failed to fetch position for partial exit: {e}")
                 enable_orders = False
-        
+        elif action == "MILESTONE_EXIT":
+            # Profit milestone exit — dynamic exit percentage parsed from reason string
+            import re
+            exit_pct_match = re.search(r"exit_pct=([0-9.]+)", reason)
+            exit_pct = float(exit_pct_match.group(1)) if exit_pct_match else 0.30
+            try:
+                current_positions = client.get_positions(product_id=product_id)
+                active_position = next((p for p in current_positions if float(p.get('size', 0)) != 0), None)
+                if active_position:
+                    current_size = float(active_position['size'])
+                    side = "sell" if current_size > 0 else "buy"
+                    milestone_size = int(abs(current_size) * exit_pct)
+                    if milestone_size > 0:
+                        order_size = milestone_size
+                        lot_size = order_size
+                        logger.info(
+                            f"Milestone Exit: Closing {order_size} lots"
+                            f" ({exit_pct:.0%} of {abs(current_size)})"
+                            f" - Direction: {'LONG' if current_size > 0 else 'SHORT'}"
+                        )
+                    else:
+                        logger.warning(f"Position size {abs(current_size)} too small for milestone exit. Sending ALERT ONLY.")
+                        enable_orders = False
+                        reason += " [SIZE TOO SMALL]"
+                else:
+                    logger.warning("No active position found for milestone exit. Sending ALERT ONLY.")
+                    enable_orders = False
+                    reason += " [NO POSITION]"
+            except Exception as e:
+                logger.error(f"Failed to fetch position for milestone exit: {e}")
+                enable_orders = False
+
         if not side:
             logger.warning(f"Unknown action: {action}")
             return
@@ -575,7 +606,7 @@ def execute_strategy_signal(
                 rsi=rsi,
                 reason=reason,
                 is_entry=is_entry,
-                is_partial_exit=("PARTIAL" in action),
+                is_partial_exit=("PARTIAL" in action or action == "MILESTONE_EXIT"),
                 entry_price=entry_price_for_journal,
                 exit_price=exit_price_for_journal,
                 execution_price=actual_execution_price or price,
