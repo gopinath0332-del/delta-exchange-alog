@@ -549,14 +549,12 @@ def execute_strategy_signal(
                 # Extract unrealized PnL (will be realized after exit)
                 pnl = float(active_position.get('unrealized_pnl', 0.0))
 
-                # Extract commission/trading fees
-                trading_fees = float(active_position.get('commission', 0.0))
-
-                # Fetch actual funding debits/credits from wallet transactions
-                # for the duration of this trade (entry time → now)
+                # Compute trade time range (reused for both funding and fee fetches)
                 entry_ts_us = _parse_position_timestamp_us(active_position.get("created_at"))
                 exit_ts_us = int(time.time() * 1_000_000)
 
+                # Fetch actual funding debits/credits from wallet transactions
+                # for the duration of this trade (entry time → now)
                 if entry_ts_us and mode != "paper":
                     try:
                         txns = client.get_funding_transactions(entry_ts_us, exit_ts_us)
@@ -573,6 +571,25 @@ def execute_strategy_signal(
                         funding_charges = float(active_position.get('funding_pnl', 0.0))
                 else:
                     funding_charges = float(active_position.get('funding_pnl', 0.0))
+
+                # Fetch actual trading fees (entry + all partials + final exit) from wallet
+                if entry_ts_us and mode != "paper":
+                    try:
+                        fee_txns = client.get_trading_fee_transactions(entry_ts_us, exit_ts_us)
+                        if fee_txns:
+                            # Fee amounts are negative debits; use abs() for display
+                            trading_fees = sum(abs(float(t.get("amount", 0))) for t in fee_txns)
+                            logger.info(
+                                f"Trading fees from wallet txns: ${trading_fees:,.4f}"
+                                f" ({len(fee_txns)} transactions)"
+                            )
+                        else:
+                            trading_fees = float(active_position.get('commission', 0.0))
+                    except Exception as fe:
+                        logger.warning(f"Trading fee transaction fetch failed, using position field: {fe}")
+                        trading_fees = float(active_position.get('commission', 0.0))
+                else:
+                    trading_fees = float(active_position.get('commission', 0.0))
 
                 logger.info(f"Exit metrics - PnL: ${pnl:+,.2f}, Fees: ${trading_fees:,.4f}, Funding: ${funding_charges:+,.4f}")
             except Exception as e:

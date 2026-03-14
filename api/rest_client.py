@@ -606,35 +606,38 @@ class DeltaRestClient:
         response = self._make_auth_request("GET", "/v2/wallet/balances")
         return cast(Dict[str, Any], response)
 
-    def get_funding_transactions(
+    def get_wallet_transactions(
         self,
+        transaction_types: str,
         start_time_us: int,
         end_time_us: int,
         asset_id: Optional[int] = None,
         page_size: int = 100,
     ) -> List[Dict[str, Any]]:
         """
-        Fetch all funding rate wallet transactions within a time range.
+        Fetch all wallet transactions of a given type within a time range.
 
         Paginates through all results using the 'after' cursor until exhausted.
 
         Args:
+            transaction_types: Transaction type filter (e.g. 'funding', 'trading_fee')
             start_time_us: Start time in microseconds (epoch)
             end_time_us: End time in microseconds (epoch)
             asset_id: Optional asset ID to filter transactions
             page_size: Number of records per page (max 100)
 
         Returns:
-            List of funding transaction dicts (empty list on any failure)
+            List of transaction dicts (empty list on any failure)
         """
         logger.info(
-            "Fetching funding transactions",
+            "Fetching wallet transactions",
+            transaction_types=transaction_types,
             start_us=start_time_us,
             end_us=end_time_us,
         )
 
         params: Dict[str, Any] = {
-            "transaction_types": "funding",
+            "transaction_types": transaction_types,
             "start_time": start_time_us,
             "end_time": end_time_us,
             "page_size": page_size,
@@ -654,7 +657,7 @@ class DeltaRestClient:
             try:
                 response = self._make_auth_request("GET", "/v2/wallet/transactions", params=params)
             except Exception as e:
-                logger.warning("Failed to fetch funding transactions", error=str(e))
+                logger.warning("Failed to fetch wallet transactions", transaction_types=transaction_types, error=str(e))
                 break
 
             result = response.get("result", []) if isinstance(response, dict) else []
@@ -668,8 +671,26 @@ class DeltaRestClient:
             if not after_cursor:
                 break
 
-        logger.info("Fetched funding transactions", count=len(all_transactions))
+        logger.info("Fetched wallet transactions", transaction_types=transaction_types, count=len(all_transactions))
         return all_transactions
+
+    def get_funding_transactions(
+        self,
+        start_time_us: int,
+        end_time_us: int,
+        asset_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Fetch funding rate wallet transactions. Wrapper around get_wallet_transactions."""
+        return self.get_wallet_transactions("funding", start_time_us, end_time_us, asset_id)
+
+    def get_trading_fee_transactions(
+        self,
+        start_time_us: int,
+        end_time_us: int,
+        asset_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Fetch trading fee wallet transactions. Wrapper around get_wallet_transactions."""
+        return self.get_wallet_transactions("trading_fee", start_time_us, end_time_us, asset_id)
 
     def get_positions(self, product_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """
