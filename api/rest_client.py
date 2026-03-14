@@ -606,6 +606,71 @@ class DeltaRestClient:
         response = self._make_auth_request("GET", "/v2/wallet/balances")
         return cast(Dict[str, Any], response)
 
+    def get_funding_transactions(
+        self,
+        start_time_us: int,
+        end_time_us: int,
+        asset_id: Optional[int] = None,
+        page_size: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch all funding rate wallet transactions within a time range.
+
+        Paginates through all results using the 'after' cursor until exhausted.
+
+        Args:
+            start_time_us: Start time in microseconds (epoch)
+            end_time_us: End time in microseconds (epoch)
+            asset_id: Optional asset ID to filter transactions
+            page_size: Number of records per page (max 100)
+
+        Returns:
+            List of funding transaction dicts (empty list on any failure)
+        """
+        logger.info(
+            "Fetching funding transactions",
+            start_us=start_time_us,
+            end_us=end_time_us,
+        )
+
+        params: Dict[str, Any] = {
+            "transaction_types": "funding",
+            "start_time": start_time_us,
+            "end_time": end_time_us,
+            "page_size": page_size,
+        }
+        if asset_id is not None:
+            params["asset_ids"] = str(asset_id)
+
+        all_transactions: List[Dict[str, Any]] = []
+        after_cursor: Optional[str] = None
+
+        while True:
+            if after_cursor:
+                params["after"] = after_cursor
+            elif "after" in params:
+                del params["after"]
+
+            try:
+                response = self._make_auth_request("GET", "/v2/wallet/transactions", params=params)
+            except Exception as e:
+                logger.warning("Failed to fetch funding transactions", error=str(e))
+                break
+
+            result = response.get("result", []) if isinstance(response, dict) else []
+            if not result:
+                break
+
+            all_transactions.extend(result)
+
+            meta = response.get("meta", {}) if isinstance(response, dict) else {}
+            after_cursor = meta.get("after")
+            if not after_cursor:
+                break
+
+        logger.info("Fetched funding transactions", count=len(all_transactions))
+        return all_transactions
+
     def get_positions(self, product_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Get open positions.

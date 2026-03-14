@@ -15,6 +15,35 @@ from core.firestore_client import journal_trade  # For trade journaling to Fires
 
 logger = get_logger(__name__)
 
+def _parse_position_timestamp_us(created_at) -> Optional[int]:
+    """
+    Convert a position's created_at value to microseconds epoch.
+
+    Handles seconds (int/float) and ISO 8601 strings from the Delta API.
+
+    Args:
+        created_at: Timestamp as int/float seconds, milliseconds, or ISO string
+
+    Returns:
+        Microseconds epoch int, or None if parsing fails
+    """
+    if created_at is None:
+        return None
+    try:
+        if isinstance(created_at, (int, float)):
+            ts = float(created_at)
+            if ts > 1e15:   # already microseconds
+                return int(ts)
+            if ts > 1e12:   # milliseconds
+                return int(ts * 1_000)
+            return int(ts * 1_000_000)  # seconds → microseconds
+        # ISO string (e.g. "2024-03-14T10:30:00Z")
+        dt = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+        return int(dt.timestamp() * 1_000_000)
+    except Exception:
+        return None
+
+
 def calculate_position_size(
     target_margin: float,
     price: float,
@@ -519,15 +548,32 @@ def execute_strategy_signal(
             try:
                 # Extract unrealized PnL (will be realized after exit)
                 pnl = float(active_position.get('unrealized_pnl', 0.0))
-                
+
                 # Extract commission/trading fees
                 trading_fees = float(active_position.get('commission', 0.0))
-                
-                # Note: Funding charges might be in a separate field
-                # Check if there's a funding-specific field, otherwise leave as None
-                # Common fields: 'funding_pnl', 'funding', 'funding_payment'
-                funding_charges = float(active_position.get('funding_pnl', 0.0))
-                
+
+                # Fetch actual funding debits/credits from wallet transactions
+                # for the duration of this trade (entry time → now)
+                entry_ts_us = _parse_position_timestamp_us(active_position.get("created_at"))
+                exit_ts_us = int(time.time() * 1_000_000)
+
+                if entry_ts_us and mode != "paper":
+                    try:
+                        txns = client.get_funding_transactions(entry_ts_us, exit_ts_us)
+                        if txns:
+                            funding_charges = sum(float(t.get("amount", 0)) for t in txns)
+                            logger.info(
+                                f"Funding from wallet txns: ${funding_charges:+,.4f}"
+                                f" ({len(txns)} transactions)"
+                            )
+                        else:
+                            funding_charges = float(active_position.get('funding_pnl', 0.0))
+                    except Exception as fe:
+                        logger.warning(f"Funding transaction fetch failed, using position field: {fe}")
+                        funding_charges = float(active_position.get('funding_pnl', 0.0))
+                else:
+                    funding_charges = float(active_position.get('funding_pnl', 0.0))
+
                 logger.info(f"Exit metrics - PnL: ${pnl:+,.2f}, Fees: ${trading_fees:,.4f}, Funding: ${funding_charges:+,.4f}")
             except Exception as e:
                 logger.warning(f"Failed to extract PnL/fees from position: {e}")
