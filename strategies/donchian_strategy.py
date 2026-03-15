@@ -58,6 +58,9 @@ class DonchianChannelStrategy:
         
         self.indicator_label = "Donchian"
         
+        # Leverage (set by runner from trade_config; used to convert price PnL% to margin PnL%)
+        self.leverage: int = 1
+
         # State
         self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat
         self.last_entry_price = 0.0
@@ -272,9 +275,9 @@ class DonchianChannelStrategy:
                 pnl_threshold = milestone["pnl_pct"]
                 exit_pct = milestone["exit_pct"]
                 if self.current_position == 1:
-                    pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100
+                    pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
                 else:
-                    pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100
+                    pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
                 if pnl_pct >= pnl_threshold:
                     return "MILESTONE_EXIT", (
                         f"Milestone {idx + 1}: PnL {pnl_pct:.1f}% >= {pnl_threshold}%"
@@ -578,13 +581,13 @@ class DonchianChannelStrategy:
                     pnl_threshold = milestone["pnl_pct"]
                     exit_pct = milestone["exit_pct"]
                     if self.current_position == 1:
-                        milestone_price = self.entry_price * (1 + pnl_threshold / 100)
+                        milestone_price = self.entry_price * (1 + pnl_threshold / (100 * self.leverage))
                         if high >= milestone_price:
                             reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
                             self.update_position_state("MILESTONE_EXIT", current_time_ms, indicators, milestone_price, reason)
                             break  # Only one milestone per bar
                     else:
-                        milestone_price = self.entry_price * (1 - pnl_threshold / 100)
+                        milestone_price = self.entry_price * (1 - pnl_threshold / (100 * self.leverage))
                         if low <= milestone_price:
                             reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
                             self.update_position_state("MILESTONE_EXIT", current_time_ms, indicators, milestone_price, reason)
