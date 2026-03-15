@@ -463,7 +463,7 @@ class DonchianChannelStrategy:
     def set_position(self, position: int):
         self.current_position = position
 
-    def reconcile_position(self, size: float, entry_price: float):
+    def reconcile_position(self, size: float, entry_price: float, current_price: float = None):
         """Reconcile internal strategy state with Live Exchange position."""
         import time, datetime
         def format_time(ts_ms): return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
@@ -477,6 +477,7 @@ class DonchianChannelStrategy:
         price_changed = self.entry_price is not None and abs(self.entry_price - entry_price) > 0.0001
         new_pos_found = self.current_position == 0 and expected_pos != 0
 
+        # Sync state if needed
         if self.current_position != expected_pos or price_changed:
             if self.current_position != expected_pos:
                 logger.warning(f"Reconciling Position: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
@@ -487,9 +488,7 @@ class DonchianChannelStrategy:
             self.current_position = expected_pos
             self.entry_price = entry_price
             
-            # CRITICAL: Reset milestone and partial TP tracking when entry price is synced from exchange.
-            # This ensures that if the bot restarts, it re-evaluates profit targets relative to the
-            # actual live entry, rather than carrying over "hit" flags from a warmup backtest.
+            # Reset milestone/partial flags on sync
             self.milestones_hit = [False] * len(self.profit_milestones)
             self.partial_exit_done = False
             
@@ -509,6 +508,23 @@ class DonchianChannelStrategy:
                 self.trades.append(self.active_trade)
                 self.active_trade = None
                 logger.info("Closed active trade during reconciliation (Flat on exchange)")
+
+        # CATCH-UP LOGIC: Even if state was already synced (or just updated),
+        # check if current market price justifies marking milestones as "already hit".
+        # This prevents the bot from re-triggering exits on every restart if price is > threshold.
+        if self.current_position != 0 and self.entry_price and current_price:
+            pnl_pct = 0.0
+            if self.current_position == 1: # LONG
+                pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
+            else: # SHORT
+                pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
+                
+            for i, milestone in enumerate(self.profit_milestones):
+                threshold = milestone.get('pnl_pct', 0)
+                if pnl_pct >= threshold:
+                    if not self.milestones_hit[i]:
+                        logger.info(f"Reconciliation Catch-up: Marking Milestone {i+1} as ALREADY HIT (PnL: {pnl_pct:.2f}% >= {threshold}%)")
+                        self.milestones_hit[i] = True
 
     def run_backtest(self, df: pd.DataFrame):
         """Run backtest."""

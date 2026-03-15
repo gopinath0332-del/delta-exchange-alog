@@ -458,7 +458,9 @@ def run_strategy_terminal(
                                  else:
                                      logger.info(f"Reconciliation: No position found for {symbol}")
 
-                                 strategy.reconcile_position(size, entry_price)
+                                 # Pass current market price to enable milestone catch-up logic
+                                 current_market_price = float(closes.iloc[-1]) if not closes.empty else 0.0
+                                 strategy.reconcile_position(size, entry_price, current_market_price)
                                  
                                  
                              except Exception as e:
