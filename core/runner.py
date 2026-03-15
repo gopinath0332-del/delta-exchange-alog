@@ -187,6 +187,10 @@ def run_strategy_terminal(
     # Get Trade Configuration for startup alert
     trade_config = get_trade_config(symbol)
     enabled_str = "ENABLED" if trade_config['enabled'] else "DISABLED"
+
+    # Pass leverage to strategy so milestone % is interpreted as margin PnL %
+    if hasattr(strategy, 'leverage'):
+        strategy.leverage = trade_config['leverage']
     
     # ANSI color codes for Discord
     # \u001b[0;32m = Green, \u001b[0;31m = Red, \u001b[0m = Reset
