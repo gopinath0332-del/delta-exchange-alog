@@ -464,7 +464,7 @@ class DonchianChannelStrategy:
         self.current_position = position
 
     def reconcile_position(self, size: float, entry_price: float):
-        """Reconcile with Exchange."""
+        """Reconcile internal strategy state with Live Exchange position."""
         import time, datetime
         def format_time(ts_ms): return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
         
@@ -472,9 +472,26 @@ class DonchianChannelStrategy:
         if size > 0: expected_pos = 1
         elif size < 0: expected_pos = -1
         
-        if self.current_position != expected_pos:
-            logger.warning(f"Reconciling: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
+        # Determine if we need to reset state (Entry price changed or new position found)
+        # We use a small epsilon for price comparison to avoid floating point noise
+        price_changed = self.entry_price is not None and abs(self.entry_price - entry_price) > 0.0001
+        new_pos_found = self.current_position == 0 and expected_pos != 0
+
+        if self.current_position != expected_pos or price_changed:
+            if self.current_position != expected_pos:
+                logger.warning(f"Reconciling Position: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
+            
+            if price_changed:
+                logger.warning(f"Reconciling Entry Price: Internal {self.entry_price} -> Exchange {entry_price}")
+
             self.current_position = expected_pos
+            self.entry_price = entry_price
+            
+            # CRITICAL: Reset milestone and partial TP tracking when entry price is synced from exchange.
+            # This ensures that if the bot restarts, it re-evaluates profit targets relative to the
+            # actual live entry, rather than carrying over "hit" flags from a warmup backtest.
+            self.milestones_hit = [False] * len(self.profit_milestones)
+            self.partial_exit_done = False
             
             if expected_pos != 0 and not self.active_trade:
                 side = "LONG" if expected_pos == 1 else "SHORT"
@@ -484,19 +501,14 @@ class DonchianChannelStrategy:
                     "entry_price": entry_price,
                     "status": "OPEN"
                 }
-                # Set approximated levels?
-                self.entry_price = entry_price
-                # Without indicators we can't set TP/SL accurately.
-                # They will be set on next candle update if logic allows? 
-                # Actually check_signals updates levels ONLY ON ENTRY.
-                # So reconciled positions might lack dynamic TP/SL levels until manually handled or code improved.
-                logger.warning("Reconciled position lacks TP/SL levels until revisited.")
+                logger.info(f"Created reconciled active trade for {side} at {entry_price}")
 
             elif expected_pos == 0 and self.active_trade:
                 self.active_trade["exit_time"] = format_time(time.time()*1000) + " (Rec)"
                 self.active_trade["status"] = "CLOSED (SYNC)"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
+                logger.info("Closed active trade during reconciliation (Flat on exchange)")
 
     def run_backtest(self, df: pd.DataFrame):
         """Run backtest."""
