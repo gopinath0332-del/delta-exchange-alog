@@ -179,6 +179,7 @@ class DonchianChannelStrategy:
         self,
         df: pd.DataFrame,
         current_time_ms: float,
+        live_pos_data: Optional[Dict] = None
     ) -> Tuple[Optional[str], str]:
         """
         Check for trading signals using closed candle logic.
@@ -268,19 +269,40 @@ class DonchianChannelStrategy:
                 return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} <= {self.tp_level:.4f}"
 
         # 3b. Profit Milestone Exits (live price, independent of ATR partial TP)
-        if self.enable_profit_milestones and self.entry_price and self.current_position != 0:
+        if self.enable_profit_milestones and self.current_position != 0:
+            pnl_pct = 0.0
+            pnl_source = "Manual"
+            
+            # Use Exchange Unrealized Margin PnL if available (User Priority)
+            if live_pos_data:
+                unrealized_pnl = float(live_pos_data.get('unrealized_pnl', 0.0))
+                margin = float(live_pos_data.get('margin', 0.0))
+                if margin > 0:
+                    pnl_pct = (unrealized_pnl / margin) * 100.0
+                    pnl_source = "Exchange"
+                    # No need for manual calculation or leverage adjustment as margin PnL is absolute
+                else:
+                    # Fallback to manual if margin is zero (unexpected)
+                    if self.entry_price:
+                        if self.current_position == 1:
+                            pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
+                        else:
+                            pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
+            elif self.entry_price:
+                # Manual Fallback (Backtesting or API failure)
+                if self.current_position == 1:
+                    pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
+                else:
+                    pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
+
             for idx, milestone in enumerate(self.profit_milestones):
                 if self.milestones_hit[idx]:
                     continue
                 pnl_threshold = milestone["pnl_pct"]
                 exit_pct = milestone["exit_pct"]
-                if self.current_position == 1:
-                    pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
-                else:
-                    pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
                 if pnl_pct >= pnl_threshold:
                     return "MILESTONE_EXIT", (
-                        f"Milestone {idx + 1}: PnL {pnl_pct:.1f}% >= {pnl_threshold}%"
+                        f"Milestone {idx + 1}: {pnl_source} PnL {pnl_pct:.1f}% >= {pnl_threshold}%"
                         f" | exit_pct={exit_pct}"
                     )
 
@@ -463,7 +485,7 @@ class DonchianChannelStrategy:
     def set_position(self, position: int):
         self.current_position = position
 
-    def reconcile_position(self, size: float, entry_price: float, current_price: float = None):
+    def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None):
         """Reconcile internal strategy state with Live Exchange position."""
         import time, datetime
         def format_time(ts_ms): return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
@@ -510,20 +532,31 @@ class DonchianChannelStrategy:
                 logger.info("Closed active trade during reconciliation (Flat on exchange)")
 
         # CATCH-UP LOGIC: Even if state was already synced (or just updated),
-        # check if current market price justifies marking milestones as "already hit".
+        # check if current market price (or exchange PnL) justifies marking milestones as "already hit".
         # This prevents the bot from re-triggering exits on every restart if price is > threshold.
-        if self.current_position != 0 and self.entry_price and current_price:
+        if self.current_position != 0:
             pnl_pct = 0.0
-            if self.current_position == 1: # LONG
-                pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
-            else: # SHORT
-                pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
+            pnl_source = "Manual"
+            
+            if live_pos_data:
+                unrealized_pnl = float(live_pos_data.get('unrealized_pnl', 0.0))
+                margin = float(live_pos_data.get('margin', 0.0))
+                if margin > 0:
+                    pnl_pct = (unrealized_pnl / margin) * 100.0
+                    pnl_source = "Exchange"
+            
+            # Manual Fallback if Exchange data unavailable
+            if pnl_source == "Manual" and self.entry_price and current_price:
+                if self.current_position == 1: # LONG
+                    pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
+                else: # SHORT
+                    pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
                 
             for i, milestone in enumerate(self.profit_milestones):
                 threshold = milestone.get('pnl_pct', 0)
                 if pnl_pct >= threshold:
                     if not self.milestones_hit[i]:
-                        logger.info(f"Reconciliation Catch-up: Marking Milestone {i+1} as ALREADY HIT (PnL: {pnl_pct:.2f}% >= {threshold}%)")
+                        logger.info(f"Reconciliation Catch-up: Marking Milestone {i+1} as ALREADY HIT ({pnl_source} PnL: {pnl_pct:.2f}% >= {threshold}%)")
                         self.milestones_hit[i] = True
 
     def run_backtest(self, df: pd.DataFrame):

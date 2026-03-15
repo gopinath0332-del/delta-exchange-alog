@@ -458,9 +458,16 @@ def run_strategy_terminal(
                                  else:
                                      logger.info(f"Reconciliation: No position found for {symbol}")
 
-                                 # Pass current market price to enable milestone catch-up logic
+                                 # Pass current market price and live position data to enable milestone catch-up logic
                                  current_market_price = float(closes.iloc[-1]) if not closes.empty else 0.0
-                                 strategy.reconcile_position(size, entry_price, current_market_price)
+                                 try:
+                                     strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
+                                 except TypeError:
+                                     # Fallback for strategies that don't accept live_pos_data or current_market_price
+                                     try:
+                                         strategy.reconcile_position(size, entry_price, current_market_price)
+                                     except TypeError:
+                                         strategy.reconcile_position(size, entry_price)
                                  
                                  
                              except Exception as e:
@@ -468,22 +475,54 @@ def run_strategy_terminal(
                                  
                              # ---------------------------
                      
+                     # --- FETCH LIVE POSITION FOR SIGNALS & DASHBOARD ---
+                     # Reuse cached_product_id from startup — avoids get_products() on every cycle.
+                     live_pos_data = None
+                     try:
+                         if cached_product_id is not None:
+                             pid = cached_product_id
+                             # Use get_positions (plural) which now hits /v2/positions/margined
+                             all_positions = client.get_positions(product_id=pid)
+                             
+                             # Handle response structure: It returns a list
+                             if isinstance(all_positions, dict):
+                                  all_positions = [all_positions]
+                                  
+                             for p in all_positions:
+                                 if isinstance(p, dict):
+                                      p_id = p.get('product_id')
+                                      if p_id and str(p_id) == str(pid):
+                                          live_pos_data = p
+                                          break
+                                      # If filtered by ID and only 1 result, take it
+                                      if len(all_positions) == 1:
+                                          live_pos_data = p
+                                          break
+                         else:
+                             logger.warning(f"Could not resolve product ID for {symbol} for signal checking.")
+
+                     except Exception as e:
+                         logger.warning(f"Failed to fetch live position for signal analysis: {e}")
+
                      # Now process current live candle
                      current_time_ms = int(time.time() * 1000)
                      price = float(closes.iloc[-1])
 
                      if hasattr(strategy, 'calculate_indicators'):
                           # Run signal check for the current candle.
-                          # (The old Donchian PnL% polling block has been removed;
-                          # the exchange now enforces a bracket stop-loss after every entry.)
-                          action, reason = strategy.check_signals(df, current_time_ms)
+                          # Pass live_pos_data as keyword argument
+                          # Attempt to pass live_pos_data if strategy supports it
+                          try:
+                              action, reason = strategy.check_signals(df, current_time_ms, live_pos_data=live_pos_data)
+                          except TypeError:
+                              action, reason = strategy.check_signals(df, current_time_ms)
 
                           # Extract latest indicator values for the dashboard
                           current_rsi = getattr(strategy, 'last_rsi', 0.0)
                           current_atr = getattr(strategy, 'last_atr', 0.0)
                           prev_rsi = 0.0 # Not explicitly tracked unless strategy does it
                      else:
-                          # Legacy Fallback (should not be reached for Double Dip anymore)
+                          # Legacy Fallback
                           current_rsi, prev_rsi = strategy.calculate_rsi(closes)
                           action, reason = strategy.check_signals(current_rsi, current_time_ms)
                           logger.info(f"Analysis: RSI={current_rsi:.2f} (Prev={prev_rsi:.2f}) | Action={action}")
@@ -557,35 +596,6 @@ def run_strategy_terminal(
                 # previous one releases the lock, so they are already spread out.
                 current_ts = int(time.time())
                 sleep_seconds = 600 - (current_ts % 600)
-                
-                # --- FETCH LIVE POSITION FOR DASHBOARD ---
-                # Reuse cached_product_id from startup — avoids get_products() on every cycle.
-                live_pos_data = None
-                try:
-                    if cached_product_id is not None:
-                        pid = cached_product_id
-                        # Use get_positions (plural) which now hits /v2/positions/margined
-                        all_positions = client.get_positions(product_id=pid)
-                        
-                        # Handle response structure: It returns a list
-                        if isinstance(all_positions, dict):
-                             all_positions = [all_positions]
-                             
-                        for p in all_positions:
-                            if isinstance(p, dict):
-                                 p_id = p.get('product_id')
-                                 if p_id and str(p_id) == str(pid):
-                                     live_pos_data = p
-                                     break
-                                 # If filtered by ID and only 1 result, take it
-                                 if len(all_positions) == 1:
-                                     live_pos_data = p
-                                     break
-                    else:
-                        logger.warning(f"Could not resolve product ID for {symbol} for dashboard.")
-
-                except Exception as e:
-                    logger.warning(f"Failed to fetch live dashboard position: {e}")
                 
                 # --- DASHBOARD OUTPUT ---
                 dashboard_lines = []
