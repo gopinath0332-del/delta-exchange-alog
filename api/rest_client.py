@@ -620,7 +620,7 @@ class DeltaRestClient:
         Paginates through all results using the 'after' cursor until exhausted.
 
         Args:
-            transaction_types: Transaction type filter (e.g. 'funding', 'trading_fee')
+            transaction_types: Transaction type filter (e.g. 'funding', 'commission')
             start_time_us: Start time in microseconds (epoch)
             end_time_us: End time in microseconds (epoch)
             asset_id: Optional asset ID to filter transactions
@@ -690,7 +690,7 @@ class DeltaRestClient:
         asset_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Fetch trading fee wallet transactions. Wrapper around get_wallet_transactions."""
-        return self.get_wallet_transactions("trading_fee", start_time_us, end_time_us, asset_id)
+        return self.get_wallet_transactions("commission", start_time_us, end_time_us, asset_id)
 
     def get_positions(self, product_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """
