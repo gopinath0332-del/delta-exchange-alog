@@ -612,6 +612,7 @@ class DeltaRestClient:
         start_time_us: int,
         end_time_us: int,
         asset_id: Optional[int] = None,
+        product_id: Optional[int] = None,
         page_size: int = 100,
     ) -> List[Dict[str, Any]]:
         """
@@ -624,6 +625,7 @@ class DeltaRestClient:
             start_time_us: Start time in microseconds (epoch)
             end_time_us: End time in microseconds (epoch)
             asset_id: Optional asset ID to filter transactions
+            product_id: Optional product ID to filter transactions (locally)
             page_size: Number of records per page (max 100)
 
         Returns:
@@ -671,7 +673,14 @@ class DeltaRestClient:
             if not after_cursor:
                 break
 
-        logger.info("Fetched wallet transactions", transaction_types=transaction_types, count=len(all_transactions))
+        # Filter locally by product_id if provided
+        if product_id is not None:
+            all_transactions = [
+                t for t in all_transactions 
+                if t.get("product_id") == product_id or t.get("product_id") == str(product_id)
+            ]
+
+        logger.info("Fetched and filtered wallet transactions", transaction_types=transaction_types, count=len(all_transactions), product_id=product_id)
         return all_transactions
 
     def get_funding_transactions(
@@ -679,18 +688,20 @@ class DeltaRestClient:
         start_time_us: int,
         end_time_us: int,
         asset_id: Optional[int] = None,
+        product_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Fetch funding rate wallet transactions. Wrapper around get_wallet_transactions."""
-        return self.get_wallet_transactions("funding", start_time_us, end_time_us, asset_id)
+        return self.get_wallet_transactions("funding", start_time_us, end_time_us, asset_id, product_id)
 
     def get_trading_fee_transactions(
         self,
         start_time_us: int,
         end_time_us: int,
         asset_id: Optional[int] = None,
+        product_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Fetch trading fee wallet transactions. Wrapper around get_wallet_transactions."""
-        return self.get_wallet_transactions("commission", start_time_us, end_time_us, asset_id)
+        return self.get_wallet_transactions("commission", start_time_us, end_time_us, asset_id, product_id)
 
     def get_positions(self, product_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """
