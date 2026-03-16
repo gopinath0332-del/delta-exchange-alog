@@ -559,13 +559,13 @@ def execute_strategy_signal(
                 # for the duration of this trade (entry time → now)
                 if entry_ts_us and mode != "paper":
                     try:
-                        txns = client.get_funding_transactions(entry_ts_us, exit_ts_us)
+                        txns = client.get_funding_transactions(entry_ts_us, exit_ts_us, product_id=product_id)
                         if txns:
                             funding_txns = txns
                             funding_charges = sum(float(t.get("amount", 0)) for t in txns)
                             logger.info(
                                 f"Funding from wallet txns: ${funding_charges:+,.4f}"
-                                f" ({len(txns)} transactions)"
+                                f" ({len(txns)} transactions) for product_id: {product_id}"
                             )
                         else:
                             funding_charges = float(active_position.get('funding_pnl', 0.0))
@@ -578,14 +578,14 @@ def execute_strategy_signal(
                 # Fetch actual trading fees (entry + all partials + final exit) from wallet
                 if entry_ts_us and mode != "paper":
                     try:
-                        fee_txns = client.get_trading_fee_transactions(entry_ts_us, exit_ts_us)
+                        fee_txns = client.get_trading_fee_transactions(entry_ts_us, exit_ts_us, product_id=product_id)
                         if fee_txns:
                             trading_fee_txns = fee_txns
                             # Fee amounts are negative debits; use abs() for display
                             trading_fees = sum(abs(float(t.get("amount", 0))) for t in fee_txns)
                             logger.info(
                                 f"Trading fees from wallet txns: ${trading_fees:,.4f}"
-                                f" ({len(fee_txns)} transactions)"
+                                f" ({len(fee_txns)} transactions) for product_id: {product_id}"
                             )
                         else:
                             trading_fees = float(active_position.get('commission', 0.0))
