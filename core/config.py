@@ -33,6 +33,7 @@ class RiskManagementConfig(BaseModel):
     max_leverage: int = Field(default=10, gt=0, le=100)
     position_sizing_type: str = Field(default="margin")
     atr_margin_multiplier: float = Field(default=2.0, gt=0)
+    atr_margin_cap_multiplier: float = Field(default=1.5, gt=0)
 
 
 class NotificationsConfig(BaseModel):

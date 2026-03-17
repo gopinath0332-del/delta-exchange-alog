@@ -28,7 +28,8 @@ class TestPositionSizing(unittest.TestCase):
             contract_value=0.001,
             sizing_type="atr",
             atr=100.0,
-            atr_multiplier=2.0
+            atr_multiplier=2.0,
+            atr_margin_cap_multiplier=100.0
         )
         self.assertEqual(size, 200)
 
@@ -46,12 +47,32 @@ class TestPositionSizing(unittest.TestCase):
         )
         self.assertEqual(size, 4)
 
+    def test_calculate_position_size_atr_safety_cap(self):
+        """Test that ATR safety cap limits position size when volatility is extremely low."""
+        # Target Margin / (ATR * Multiplier * Contract Value)
+        # 40 / (1 * 2.0 * 0.001) = 40 / 0.002 = 20,000 contracts
+        # Actual Margin @ 5x: (20,000 * 50000 * 0.001) / 5 = 1,000,000 / 5 = 200,000 (WAY OVER)
+        # 1.5x Cap: 40 * 1.5 = 60 USD Max Margin
+        # Max Size = (60 * 5) / (50000 * 0.001) = 300 / 50 = 6 contracts
+        size = calculate_position_size(
+            target_margin=40.0,
+            price=50000.0,
+            leverage=5,
+            contract_value=0.001,
+            sizing_type="atr",
+            atr=1.0,
+            atr_multiplier=2.0,
+            atr_margin_cap_multiplier=1.5
+        )
+        self.assertEqual(size, 6)
+
     @patch('core.config.get_config')
     def test_get_trade_config_overrides(self, mock_get_config):
         """Test that get_trade_config correctly picks up overrides from sizing_config and Env."""
         mock_config = MagicMock()
         mock_config.risk_management.position_sizing_type = "margin"
         mock_config.risk_management.atr_margin_multiplier = 2.0
+        mock_config.risk_management.atr_margin_cap_multiplier = 1.5
         mock_get_config.return_value = mock_config
         
         # Setup sizing_config (as it would come from multi_coin in settings.yaml)
@@ -59,7 +80,8 @@ class TestPositionSizing(unittest.TestCase):
             "position_sizing_type": "atr",
             "atr_margin_multiplier": 3.0,
             "leverage": 20,
-            "target_margin": 150.0
+            "target_margin": 150.0,
+            "atr_margin_cap_multiplier": 2.0
         }
         
         # Environment variables (lower priority)
@@ -75,6 +97,7 @@ class TestPositionSizing(unittest.TestCase):
         self.assertEqual(config['leverage'], 20)
         self.assertEqual(config['sizing_type'], "atr")
         self.assertEqual(config['atr_multiplier'], 3.0)
+        self.assertEqual(config['atr_margin_cap_multiplier'], 2.0)
 
 if __name__ == '__main__':
     unittest.main()
