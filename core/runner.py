@@ -300,6 +300,9 @@ def run_strategy_terminal(
                     logger.info(f"[{symbol}] Cycle lock acquired. Starting API work.")
 
                 try:
+                    # Initialize live_pos_data to prevent UnboundLocalError in reconciliation
+                    live_pos_data = None
+                    
                     # 1. Fetch Data (1h candles for aggregation to 3h)
                     # Check for strategy-specific historical days, otherwise use default
                     strategy_config = config.settings.get("strategies", {}).get(strategy_name.replace("-", "_").replace("rsi_200_ema", "rsi_200_ema"), {})
@@ -458,6 +461,8 @@ def run_strategy_terminal(
                                          entry_price = float(val_price)
                                          
                                      logger.info(f"Reconciliation: Found position for {symbol}: Size={size}, Price={entry_price}")
+                                     # Store for milestone/signal logic to avoid refetch
+                                     live_pos_data = current_pos
                                  else:
                                      logger.info(f"Reconciliation: No position found for {symbol}")
 
@@ -480,7 +485,6 @@ def run_strategy_terminal(
                      
                      # --- FETCH LIVE POSITION FOR SIGNALS & DASHBOARD ---
                      # Reuse cached_product_id from startup — avoids get_products() on every cycle.
-                     live_pos_data = None
                      try:
                          if cached_product_id is not None:
                              pid = cached_product_id

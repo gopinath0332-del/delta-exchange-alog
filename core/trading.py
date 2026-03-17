@@ -239,11 +239,14 @@ def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None
 
 def execute_strategy_signal(
     client: DeltaRestClient, 
+    notifier: NotificationManager,
     symbol: str, 
     action: str, 
-    market_price: float, 
-    reason: str, 
-    notifier: NotificationManager, 
+    price: float,
+    market_price: float,
+    rsi: float,
+    reason: str,
+    mode: str,
     strategy_name: str,
     enable_partial_tp: bool = False,
     timeframe: str = "1h",
