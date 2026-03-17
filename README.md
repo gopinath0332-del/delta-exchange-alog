@@ -237,8 +237,8 @@ risk_management:
 
 **Symbol-Specific Overrides:**
 
-- **Position Sizing Flags**: Managed within the `multi_coin` section in `config/settings.yaml`.
-- **Capital Allocation**: `target_margin` and `leverage` MUST be configured in `.env` per symbol.
+- **Capital & Sizing**: `leverage`, `target_margin`, `position_sizing_type`, and `atr_margin_multiplier` are all managed within the `multi_coin` section of `config/settings.yaml`.
+- **Precedence**: Settings in `settings.yaml` take precedence over environment variables in `.env`.
 
 Example `config/settings.yaml`:
 
@@ -247,17 +247,18 @@ multi_coin:
   donchian_channel:
     symbols:
       - symbol: SLVONUSD
-        timeframe: 1h
-        candle_type: heikin-ashi
+        leverage: 5
+        target_margin: 50
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
 ```
 
-Example `config/.env`:
+Example `config/.env` (Fallback only):
 
 ```env
-TARGET_MARGIN_SLVON=50
-LEVERAGE_SLVON=5
+# Only used if missing from settings.yaml
+TARGET_MARGIN_SLVON=30
+LEVERAGE_SLVON=10
 ```
 
 > [!TIP]

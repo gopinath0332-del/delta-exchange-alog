@@ -188,7 +188,7 @@ def run_strategy_terminal(
     logger.info("Starting strategy loop... Press Ctrl+C to stop.")
     
     # Get Trade Configuration for startup alert
-    trade_config = get_trade_config(symbol)
+    trade_config = get_trade_config(symbol, sizing_config=symbol_settings)
     enabled_str = "ENABLED" if trade_config['enabled'] else "DISABLED"
 
     # Pass leverage to strategy so milestone % is interpreted as margin PnL %

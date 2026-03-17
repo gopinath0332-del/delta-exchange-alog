@@ -146,19 +146,27 @@ multi_coin:
       - symbol: PIUSD
         timeframe: 4h
         candle_type: standard
+        leverage: 5
+        target_margin: 50
         log_file: logs/pi.log # Per-coin log file (same as the old dedicated service)
       - symbol: PIPPINUSD
         timeframe: 2h
-        candle_type: heikin-ashi
+        candle_type: heikin-ashi        
+        leverage: 5
+        target_margin: 50
         log_file: logs/pippin.log
       - symbol: SLVONUSD
         timeframe: 1h
+        leverage: 5
+        target_margin: 50
         candle_type: heikin-ashi
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         log_file: logs/slvon.log
       - symbol: RIVERUSD
         timeframe: 6h
+        leverage: 5
+        target_margin: 50
         candle_type: standard
         log_file: logs/river.log
 

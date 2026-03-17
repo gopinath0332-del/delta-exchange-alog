@@ -167,26 +167,29 @@ def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None
     config = get_config()
     sizing_type = config.risk_management.position_sizing_type if hasattr(config, 'risk_management') else "margin"
     atr_multiplier = config.risk_management.atr_margin_multiplier if hasattr(config, 'risk_management') else 2.0
-    
-    # 3. Load Sizing Flags from sizing_config (Priority 1)
+
+    # 3. Load overrides from Environment (Priority 2 / Fallback)
+    try:
+        leverage = int(os.getenv(f"LEVERAGE_{base_asset}", os.getenv("LEVERAGE", str(leverage))))
+        target_margin = float(os.getenv(f"TARGET_MARGIN_{base_asset}", str(target_margin)))
+        
+        # Legacy env support for sizing flags (Priority 3)
+        sizing_type = os.getenv(f"POSITION_SIZING_TYPE_{base_asset}", sizing_type).lower()
+        atr_multiplier = float(os.getenv(f"ATR_MARGIN_MULTIPLIER_{base_asset}", str(atr_multiplier)))
+    except ValueError:
+        logger.warning(f"Invalid environment configuration for {base_asset}, using current values.")
+
+    # 4. Load overrides from sizing_config (Priority 1)
     if sizing_config:
         if "position_sizing_type" in sizing_config:
             sizing_type = sizing_config["position_sizing_type"].lower()
         if "atr_margin_multiplier" in sizing_config:
             atr_multiplier = float(sizing_config["atr_margin_multiplier"])
-        logger.debug(f"Loaded sizing overrides for {symbol.upper()} from multi-coin config")
-
-    # 4. Load overrides from Environment (Priority 2 / REQUIRED for capital)
-    try:
-        # User explicitly requested leverage and target margin ALWAYS come from .env
-        leverage = int(os.getenv(f"LEVERAGE_{base_asset}", os.getenv("LEVERAGE", str(leverage))))
-        target_margin = float(os.getenv(f"TARGET_MARGIN_{base_asset}", str(target_margin)))
-        
-        # Legacy env support for flags (Priority 3)
-        sizing_type = os.getenv(f"POSITION_SIZING_TYPE_{base_asset}", sizing_type).lower()
-        atr_multiplier = float(os.getenv(f"ATR_MARGIN_MULTIPLIER_{base_asset}", str(atr_multiplier)))
-    except ValueError:
-        logger.warning(f"Invalid environment configuration for {base_asset}, using current values.")
+        if "leverage" in sizing_config:
+            leverage = int(sizing_config["leverage"])
+        if "target_margin" in sizing_config:
+            target_margin = float(sizing_config["target_margin"])
+        logger.debug(f"Loaded config overrides for {symbol.upper()} from multi-coin settings")
 
     # 5. Check Enable Flag
     env_var_key = f"ENABLE_ORDER_PLACEMENT_{base_asset}"
@@ -234,14 +237,13 @@ def execute_strategy_signal(
         contract_value = float(product.get('contract_value', 1.0)) # Usually 0.001 BTC or similar
         
         # 2. Get Configuration
-        config = get_trade_config(symbol)
-        order_size = config['order_size']  # Will be overridden for entries with dynamic sizing
-        leverage = config['leverage']
-        enable_orders = config['enabled']
-        base_asset = config['base_asset']
-        target_margin = config['target_margin']
-        sizing_type = config.get('sizing_type', 'margin')
-        atr_multiplier = config.get('atr_multiplier', 2.0)
+        order_size = trade_config['order_size']  # Will be overridden for entries with dynamic sizing
+        leverage = trade_config['leverage']
+        enable_orders = trade_config['enabled']
+        base_asset = trade_config['base_asset']
+        target_margin = trade_config['target_margin']
+        sizing_type = trade_config.get('sizing_type', 'margin')
+        atr_multiplier = trade_config.get('atr_multiplier', 2.0)
         
         side = None
         is_entry = False

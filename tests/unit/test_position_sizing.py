@@ -57,21 +57,22 @@ class TestPositionSizing(unittest.TestCase):
         # Setup sizing_config (as it would come from multi_coin in settings.yaml)
         sizing_cfg = {
             "position_sizing_type": "atr",
-            "atr_margin_multiplier": 3.0
+            "atr_margin_multiplier": 3.0,
+            "leverage": 20,
+            "target_margin": 150.0
         }
         
-        # Override target_margin and leverage from Environment
+        # Environment variables (lower priority)
         with patch.dict(os.environ, {
             'TARGET_MARGIN_BTC': '125',
-            'LEVERAGE_BTC': '10'
+            'LEVERAGE_BTC': '10',
+            'POSITION_SIZING_TYPE_BTC': 'margin'
         }, clear=True):
             config = get_trade_config("BTCUSD", sizing_config=sizing_cfg)
         
-        # ENV (Priority 2) wins for margin/leverage
-        self.assertEqual(config['target_margin'], 125.0)
-        self.assertEqual(config['leverage'], 10)
-        
-        # sizing_config (Priority 1) flags are loaded
+        # YAML sizing_config (Priority 1) wins for EVERYTHING
+        self.assertEqual(config['target_margin'], 150.0)
+        self.assertEqual(config['leverage'], 20)
         self.assertEqual(config['sizing_type'], "atr")
         self.assertEqual(config['atr_multiplier'], 3.0)
 
