@@ -215,6 +215,63 @@ Position Size = (40 * 5) / (100000 * 0.001) = 200 / 100 = 2 contracts
 > [!NOTE]
 > The old `ORDER_SIZE_{ASSET}` configuration is deprecated for entry orders but still supported for backwards compatibility. It is recommended to migrate to `TARGET_MARGIN_{ASSET}` for better risk management.
 
+### Volatility-Based Position Sizing (ATR)
+
+The platform supports **volatility-based position sizing** using the Average True Range (ATR). This allows the bot to adjust the number of contracts based on market volatility, keeping the risk (dollar loss per unit of volatility move) constant.
+
+**How it works:**
+
+- When enabled, position size is calculated as: `TARGET_MARGIN / (ATR * ATR_MULTIPLIER * contract_value)`
+- This allocates `TARGET_MARGIN` of capital for every `(ATR * ATR_MULTIPLIER)` move in price.
+- If volatility (ATR) is high, the position size decreases. If volatility is low, the position size increases.
+
+**Configuration:**
+
+You can set global defaults in `config/settings.yaml`:
+
+```yaml
+risk_management:
+  position_sizing_type: "margin" # Default sizing method: "margin" or "atr"
+  atr_margin_multiplier: 2.0 # Multiplier for ATR unit
+```
+
+**Symbol-Specific Overrides:**
+
+- **Position Sizing Flags**: Managed within the `multi_coin` section in `config/settings.yaml`.
+- **Capital Allocation**: `target_margin` and `leverage` MUST be configured in `.env` per symbol.
+
+Example `config/settings.yaml`:
+
+```yaml
+multi_coin:
+  donchian_channel:
+    symbols:
+      - symbol: SLVONUSD
+        timeframe: 1h
+        candle_type: heikin-ashi
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+```
+
+Example `config/.env`:
+
+```env
+TARGET_MARGIN_SLVON=50
+LEVERAGE_SLVON=5
+```
+
+> [!TIP]
+> Environment variables (e.g., `POSITION_SIZING_TYPE_PIPPIN`) are still supported for backward compatibility but using `settings.yaml` is recommended for centralizing configuration.
+
+**Benefits:**
+
+- ✅ **Constant Risk Units**: Normalize risk across various market conditions.
+- ✅ **Volatility Aware**: Automatically scales down in high-volatility environments.
+- ✅ **Coin-Specific Flags**: Enable it only for the coins you want.
+- ✅ **Consistent with TradingView**: Mimics advanced Pine Script risk management strategies.
+
+---
+
 ````
 
 ### Notifications

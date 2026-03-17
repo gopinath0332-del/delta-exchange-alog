@@ -31,6 +31,7 @@ def run_strategy_terminal(
     log_file: Optional[str] = None,
     prefetched_wallet_balance_str: Optional[str] = None,
     cycle_lock: Optional[threading.Lock] = None,
+    symbol_settings: Optional[Dict[str, Any]] = None,
 ):
     """
     Run strategy in terminal mode with dashboard output.
@@ -59,6 +60,8 @@ def run_strategy_terminal(
                   before sleeping. This ensures only ONE symbol runs its API-heavy
                   cycle at a time, preventing concurrent bursts that exhaust the
                   150 req/5min rate limit. None = no locking (single-coin mode).
+        symbol_settings: Optional dictionary of settings specific to this symbol,
+                         passed from run_multi_symbol_terminal().
     """
     # --- Per-symbol log file setup (multi-coin mode) ---
     # Add a dedicated RotatingFileHandler for this symbol so its log records
@@ -540,12 +543,14 @@ def run_strategy_terminal(
                              action=action,
                              price=price, # Strategy/Signal Price (HA or Standard)
                              market_price=market_price, # Authentic Market Price
-                             rsi=current_rsi if hasattr(strategy, 'calculate_rsi') else getattr(strategy, 'last_cci', 0.0),
+                             rsi=current_rsi if current_rsi else getattr(strategy, 'last_cci', 0.0),
                              reason=reason,
                              mode=mode,
                              strategy_name=strategy_name,
                              enable_partial_tp=getattr(strategy, 'enable_partial_tp', False),
-                             timeframe=timeframe
+                             timeframe=timeframe,
+                             atr=current_atr if current_atr else getattr(strategy, 'last_atr', None),
+                             sizing_config=symbol_settings
                          )
                          
                          # Check for successful execution and actual fill price
@@ -1001,6 +1006,7 @@ def run_multi_symbol_terminal(
                 "prefetched_wallet_balance_str": shared_wallet_balance_str,
                 # Shared cycle lock — only one symbol runs its API cycle at a time.
                 "cycle_lock": cycle_lock,
+                "symbol_settings": sym_cfg
             },
             # Thread name = symbol so it appears in stack traces / debug output.
             name=symbol,

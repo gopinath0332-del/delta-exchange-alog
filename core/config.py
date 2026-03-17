@@ -31,6 +31,8 @@ class RiskManagementConfig(BaseModel):
     max_daily_loss: float = Field(default=0.02, gt=0, le=1)  # 2%
     max_drawdown: float = Field(default=0.15, gt=0, le=1)  # 15%
     max_leverage: int = Field(default=10, gt=0, le=100)
+    position_sizing_type: str = Field(default="margin")
+    atr_margin_multiplier: float = Field(default=2.0, gt=0)
 
 
 class NotificationsConfig(BaseModel):

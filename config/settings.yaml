@@ -29,6 +29,8 @@ risk_management:
   max_daily_loss: 0.02 # 2% maximum daily loss
   max_drawdown: 0.15 # 15% maximum drawdown
   max_leverage: 10 # Maximum leverage allowed
+  position_sizing_type: "margin" # Default sizing method: "margin" or "atr"
+  atr_margin_multiplier: 2.0 # Multiplier for ATR-based sizing
 
 # Notification Settings
 notifications:
@@ -152,6 +154,8 @@ multi_coin:
       - symbol: SLVONUSD
         timeframe: 1h
         candle_type: heikin-ashi
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
         log_file: logs/slvon.log
       - symbol: RIVERUSD
         timeframe: 6h
