@@ -154,6 +154,8 @@ multi_coin:
         timeframe: 2h
         candle_type: heikin-ashi
         leverage: 5
+        position_sizing_type: "atr" # Switch from "margin" to "atr"
+        atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         target_margin: 50
         log_file: logs/pippin.log
       - symbol: SLVONUSD
