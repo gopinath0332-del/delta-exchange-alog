@@ -67,6 +67,9 @@ class EMACrossStrategy:
         self.trades = []
         self.active_trade = None
         
+        # Action Tracking
+        self.last_action_candle_ts = None
+        
         logger.info(f"EMACrossStrategy initialized: Mode={self.trade_mode}, "
                    f"Fast EMA={self.fast_ema_length}, Slow EMA={self.slow_ema_length}, "
                    f"Allow Flip={self.allow_flip}")
@@ -104,14 +107,7 @@ class EMACrossStrategy:
             self.last_slow_ema = current_slow_ema
             
             # Determine closed candle index based on timeframe
-            # For 4H candle: 4 * 60 * 60 = 14400 seconds
-            candle_seconds = 14400  # 4 hours
-            last_candle_ts = df['time'].iloc[-1]
-            if last_candle_ts > 1e11:
-                last_candle_ts /= 1000  # Convert ms to seconds
-            
-            diff = current_time - last_candle_ts
-            closed_idx = -1 if diff >= candle_seconds else -2
+            closed_idx = get_closed_candle_index(df, current_time * 1000, self.timeframe)
             
             # Cache closed candle values
             if len(df) >= abs(closed_idx):
@@ -152,14 +148,13 @@ class EMACrossStrategy:
         current_time_s = current_time_ms / 1000.0
         fast_ema, slow_ema = self.calculate_indicators(df, current_time=current_time_s)
         
-        # Determine Closed Candle Index (for 4H timeframe)
-        candle_seconds = 14400  # 4 hours
-        last_candle_ts = df['time'].iloc[-1]
-        if last_candle_ts > 1e11:
-            last_candle_ts /= 1000
+        # Determine Closed Candle Index (using timeframe)
+        closed_idx = get_closed_candle_index(df, current_time_ms, self.timeframe)
         
-        diff = current_time_s - last_candle_ts
-        closed_idx = -1 if diff >= candle_seconds else -2
+        # One Action Per Candle Rule
+        closed_candle_ts = df['time'].iloc[closed_idx]
+        if self.last_action_candle_ts is not None and closed_candle_ts <= self.last_action_candle_ts:
+            return None, f"One action per candle rule: Already acted on candle {closed_candle_ts}"
         prev_idx = closed_idx - 1
         
         # Calculate EMAs at closed and previous indices
@@ -191,6 +186,7 @@ class EMACrossStrategy:
                 action = "ENTRY_LONG"
                 reason = f"Bullish Cross: Fast EMA ({fast_closed:.2f}) crossed above Slow EMA ({slow_closed:.2f})"
                 self.entry_price = df['close'].iloc[closed_idx]
+                self.last_action_candle_ts = closed_candle_ts
                 return action, reason
             
             elif self.current_position == -1:
@@ -199,10 +195,12 @@ class EMACrossStrategy:
                     # Will handle flip in execution - first exit
                     action = "EXIT_SHORT"
                     reason = f"Bullish Cross: Fast EMA ({fast_closed:.2f}) crossed above Slow EMA ({slow_closed:.2f})"
+                    self.last_action_candle_ts = closed_candle_ts
                     return action, reason
                 else:
                     action = "EXIT_SHORT"
                     reason = f"Bullish Cross: Fast EMA ({fast_closed:.2f}) crossed above Slow EMA ({slow_closed:.2f})"
+                    self.last_action_candle_ts = closed_candle_ts
                     return action, reason
         
         # SHORT SIGNALS
@@ -212,6 +210,7 @@ class EMACrossStrategy:
                 action = "ENTRY_SHORT"
                 reason = f"Bearish Cross: Fast EMA ({fast_closed:.2f}) crossed below Slow EMA ({slow_closed:.2f})"
                 self.entry_price = df['close'].iloc[closed_idx]
+                self.last_action_candle_ts = closed_candle_ts
                 return action, reason
             
             elif self.current_position == 1:
@@ -220,21 +219,25 @@ class EMACrossStrategy:
                     # Will handle flip in execution - first exit
                     action = "EXIT_LONG"
                     reason = f"Bearish Cross: Fast EMA ({fast_closed:.2f}) crossed below Slow EMA ({slow_closed:.2f})"
+                    self.last_action_candle_ts = closed_candle_ts
                     return action, reason
                 else:
                     action = "EXIT_LONG"
                     reason = f"Bearish Cross: Fast EMA ({fast_closed:.2f}) crossed below Slow EMA ({slow_closed:.2f})"
+                    self.last_action_candle_ts = closed_candle_ts
                     return action, reason
         
         # EXIT SIGNALS (when not a crossover, but position needs to exit)
         if self.current_position == 1 and bearish_cross:
             action = "EXIT_LONG"
             reason = f"Bearish Cross Exit: Fast EMA ({fast_closed:.2f}) below Slow EMA ({slow_closed:.2f})"
+            self.last_action_candle_ts = closed_candle_ts
             return action, reason
         
         if self.current_position == -1 and bullish_cross:
             action = "EXIT_SHORT"
             reason = f"Bullish Cross Exit: Fast EMA ({fast_closed:.2f}) above Slow EMA ({slow_closed:.2f})"
+            self.last_action_candle_ts = closed_candle_ts
             return action, reason
         
         return None, ""

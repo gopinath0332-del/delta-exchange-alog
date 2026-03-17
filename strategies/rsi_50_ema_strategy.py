@@ -3,6 +3,7 @@ from typing import Dict, Optional, Tuple, Any
 import pandas as pd
 import ta
 from core.config import get_config
+from core.candle_utils import get_closed_candle_index
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,9 @@ class RSI50EMAStrategy:
         self.trades = []
         self.active_trade = None
         
+        # Action Tracking
+        self.last_action_candle_ts = None
+        
     def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float]:
         """
         Calculate RSI and EMA for the given dataframe.
@@ -75,15 +79,7 @@ class RSI50EMAStrategy:
             self.last_rsi = current_rsi
             
             # Dynamic Closed Candle Logic
-            last_candle_ts = df['time'].iloc[-1]
-            # Handle potential ms timestamp
-            if last_candle_ts > 1e11: last_candle_ts /= 1000
-            
-            diff = current_time - last_candle_ts
-            
-            # If diff >= 3600 (1h), the last candle IS the closed candle (new one hasn't appeared)
-            # If diff < 3600, the last candle is developing, so -2 is the closed one
-            closed_idx = -1 if diff >= 3600 else -2
+            closed_idx = get_closed_candle_index(df, current_time * 1000, self.timeframe)
             
             # Cache Last Closed Candle
             if len(df) >= abs(closed_idx):
@@ -119,12 +115,12 @@ class RSI50EMAStrategy:
         rsi, ema = self.calculate_indicators(df, current_time=current_time_s)
         
         # Determine which index to use for SIGNALS
-        # Same logic as calculate_indicators
-        last_candle_ts = df['time'].iloc[-1]
-        if last_candle_ts > 1e11: last_candle_ts /= 1000
+        closed_idx = get_closed_candle_index(df, current_time_ms, self.timeframe)
         
-        diff = current_time_s - last_candle_ts
-        closed_idx = -1 if diff >= 3600 else -2
+        # One Action Per Candle Rule
+        closed_candle_ts = df['time'].iloc[closed_idx]
+        if self.last_action_candle_ts is not None and closed_candle_ts <= self.last_action_candle_ts:
+            return None, f"One action per candle rule: Already acted on candle {closed_candle_ts}"
         
         if closed_idx == -1:
              logger.debug(f"Using Index -1 as Closed Candle (Diff: {diff:.0f}s)")
@@ -172,6 +168,8 @@ class RSI50EMAStrategy:
             if is_valid_now and not was_valid_prev:
                 action = "ENTRY_LONG"
                 reason = f"Fresh Entry Signal: Close {c_2:.2f} > EMA {ema_2:.2f} & RSI {rsi_2:.2f} > {self.rsi_entry_level} (Prev: {was_valid_prev})"
+                self.last_action_candle_ts = closed_candle_ts
+                return action, reason
                 
         # Exit Long
         # Condition: Close < EMA50
@@ -179,6 +177,8 @@ class RSI50EMAStrategy:
             if close_closed < ema_closed:
                 action = "EXIT_LONG"
                 reason = f"Exit Signal (Closed Candle): Close {close_closed:.2f} < EMA {ema_closed:.2f}"
+                self.last_action_candle_ts = closed_candle_ts
+                return action, reason
                 
         return action, reason
 

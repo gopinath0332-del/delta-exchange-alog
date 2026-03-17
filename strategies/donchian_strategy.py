@@ -85,6 +85,9 @@ class DonchianChannelStrategy:
         self.trades = []
         self.active_trade = None
         
+        # Action Tracking (One action per candle rule)
+        self.last_action_candle_ts = None
+        
     def _update_bars_per_day(self, timeframe: str):
         """Update bars_per_day and min_long_bars based on timeframe."""
         self.timeframe = timeframe
@@ -150,12 +153,7 @@ class DonchianChannelStrategy:
             self.last_ema = current_ema
             
             # Closed Candle Logic
-            last_candle_ts = df['time'].iloc[-1]
-            if last_candle_ts > 1e11: last_candle_ts /= 1000
-            
-            diff = current_time - last_candle_ts
-            # If candle is complete (closed), use -1, else use -2
-            closed_idx = -1 if diff >= 3600 else -2
+            closed_idx = get_closed_candle_index(df, current_time * 1000, self.timeframe)
             
             if len(df) >= abs(closed_idx):
                 import datetime
@@ -195,11 +193,13 @@ class DonchianChannelStrategy:
         upper, lower, atr, ema = self.calculate_indicators(df, current_time=current_time_s)
         
         # Determine Closed Candle Index
-        last_candle_ts = df['time'].iloc[-1]
-        if last_candle_ts > 1e11: last_candle_ts /= 1000
+        closed_idx = get_closed_candle_index(df, current_time_ms, self.timeframe)
         
-        diff = current_time_s - last_candle_ts
-        closed_idx = -1 if diff >= 3600 else -2
+        # One Action Per Candle Rule:
+        # If we already acted on this closed candle, skip further actions until a new candle closes.
+        closed_candle_ts = df['time'].iloc[closed_idx]
+        if self.last_action_candle_ts is not None and closed_candle_ts <= self.last_action_candle_ts:
+            return None, f"One action per candle rule: Already acted on candle {closed_candle_ts}"
         
         # Data at Closed Index
         close_closed = df['close'].iloc[closed_idx]
@@ -255,8 +255,10 @@ class DonchianChannelStrategy:
         # 2. Check Trailing Stop Hit (CLOSED CANDLE LOGIC - prevents false signals on wicks)
         if self.trailing_stop_level is not None:
             if self.current_position == 1 and close_closed <= self.trailing_stop_level:
+                self.last_action_candle_ts = closed_candle_ts
                 return "EXIT_LONG", f"Trailing SL Hit: {close_closed:.4f} <= {self.trailing_stop_level:.4f}"
             elif self.current_position == -1 and close_closed >= self.trailing_stop_level:
+                self.last_action_candle_ts = closed_candle_ts
                 return "EXIT_SHORT", f"Trailing SL Hit: {close_closed:.4f} >= {self.trailing_stop_level:.4f}"
                 
         # 3. Check Partial TP (LIVE PRICE LOGIC - fires immediately when price crosses ATR TP level)
@@ -321,6 +323,7 @@ class DonchianChannelStrategy:
                     self.trailing_stop_level = close_closed - (atr_closed * self.atr_mult_trail)
                     self.partial_exit_done = False
                     self.long_entry_bar = len(df) + closed_idx # Mark entry index
+                    self.last_action_candle_ts = closed_candle_ts
                     return action, reason
                     
             # Exit Long (Channel Breakdown)
@@ -328,6 +331,7 @@ class DonchianChannelStrategy:
                 if close_closed <= lower_prev:
                     action = "EXIT_LONG"
                     reason = f"Breakdown: Close {close_closed:.4f} <= Lower[prev] {lower_prev:.4f}"
+                    self.last_action_candle_ts = closed_candle_ts
                     return action, reason
 
         # SHORT Logic
@@ -350,6 +354,7 @@ class DonchianChannelStrategy:
                     self.tp_level = close_closed - (atr_closed * self.atr_mult_tp)
                     self.trailing_stop_level = close_closed + (atr_closed * self.atr_mult_trail)
                     self.partial_exit_done = False
+                    self.last_action_candle_ts = closed_candle_ts
                     return action, reason
                     
             # Exit Short (Channel Breakout)
@@ -357,6 +362,7 @@ class DonchianChannelStrategy:
                 if close_closed >= upper_prev:
                     action = "EXIT_SHORT"
                     reason = f"Breakout: Close {close_closed:.4f} >= Upper[prev] {upper_prev:.4f}"
+                    self.last_action_candle_ts = closed_candle_ts
                     return action, reason
                     
         return None, ""
@@ -369,6 +375,20 @@ class DonchianChannelStrategy:
             
         upper = indicators.get('upper', 0.0) if isinstance(indicators, dict) else 0.0
         lower = indicators.get('lower', 0.0) if isinstance(indicators, dict) else 0.0
+        
+        # Record the bar timestamp for the "one action per candle" rule.
+        # This prevents multiple entries/exits on the same candle close during 10-min cycles.
+        # We handle this by setting last_action_candle_ts which is checked in check_signals.
+        # The timestamp used here should match the closed_candle_ts from check_signals.
+        # For simplicity, we can pass it or derive it, but here we'll assume the strategy 
+        # state is updated ONLY when an action is confirmed.
+        
+        if action in ["ENTRY_LONG", "ENTRY_SHORT", "EXIT_LONG", "EXIT_SHORT"]:
+             # Note: We need to know which candle triggered this. 
+             # In live runner, this is the current closed candle.
+             # We'll set it here to the 'current' closed candle TS if possible, 
+             # or handle it inside check_signals by marking it there.
+             pass
         
         if action == "ENTRY_LONG":
             self.current_position = 1

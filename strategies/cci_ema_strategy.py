@@ -56,6 +56,9 @@ class CCIEMAStrategy:
         self.trades = []
         self.active_trade = None
         
+        # Action Tracking
+        self.last_action_candle_ts = None
+        
     def calculate_indicators(self, df: pd.DataFrame) -> Tuple[float, float, float]:
         """
         Calculate CCI, EMA, and ATR for the given dataframe.
@@ -131,6 +134,11 @@ class CCIEMAStrategy:
         # Get Closed Candle Index
         closed_idx = get_closed_candle_index(df, current_time_ms, self.timeframe)
         
+        # One Action Per Candle Rule
+        closed_candle_ts = df['time'].iloc[closed_idx]
+        if self.last_action_candle_ts is not None and closed_candle_ts <= self.last_action_candle_ts:
+            return None, f"One action per candle rule: Already acted on candle {closed_candle_ts}"
+        
         # Get indicators for both closed and current candle
         cci, ema, atr = self.calculate_indicators(df)
         
@@ -169,6 +177,8 @@ class CCIEMAStrategy:
                 if cci_cross and trend_bullish:
                     action = "ENTRY_LONG"
                     reason = f"CCI Cross {prev_cci:.2f}->{closed_cci:.2f} > 0 & Close {closed_price:.2f} > EMA {closed_ema:.2f} (Closed)"
+                    self.last_action_candle_ts = closed_candle_ts
+                    return action, reason
             
         # In Long Position
         elif self.current_position == 1:
@@ -185,6 +195,8 @@ class CCIEMAStrategy:
             if closed_price < closed_ema:
                 action = "EXIT_LONG"
                 reason = f"Exit Signal (Closed): Close {closed_price:.2f} < EMA {closed_ema:.2f}"
+                self.last_action_candle_ts = closed_candle_ts
+                return action, reason
                 
         return action, reason
 
