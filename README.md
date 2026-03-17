@@ -237,8 +237,8 @@ risk_management:
 
 **Symbol-Specific Overrides:**
 
-- **Capital & Sizing**: `leverage`, `target_margin`, `position_sizing_type`, and `atr_margin_multiplier` are all managed within the `multi_coin` section of `config/settings.yaml`.
-- **Precedence**: Settings in `settings.yaml` take precedence over environment variables in `.env`.
+- **Capital & Sizing**: `leverage`, `target_margin`, `position_sizing_type`, `atr_margin_multiplier`, and `atr_margin_cap_multiplier` are all managed within the `multi_coin` section of `config/settings.yaml`.
+- **Precedence**: Settings in `settings.yaml` take precedence over environment variables in `.env`. If a symbol is defined in `multi_coin`, the bot will ignore its corresponding `.env` keys (like `TARGET_MARGIN_BTC`).
 
 Example `config/settings.yaml`:
 
@@ -251,7 +251,15 @@ multi_coin:
         target_margin: 50
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
+        atr_margin_cap_multiplier: 1.5 # Optional: Defaults to 1.5 if omitted
 ```
+
+**ATR Safety Cap:**
+
+To prevent excessive risk in low-volatility (flat) markets, the bot enforces a **Safety Cap**.
+- **Default Multiplier**: 1.5x
+- **Logic**: The actual margin used for a trade will never exceed `target_margin * atr_margin_cap_multiplier`.
+- **Example**: If your target margin is $50 and the cap is 1.5x, the bot will never use more than $75 of collateral, even if the ATR formula suggests a much larger position.
 
 Example `config/.env` (Fallback only):
 
