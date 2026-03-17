@@ -3,7 +3,7 @@ Centralized trading execution logic.
 Handles order placement, leverage setting, and margin calculations.
 """
 
-from typing import Optional
+from typing import Optional, Dict, Any
 import time
 import os
 import uuid
@@ -49,10 +49,14 @@ def calculate_position_size(
     price: float,
     leverage: int,
     contract_value: float,
-    enable_partial_tp: bool = False
+    enable_partial_tp: bool = False,
+    sizing_type: str = "margin",
+    atr: Optional[float] = None,
+    atr_multiplier: float = 2.0,
+    atr_margin_cap_multiplier: float = 1.5
 ) -> int:
     """
-    Calculate position size dynamically based on target margin.
+    Calculate position size dynamically based on target margin or ATR volatility.
     
     Args:
         target_margin: Target margin to use (e.g., 40 USD)
@@ -60,21 +64,37 @@ def calculate_position_size(
         leverage: Leverage to apply
         contract_value: Contract value from product info
         enable_partial_tp: Whether partial take-profit is enabled
+        sizing_type: "margin" or "atr"
+        atr: Average True Range value (required for "atr" sizing)
+        atr_multiplier: Multiplier for ATR sizing (Risk = Target Margin / (ATR * Multiplier))
+        atr_margin_cap_multiplier: Safety cap multiplier (Max Margin = Target Margin * Cap)
         
     Returns:
         Calculated position size (integer number of contracts)
         
-    Logic:
+    Logic (Margin):
         1. Calculate base size: (target_margin * leverage) / (price * contract_value)
+    
+    Logic (ATR):
+        1. Calculate base size: target_margin / (atr * atr_multiplier * contract_value)
+        
+    Common:
         2. Round to integer
         3. If enable_partial_tp is True and size is odd, round to nearest even number
-        4. Validate final size doesn't exceed target margin
+        4. Validate final size doesn't exceed target margin (for margin mode)
         5. Return size (minimum 2 if partial TP enabled, minimum 1 otherwise)
     """
     try:
-        # Calculate base position size
-        # Formula: (target_margin * leverage) / (price * contract_value)
-        base_size = (target_margin * leverage) / (price * contract_value)
+        # Calculate base position size based on method
+        if sizing_type.lower() == "atr" and atr is not None and atr > 0:
+            # Formula: Target Margin / (ATR * Multiplier * contract_value)
+            # This allocates 'target_margin' of capital for every (ATR * Multiplier) move in price
+            base_size = target_margin / (atr * atr_multiplier * contract_value)
+            calc_mode = f"ATR (ATR={atr:.4f}, Mult={atr_multiplier})"
+        else:
+            # Standard Formula: (target_margin * leverage) / (price * contract_value)
+            base_size = (target_margin * leverage) / (price * contract_value)
+            calc_mode = "MARGIN"
         
         # Round to integer
         position_size = int(base_size)
@@ -98,12 +118,36 @@ def calculate_position_size(
             if position_size < 1:
                 position_size = 1
         
-        # Validate that the final size doesn't significantly exceed target margin
+        # Validate that the final size doesn't significantly exceed target margin (for Margin mode)
+        # Apply ATR Safety Cap if specified and using ATR mode
+        if sizing_type.lower() == "atr" and atr_margin_cap_multiplier is not None:
+            max_allowed_margin = target_margin * atr_margin_cap_multiplier
+            actual_margin = (position_size * price * contract_value) / leverage
+            
+            if actual_margin > max_allowed_margin:
+                old_size = position_size
+                # Max Size = (Target Margin * Cap * Leverage) / (Price * Contract Value)
+                position_size = int((max_allowed_margin * leverage) / (price * contract_value))
+                
+                # Ensure even handle if partial TP enabled
+                if enable_partial_tp:
+                    if position_size % 2 != 0: position_size -= 1
+                    if position_size < 2: position_size = 2
+                else:
+                    if position_size < 1: position_size = 1
+                
+                new_margin = (position_size * price * contract_value) / leverage
+                logger.warning(
+                    f"ATR Safety Cap triggered for {calc_mode}: "
+                    f"Actual Margin ${actual_margin:.2f} > Cap ${max_allowed_margin:.2f}. "
+                    f"Capping size from {old_size} to {position_size} (New Margin: ${new_margin:.2f})"
+                )
+        
         actual_margin = (position_size * price * contract_value) / leverage
         
         # Log calculation details
         logger.info(
-            f"Position size calculation: "
+            f"Position size calculation ({calc_mode}): "
             f"Target Margin=${target_margin:.2f}, Price=${price:.2f}, "
             f"Leverage={leverage}x, Contract Value={contract_value}, "
             f"Partial TP Enabled={enable_partial_tp} → "
@@ -117,35 +161,68 @@ def calculate_position_size(
         # Return safe default based on partial TP setting
         return 2 if enable_partial_tp else 1
 
-def get_trade_config(symbol: str):
+def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None):
     """
-    Get trade configuration for a symbol from environment variables.
+    Get trade configuration for a symbol from environment variables and optional sizing_config.
+    
+    Args:
+        symbol: Trading symbol (e.g., 'PIPPINUSD')
+        sizing_config: Optional dictionary of sizing flags (e.g. from multi_coin config)
     
     Returns:
         dict: {
             "order_size": int,
             "leverage": int,
             "enabled": bool,
-            "base_asset": str
+            "base_asset": str,
+            "target_margin": float,
+            "sizing_type": str,
+            "atr_multiplier": float,
+            "atr_margin_cap_multiplier": float
         }
     """
     # 1. Determine Base Asset
     base_asset = symbol.upper().replace("USD", "").replace("USDT", "").replace("-", "").replace("/", "").replace("_", "")
     
     # 2. Defaults
-    order_size = 1  # Deprecated: kept for backwards compatibility
+    order_size = 1  
     leverage = 5
     target_margin = 40.0  # Default target margin in USD
     
-    # 3. Load overrides
-    try:
-        order_size = int(os.getenv(f"ORDER_SIZE_{base_asset}", str(order_size)))
-        leverage = int(os.getenv(f"LEVERAGE_{base_asset}", str(leverage)))
-        target_margin = float(os.getenv(f"TARGET_MARGIN_{base_asset}", str(target_margin)))
-    except ValueError:
-        logger.warning(f"Invalid configuration for {base_asset}, using defaults.")
+    # Position Sizing Type (margin or atr)
+    from core.config import get_config
+    config = get_config()
+    sizing_type = config.risk_management.position_sizing_type if hasattr(config, 'risk_management') else "margin"
+    atr_multiplier = config.risk_management.atr_margin_multiplier if hasattr(config, 'risk_management') else 2.0
+    atr_margin_cap_multiplier = config.risk_management.atr_margin_cap_multiplier if hasattr(config, 'risk_management') else 1.5
 
-    # 4. Check Enable Flag
+    # 3. Load overrides from Environment (Priority 2 / Fallback)
+    try:
+        leverage = int(os.getenv(f"LEVERAGE_{base_asset}", os.getenv("LEVERAGE", str(leverage))))
+        target_margin = float(os.getenv(f"TARGET_MARGIN_{base_asset}", str(target_margin)))
+        
+        # Legacy env support for sizing flags (Priority 3)
+        sizing_type = os.getenv(f"POSITION_SIZING_TYPE_{base_asset}", sizing_type).lower()
+        atr_multiplier = float(os.getenv(f"ATR_MARGIN_MULTIPLIER_{base_asset}", str(atr_multiplier)))
+        atr_margin_cap_multiplier = float(os.getenv(f"ATR_MARGIN_CAP_MULTIPLIER_{base_asset}", str(atr_margin_cap_multiplier)))
+    except ValueError:
+        logger.warning(f"Invalid environment configuration for {base_asset}, using current values.")
+
+    # 4. Load overrides from sizing_config (Priority 1)
+    if sizing_config:
+        if "position_sizing_type" in sizing_config:
+            sizing_type = sizing_config["position_sizing_type"].lower()
+        if "atr_margin_multiplier" in sizing_config:
+            atr_multiplier = float(sizing_config["atr_margin_multiplier"])
+        if "leverage" in sizing_config:
+            leverage = int(sizing_config["leverage"])
+        if "target_margin" in sizing_config:
+            target_margin = float(sizing_config["target_margin"])
+        if "atr_margin_cap_multiplier" in sizing_config:
+            atr_margin_cap_multiplier = float(sizing_config["atr_margin_cap_multiplier"])
+        logger.debug(f"Loaded config overrides for {symbol.upper()} from multi-coin settings")
+
+    # 5. Check Enable Flag
     env_var_key = f"ENABLE_ORDER_PLACEMENT_{base_asset}"
     enable_orders = os.getenv(env_var_key, "false").lower() == "true"
     
@@ -154,39 +231,33 @@ def get_trade_config(symbol: str):
         "leverage": leverage,
         "enabled": enable_orders,
         "base_asset": base_asset,
-        "target_margin": target_margin  # New: configurable target margin
+        "target_margin": target_margin,  # New: configurable target margin
+        "sizing_type": sizing_type,
+        "atr_multiplier": atr_multiplier,
+        "atr_margin_cap_multiplier": atr_margin_cap_multiplier
     }
 
 def execute_strategy_signal(
-    client: DeltaRestClient,
+    client: DeltaRestClient, 
     notifier: NotificationManager,
-    symbol: str,
-    action: str,
+    symbol: str, 
+    action: str, 
     price: float,
+    market_price: float,
     rsi: float,
     reason: str,
-    mode: str = "live",
-    strategy_name: Optional[str] = None,
-    market_price: Optional[float] = None,
+    mode: str,
+    strategy_name: str,
     enable_partial_tp: bool = False,
-    timeframe: Optional[str] = None
+    timeframe: str = "1h",
+    atr: Optional[float] = None,
+    sizing_config: Optional[Dict[str, Any]] = None
 ):
     """
-    Execute a strategy signal: Place order and send alert.
-    
-    Args:
-        client: API Client
-        notifier: Notification Manager
-        symbol: Trading Symbol (e.g. 'BTCUSD')
-        action: Strategy Action (ENTRY_LONG, EXIT_LONG, etc.)
-        price: Current Price (for estimation)
-        rsi: Current RSI
-        reason: Signal Reason
-        mode: Execution mode ('live' or 'paper')
-        strategy_name: Name of the strategy executing the signal
-        market_price: Actual market price (LTP) if different from price
-        enable_partial_tp: Whether partial take-profit is enabled (for position sizing)
+    Execute a strategy signal by placing orders and sending notifications.
     """
+    # 1. Get symbol configuration
+    trade_config = get_trade_config(symbol, sizing_config=sizing_config)
     
     try:
         # 1. Resolve Product ID
@@ -201,12 +272,14 @@ def execute_strategy_signal(
         contract_value = float(product.get('contract_value', 1.0)) # Usually 0.001 BTC or similar
         
         # 2. Get Configuration
-        config = get_trade_config(symbol)
-        order_size = config['order_size']  # Will be overridden for entries with dynamic sizing
-        leverage = config['leverage']
-        enable_orders = config['enabled']
-        base_asset = config['base_asset']
-        target_margin = config['target_margin']
+        order_size = trade_config['order_size']  # Will be overridden for entries with dynamic sizing
+        leverage = trade_config['leverage']
+        enable_orders = trade_config['enabled']
+        base_asset = trade_config['base_asset']
+        target_margin = trade_config['target_margin']
+        sizing_type = trade_config.get('sizing_type', 'margin')
+        atr_multiplier = trade_config.get('atr_multiplier', 2.0)
+        atr_margin_cap_multiplier = trade_config.get('atr_margin_cap_multiplier', 1.5)
         
         side = None
         is_entry = False
@@ -231,10 +304,14 @@ def execute_strategy_signal(
                     price=current_price,
                     leverage=leverage,
                     contract_value=contract_value,
-                    enable_partial_tp=enable_partial_tp
+                    enable_partial_tp=enable_partial_tp,
+                    sizing_type=sizing_type,
+                    atr=atr,
+                    atr_multiplier=atr_multiplier,
+                    atr_margin_cap_multiplier=atr_margin_cap_multiplier
                 )
                 lot_size = order_size  # Store for notification
-                logger.info(f"Calculated position size for ENTRY_LONG: {order_size} contracts")
+                logger.info(f"Calculated position size for ENTRY_LONG: {order_size} contracts (Sizing: {sizing_type})")
             except Exception as e:
                 logger.error(f"Failed to calculate dynamic position size: {e}. Using default.")
                 order_size = 2 if enable_partial_tp else 1
@@ -257,10 +334,14 @@ def execute_strategy_signal(
                     price=current_price,
                     leverage=leverage,
                     contract_value=contract_value,
-                    enable_partial_tp=enable_partial_tp
+                    enable_partial_tp=enable_partial_tp,
+                    sizing_type=sizing_type,
+                    atr=atr,
+                    atr_multiplier=atr_multiplier,
+                    atr_margin_cap_multiplier=atr_margin_cap_multiplier
                 )
                 lot_size = order_size  # Store for notification
-                logger.info(f"Calculated position size for ENTRY_SHORT: {order_size} contracts")
+                logger.info(f"Calculated position size for ENTRY_SHORT: {order_size} contracts (Sizing: {sizing_type})")
             except Exception as e:
                 logger.error(f"Failed to calculate dynamic position size: {e}. Using default.")
                 order_size = 2 if enable_partial_tp else 1

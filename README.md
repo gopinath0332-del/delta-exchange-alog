@@ -215,6 +215,72 @@ Position Size = (40 * 5) / (100000 * 0.001) = 200 / 100 = 2 contracts
 > [!NOTE]
 > The old `ORDER_SIZE_{ASSET}` configuration is deprecated for entry orders but still supported for backwards compatibility. It is recommended to migrate to `TARGET_MARGIN_{ASSET}` for better risk management.
 
+### Volatility-Based Position Sizing (ATR)
+
+The platform supports **volatility-based position sizing** using the Average True Range (ATR). This allows the bot to adjust the number of contracts based on market volatility, keeping the risk (dollar loss per unit of volatility move) constant.
+
+**How it works:**
+
+- When enabled, position size is calculated as: `TARGET_MARGIN / (ATR * ATR_MULTIPLIER * contract_value)`
+- This allocates `TARGET_MARGIN` of capital for every `(ATR * ATR_MULTIPLIER)` move in price.
+- If volatility (ATR) is high, the position size decreases. If volatility is low, the position size increases.
+
+**Configuration:**
+
+You can set global defaults in `config/settings.yaml`:
+
+```yaml
+risk_management:
+  position_sizing_type: "margin" # Default sizing method: "margin" or "atr"
+  atr_margin_multiplier: 2.0 # Multiplier for ATR unit
+```
+
+**Symbol-Specific Overrides:**
+
+- **Capital & Sizing**: `leverage`, `target_margin`, `position_sizing_type`, `atr_margin_multiplier`, and `atr_margin_cap_multiplier` are all managed within the `multi_coin` section of `config/settings.yaml`.
+- **Precedence**: Settings in `settings.yaml` take precedence over environment variables in `.env`. If a symbol is defined in `multi_coin`, the bot will ignore its corresponding `.env` keys (like `TARGET_MARGIN_BTC`).
+
+Example `config/settings.yaml`:
+
+```yaml
+multi_coin:
+  donchian_channel:
+    symbols:
+      - symbol: SLVONUSD
+        leverage: 5
+        target_margin: 50
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        atr_margin_cap_multiplier: 1.5 # Optional: Defaults to 1.5 if omitted
+```
+
+**ATR Safety Cap:**
+
+To prevent excessive risk in low-volatility (flat) markets, the bot enforces a **Safety Cap**.
+- **Default Multiplier**: 1.5x
+- **Logic**: The actual margin used for a trade will never exceed `target_margin * atr_margin_cap_multiplier`.
+- **Example**: If your target margin is $50 and the cap is 1.5x, the bot will never use more than $75 of collateral, even if the ATR formula suggests a much larger position.
+
+Example `config/.env` (Fallback only):
+
+```env
+# Only used if missing from settings.yaml
+TARGET_MARGIN_SLVON=30
+LEVERAGE_SLVON=10
+```
+
+> [!TIP]
+> Environment variables (e.g., `POSITION_SIZING_TYPE_PIPPIN`) are still supported for backward compatibility but using `settings.yaml` is recommended for centralizing configuration.
+
+**Benefits:**
+
+- ✅ **Constant Risk Units**: Normalize risk across various market conditions.
+- ✅ **Volatility Aware**: Automatically scales down in high-volatility environments.
+- ✅ **Coin-Specific Flags**: Enable it only for the coins you want.
+- ✅ **Consistent with TradingView**: Mimics advanced Pine Script risk management strategies.
+
+---
+
 ````
 
 ### Notifications

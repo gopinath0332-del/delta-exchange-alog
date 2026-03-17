@@ -29,6 +29,9 @@ risk_management:
   max_daily_loss: 0.02 # 2% maximum daily loss
   max_drawdown: 0.15 # 15% maximum drawdown
   max_leverage: 10 # Maximum leverage allowed
+  position_sizing_type: "margin" # Default sizing method: "margin" or "atr"
+  atr_margin_multiplier: 2.0 # Multiplier for ATR-based sizing
+  atr_margin_cap_multiplier: 1.5 # 1.5x safety cap on actual margin usage
 
 # Notification Settings
 notifications:
@@ -112,10 +115,10 @@ strategies:
     # Profit Milestone Exits (works alongside ATR partial TP)
     enable_profit_milestones: true
     profit_milestones:
-      - pnl_pct: 50    # When PnL >= 50%
-        exit_pct: 0.30  # Sell 30% of remaining position
-      - pnl_pct: 100   # When PnL >= 100%
-        exit_pct: 0.30  # Sell another 30% of remaining
+      - pnl_pct: 50 # When PnL >= 50%
+        exit_pct: 0.30 # Sell 30% of remaining position
+      - pnl_pct: 100 # When PnL >= 100%
+        exit_pct: 0.30 # Sell another 30% of remaining
     bars_per_day: 24 # For 1H timeframe
     min_long_days: 0 # Minimum long duration (set to 0 per Pine script)
     # NEW: EMA Trend Filter
@@ -144,17 +147,27 @@ multi_coin:
       - symbol: PIUSD
         timeframe: 4h
         candle_type: standard
+        leverage: 5
+        target_margin: 50
         log_file: logs/pi.log # Per-coin log file (same as the old dedicated service)
       - symbol: PIPPINUSD
         timeframe: 2h
         candle_type: heikin-ashi
+        leverage: 5
+        target_margin: 50
         log_file: logs/pippin.log
       - symbol: SLVONUSD
         timeframe: 1h
+        leverage: 5
+        target_margin: 50
         candle_type: heikin-ashi
+        position_sizing_type: "atr" # Switch from "margin" to "atr"
+        atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         log_file: logs/slvon.log
       - symbol: RIVERUSD
         timeframe: 6h
+        leverage: 5
+        target_margin: 50
         candle_type: standard
         log_file: logs/river.log
 
