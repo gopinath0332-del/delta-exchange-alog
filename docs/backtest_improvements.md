@@ -131,7 +131,7 @@ The buy-and-hold comparison uses the same symbol's returns. There is no BTC benc
 | 2 | Funding rate cost | ⬜ Pending |
 | 3 | Slippage / spread | ⬜ Pending |
 | 4 | Partial TP tracking bug | ⬜ Pending |
-| 5 | Live equity curve | ⬜ Pending |
+| 5 | Live equity curve | ✅ Done |
 | 6 | Daily Sharpe/Sortino | ⬜ Pending |
 | 7 | Milestone exit display | ⬜ Pending |
 | 8 | Walk-forward split | ⬜ Pending |

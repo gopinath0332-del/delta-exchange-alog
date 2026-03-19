@@ -33,12 +33,6 @@ class BacktestEngine:
         self.processed_trades = []
         self.equity_curve = []
         
-        # Initial point for equity curve (time will be set in run())
-        self.equity_curve.append({
-            'time': None,
-            'equity': self.equity
-        })
-        
     def _parse_time(self, time_str: str) -> datetime:
         try:
             # First try the %d-%m-%y %H:%M format from strategy's active_trade format
@@ -50,16 +44,63 @@ class BacktestEngine:
             except:
                 return None
 
+    def _build_candle_equity_curve(self, df: pd.DataFrame) -> list:
+        """Return a per-candle equity list with mark-to-market unrealised PnL."""
+        # Pre-parse all trade times once to avoid repeated try/except parsing per candle
+        parsed_trades = []
+        for t in self.processed_trades:
+            parsed_trades.append({
+                'entry_dt': self._parse_time(t['Entry Time']),
+                'exit_dt':  self._parse_time(t['Exit Time']),
+                'size':     t['Position Size'],
+                'ep':       t['Entry Price'],
+                'direction': t['Position Type'],
+                'pnl':      t['Profit/Loss'],
+            })
+
+        candle_curve = []
+        closed_equity = self.initial_capital  # running total of realised PnL
+
+        # Sort df by time (should already be sorted, but ensure it)
+        times = df['time'].values
+        closes = df['close'].values
+
+        # Pointer into sorted parsed_trades by exit_dt for efficient closed_equity updates
+        # We'll update closed_equity incrementally as we advance through candles
+        # (trades are processed in chronological exit order after the main loop)
+
+        for i in range(len(df)):
+            ts = times[i]
+            if ts > 1e10:
+                ts /= 1000
+            candle_dt = datetime.datetime.utcfromtimestamp(ts)
+            candle_close = closes[i]
+            candle_time_str = candle_dt.strftime('%d-%m-%y %H:%M')
+
+            # Accumulate closed PnL and compute unrealised in a single pass
+            equity = self.initial_capital
+            unrealised = 0.0
+            for pt in parsed_trades:
+                if pt['exit_dt'] is None or pt['entry_dt'] is None:
+                    continue
+                if pt['exit_dt'] <= candle_dt:
+                    equity += pt['pnl']
+                elif pt['entry_dt'] <= candle_dt:
+                    if pt['direction'] == 'LONG':
+                        unrealised += (candle_close - pt['ep']) * pt['size']
+                    else:
+                        unrealised += (pt['ep'] - candle_close) * pt['size']
+
+            candle_curve.append({
+                'time':   candle_time_str,
+                'equity': equity + unrealised,
+            })
+
+        return candle_curve
+
     def run(self, df: pd.DataFrame) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
         logger.info(f"Running backtest for {self.symbol} on {self.timeframe} timeframe")
-        
-        # Set start time for equity curve
-        if not df.empty and 'time' in df.columns:
-            ts = df['time'].iloc[0]
-            if ts > 1e10: ts /= 1000
-            start_time_str = datetime.datetime.fromtimestamp(ts).strftime('%d-%m-%y %H:%M')
-            self.equity_curve[0]['time'] = start_time_str
-            
+
         # Run the strategy's built-in backtest logic to generate raw signals
         self.strategy.run_backtest(df)
         raw_trades = getattr(self.strategy, 'trades', [])
@@ -169,21 +210,23 @@ class BacktestEngine:
                 'Bars Held': bars_held
             }
             self.processed_trades.append(processed_trade)
-            
-            self.equity_curve.append({
-                'time': trade.get('exit_time', ''),
-                'equity': self.equity
-            })
-            
+
         logger.info(f"Backtest engine finished. Final equity: ${self.equity:.2f}")
-        
+
+        # Build per-candle mark-to-market equity curve
+        self.equity_curve = self._build_candle_equity_curve(df)
+
         # Construct DataFrame for equity curve
         equity_df = pd.DataFrame(self.equity_curve)
         if len(equity_df) > 1:
             # Try parsing time for proper plotting later
             try:
-                equity_df['time'] = pd.to_datetime(equity_df['time'].apply(lambda x: x.split(' (')[0] if isinstance(x, str) else x), format='%d-%m-%y %H:%M', errors='coerce')
-            except:
+                equity_df['time'] = pd.to_datetime(
+                    equity_df['time'].apply(lambda x: x.split(' (')[0] if isinstance(x, str) else x),
+                    format='%d-%m-%y %H:%M',
+                    errors='coerce'
+                )
+            except Exception:
                 pass
-                
+
         return self.processed_trades, equity_df
