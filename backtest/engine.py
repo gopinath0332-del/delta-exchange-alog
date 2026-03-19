@@ -10,11 +10,12 @@ logger = get_logger(__name__)
 class BacktestEngine:
     """Engine to simulate execution of trades and calculate equity over time."""
     
-    def __init__(self, strategy, symbol: str, timeframe: str, strategy_name: str = ""):
+    def __init__(self, strategy, symbol: str, timeframe: str, strategy_name: str = "", leverage: int = 1):
         self.strategy = strategy
         self.symbol = symbol
         self.timeframe = timeframe
         self.strategy_name = strategy_name if strategy_name else type(strategy).__name__.lower()
+        self.leverage = leverage
         self.config = get_config()
         self.bt_config = self.config.backtesting
         
@@ -91,8 +92,8 @@ class BacktestEngine:
                 position_size = partial_remaining_size_map[trade_key]
                 del partial_remaining_size_map[trade_key]
             else:
-                # Standard full position sizing
-                position_size = trade_capital / entry_price
+                # Standard full position sizing (leverage scales notional, trade_capital is the margin)
+                position_size = (trade_capital * self.leverage) / entry_price
                 if trade['status'] == 'PARTIAL':
                     # Only calculate PnL on 50% size if partial, and save the other 50% for later
                     half_size = position_size / 2.0
@@ -153,6 +154,7 @@ class BacktestEngine:
             
             processed_trade = {
                 'Symbol': self.symbol,
+                'Leverage': self.leverage,
                 'Entry Time': trade.get('entry_time', ''),
                 'Exit Time': trade.get('exit_time', ''),
                 'Position Type': trade['type'],

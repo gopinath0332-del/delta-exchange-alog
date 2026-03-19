@@ -127,7 +127,7 @@ The buy-and-hold comparison uses the same symbol's returns. There is no BTC benc
 
 | # | Improvement | Status |
 |---|-------------|--------|
-| 1 | Leverage simulation | ⬜ Pending |
+| 1 | Leverage simulation | ✅ Done |
 | 2 | Funding rate cost | ⬜ Pending |
 | 3 | Slippage / spread | ⬜ Pending |
 | 4 | Partial TP tracking bug | ⬜ Pending |

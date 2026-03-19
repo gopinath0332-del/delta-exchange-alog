@@ -20,6 +20,7 @@ if hasattr(time, 'tzset'):
 
 from core.logger import setup_logging, get_logger
 from core.config import get_config
+from core.trading import get_trade_config
 from backtest.data_loader import DataLoader
 from backtest.engine import BacktestEngine
 from backtest.metrics import calculate_metrics
@@ -103,7 +104,8 @@ def run_backtest_for_file(filepath: Path, strategy_name: str, loader: DataLoader
         logger.error(str(e))
         return None
         
-    engine = BacktestEngine(strategy, symbol, timeframe, strategy_name)
+    trade_cfg = get_trade_config(symbol)
+    engine = BacktestEngine(strategy, symbol, timeframe, strategy_name, leverage=trade_cfg['leverage'])
     trades, equity_df = engine.run(df)
     
     metrics = calculate_metrics(
