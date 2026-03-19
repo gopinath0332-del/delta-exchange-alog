@@ -61,13 +61,16 @@ class DataLoader:
             # Ensure columns are lower case and strip whitespace
             df.columns = [col.strip().lower() for col in df.columns]
             
-            if 'time' not in df.columns:
+            # Accept 'date' column alone (daily CSVs from Delta have no 'time' column)
+            if 'time' not in df.columns and 'date' not in df.columns:
                 logger.error(f"Missing 'time' column in {filepath}")
                 raise ValueError(f"Missing 'time' column in {filepath}")
-                
-            # Combine date and time if 'date' column exists
-            if 'date' in df.columns:
+
+            # Combine date and time if both present; otherwise use whichever exists
+            if 'date' in df.columns and 'time' in df.columns:
                 datetime_str = df['date'].astype(str) + ' ' + df['time'].astype(str)
+            elif 'date' in df.columns:
+                datetime_str = df['date'].astype(str)
             else:
                 datetime_str = df['time']
 
