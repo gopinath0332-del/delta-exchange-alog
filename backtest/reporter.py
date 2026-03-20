@@ -286,9 +286,117 @@ class Reporter:
         fig.update_yaxes(title_text="Number of trades", row=1, col=1, gridcolor='#f8f9fa')
         
         return fig.to_html(full_html=False, include_plotlyjs='cdn')
-        
-    def generate_report(self, symbol: str, timeframe: str, metrics: Dict[str, Any], 
-                        trades: List[Dict[str, Any]], equity_df: pd.DataFrame, 
+
+    def _create_mae_mfe_chart(self, trades: List[Dict[str, Any]]) -> str:
+        """
+        Create a MAE vs MFE scatter plot for all trades.
+
+        Classic interpretation:
+          - X-axis = MFE % (how far price moved IN FAVOUR at best — bigger is better)
+          - Y-axis = MAE % (how far price moved AGAINST at worst — smaller is better)
+          - Green dots = winning trades, Red dots = losing trades
+          - A diagonal reference line (MFE == MAE) separates trades that "got lucky"
+            from those where the setup had genuine follow-through.
+
+        Returns the Plotly chart as an HTML string, or empty string if not enough data.
+        """
+        if not trades:
+            return ""
+
+        # Filter trades that have non-zero MAE/MFE data attached
+        valid = [t for t in trades if t.get('MAE %', 0) > 0 or t.get('MFE %', 0) > 0]
+        if not valid:
+            return ""
+
+        # Separate winners and losers for colour coding
+        winners = [t for t in valid if t.get('Profit/Loss', 0) > 0]
+        losers  = [t for t in valid if t.get('Profit/Loss', 0) <= 0]
+
+        fig = go.Figure()
+
+        # Winning trades — green
+        if winners:
+            fig.add_trace(go.Scatter(
+                x=[t.get('MFE %', 0) for t in winners],
+                y=[t.get('MAE %', 0) for t in winners],
+                mode='markers',
+                marker=dict(color='#28a745', size=8, opacity=0.75, line=dict(width=1, color='#145a24')),
+                name='Winners',
+                customdata=[[
+                    t.get('Entry Time', ''),
+                    t.get('Position Type', ''),
+                    t.get('Profit/Loss', 0),
+                    t.get('Return %', 0),
+                ] for t in winners],
+                hovertemplate=(
+                    "<b>%{customdata[1]}</b> | %{customdata[0]}<br>"
+                    "MFE: %{x:.2f}% &nbsp; MAE: %{y:.2f}%<br>"
+                    "PnL: %{customdata[2]:.2f} USD (%{customdata[3]:.2f}%)"
+                    "<extra>Winner</extra>"
+                )
+            ))
+
+        # Losing trades — red
+        if losers:
+            fig.add_trace(go.Scatter(
+                x=[t.get('MFE %', 0) for t in losers],
+                y=[t.get('MAE %', 0) for t in losers],
+                mode='markers',
+                marker=dict(color='#dc3545', size=8, opacity=0.75, line=dict(width=1, color='#7b1c27')),
+                name='Losers',
+                customdata=[[
+                    t.get('Entry Time', ''),
+                    t.get('Position Type', ''),
+                    t.get('Profit/Loss', 0),
+                    t.get('Return %', 0),
+                ] for t in losers],
+                hovertemplate=(
+                    "<b>%{customdata[1]}</b> | %{customdata[0]}<br>"
+                    "MFE: %{x:.2f}% &nbsp; MAE: %{y:.2f}%<br>"
+                    "PnL: %{customdata[2]:.2f} USD (%{customdata[3]:.2f}%)"
+                    "<extra>Loser</extra>"
+                )
+            ))
+
+        # Reference diagonal line where MFE == MAE (trades exited exactly at worst/best)
+        all_mfe = [t.get('MFE %', 0) for t in valid]
+        all_mae = [t.get('MAE %', 0) for t in valid]
+        axis_max = max(max(all_mfe, default=1), max(all_mae, default=1)) * 1.1
+        fig.add_trace(go.Scatter(
+            x=[0, axis_max], y=[0, axis_max],
+            mode='lines',
+            line=dict(color='rgba(100,100,100,0.35)', dash='dash', width=1),
+            name='MFE = MAE',
+            hoverinfo='skip',
+            showlegend=True
+        ))
+
+        fig.update_layout(
+            title_text="MAE / MFE Scatter Plot",
+            height=420,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            margin=dict(l=60, r=40, t=50, b=60),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hovermode='closest',
+        )
+        fig.update_xaxes(
+            title_text="MFE % (best unrealised profit during trade)",
+            gridcolor='#f0f0f0',
+            zerolinecolor='#cccccc',
+            range=[0, axis_max],
+        )
+        fig.update_yaxes(
+            title_text="MAE % (worst adverse move during trade)",
+            gridcolor='#f0f0f0',
+            zerolinecolor='#cccccc',
+            range=[0, axis_max],
+        )
+
+        return fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+    def generate_report(self, symbol: str, timeframe: str, metrics: Dict[str, Any],
+                        trades: List[Dict[str, Any]], equity_df: pd.DataFrame,
                         filepath: str = None) -> str:
         """
         Generate the HTML report.
@@ -299,15 +407,18 @@ class Reporter:
         template = self.env.get_template("report_template.html")
         chart_html = self._create_charts(equity_df)
         trades_analysis_html = self._create_trades_analysis_charts(trades)
+        # Generate MAE / MFE scatter plot (empty string if no valid data)
+        mae_mfe_chart_html = self._create_mae_mfe_chart(trades)
         
-        # Render HTML
+        # Render HTML — pass the new mae_mfe_chart_html so the template can embed it
         html_out = template.render(
             symbol=symbol,
             timeframe=timeframe,
             metrics=metrics,
             trades=trades,
             chart_html=chart_html,
-            trades_analysis_html=trades_analysis_html
+            trades_analysis_html=trades_analysis_html,
+            mae_mfe_chart_html=mae_mfe_chart_html,
         )
         
         if filepath is None:

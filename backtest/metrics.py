@@ -175,7 +175,10 @@ def calculate_metrics(
                 'avg_pnl': 0.0, 'avg_pnl_pct': 0.0, 'avg_win': 0.0, 'avg_win_pct': 0.0, 'avg_loss': 0.0, 'avg_loss_pct': 0.0,
                 'ratio_win_loss': 0.0, 'max_win': 0.0, 'max_win_pct': 0.0, 'max_win_pct_gross': 0.0,
                 'max_loss': 0.0, 'max_loss_pct': 0.0, 'max_loss_pct_gross': 0.0,
-                'avg_bars': 0, 'avg_bars_win': 0, 'avg_bars_loss': 0
+                'avg_bars': 0, 'avg_bars_win': 0, 'avg_bars_loss': 0,
+                # MAE / MFE aggregates
+                'avg_mae_pct': 0.0, 'avg_mfe_pct': 0.0,
+                'max_mae_pct': 0.0, 'max_mfe_pct': 0.0,
             }
         
         wins = [t for t in subset if t.get('Profit/Loss', 0) > 0]
@@ -212,6 +215,17 @@ def calculate_metrics(
         avg_bars = int(np.mean([t.get('Bars Held', 0) for t in subset])) if subset else 0
         avg_bars_win = int(np.mean([t.get('Bars Held', 0) for t in wins])) if wins else 0
         avg_bars_loss = int(np.mean([t.get('Bars Held', 0) for t in losses])) if losses else 0
+
+        # --- MAE / MFE aggregates ---
+        # Average and maximum MAE % across all trades in this subset.
+        # MAE measures the worst price move against the position during the trade
+        # (a proxy for "heat taken" and stop placement quality).
+        mae_pcts = [t.get('MAE %', 0.0) for t in subset]
+        mfe_pcts = [t.get('MFE %', 0.0) for t in subset]
+        avg_mae_pct = float(np.mean(mae_pcts)) if mae_pcts else 0.0
+        avg_mfe_pct = float(np.mean(mfe_pcts)) if mfe_pcts else 0.0
+        max_mae_pct = float(max(mae_pcts)) if mae_pcts else 0.0
+        max_mfe_pct = float(max(mfe_pcts)) if mfe_pcts else 0.0
         
         return {
             'net_pnl': npnl, 'gross_profit': gp, 'gross_loss': gl, 'pf': pf, 'comm': comm, 'payoff': payoff,
@@ -223,7 +237,10 @@ def calculate_metrics(
             'ratio_win_loss': ratio_win_loss,
             'max_win': max_win, 'max_win_pct': max_win_pct, 'max_win_pct_gross': max_win_pct_gross,
             'max_loss': max_loss, 'max_loss_pct': max_loss_pct, 'max_loss_pct_gross': max_loss_pct_gross,
-            'avg_bars': avg_bars, 'avg_bars_win': avg_bars_win, 'avg_bars_loss': avg_bars_loss
+            'avg_bars': avg_bars, 'avg_bars_win': avg_bars_win, 'avg_bars_loss': avg_bars_loss,
+            # MAE / MFE aggregates
+            'avg_mae_pct': avg_mae_pct, 'avg_mfe_pct': avg_mfe_pct,
+            'max_mae_pct': max_mae_pct, 'max_mfe_pct': max_mfe_pct,
         }
         
     stats_all = calc_stats(trades)
@@ -382,7 +399,17 @@ def calculate_metrics(
         {'Metric': 'Avg # bars in trades', 'All': fmt_num(stats_all['avg_bars']), 'Long': fmt_num(stats_long['avg_bars']), 'Short': fmt_num(stats_short['avg_bars'])},
         {'Metric': 'Avg # bars in winning trades', 'All': fmt_num(stats_all['avg_bars_win']), 'Long': fmt_num(stats_long['avg_bars_win']), 'Short': fmt_num(stats_short['avg_bars_win'])},
         {'Metric': 'Avg # bars in losing trades', 'All': fmt_num(stats_all['avg_bars_loss']), 'Long': fmt_num(stats_long['avg_bars_loss']), 'Short': fmt_num(stats_short['avg_bars_loss'])},
+        # ---- MAE / MFE Analysis ----
+        # MAE (Maximum Adverse Excursion) = worst intra-trade price move against the position.
+        # MFE (Maximum Favorable Excursion) = best unrealised profit available during the trade.
+        # Both are expressed as % of entry price, averaged and maximised across the trade set.
+        {'is_header': True, 'Metric': 'MAE / MFE Analysis', 'All': '', 'Long': '', 'Short': ''},
+        {'Metric': 'Avg MAE % (max adverse excursion)', 'All': fmt_pct(stats_all['avg_mae_pct']), 'Long': fmt_pct(stats_long['avg_mae_pct']), 'Short': fmt_pct(stats_short['avg_mae_pct'])},
+        {'Metric': 'Max MAE % (worst heat taken)', 'All': fmt_pct(stats_all['max_mae_pct']), 'Long': fmt_pct(stats_long['max_mae_pct']), 'Short': fmt_pct(stats_short['max_mae_pct'])},
+        {'Metric': 'Avg MFE % (max favorable excursion)', 'All': fmt_pct(stats_all['avg_mfe_pct']), 'Long': fmt_pct(stats_long['avg_mfe_pct']), 'Short': fmt_pct(stats_short['avg_mfe_pct'])},
+        {'Metric': 'Max MFE % (best opportunity seen)', 'All': fmt_pct(stats_all['max_mfe_pct']), 'Long': fmt_pct(stats_long['max_mfe_pct']), 'Short': fmt_pct(stats_short['max_mfe_pct'])},
         {'is_header': True, 'Metric': 'Run-ups and drawdowns', 'All': '', 'Long': '', 'Short': ''},
+
         {'is_header': True, 'Metric': 'Run-ups', 'All': '', 'Long': '', 'Short': ''},
         {'Metric': 'Avg equity run-up duration (close-to-close)', 'All': f'<span class="val-neu">{avg_ru_dur}</span>', 'Long': '', 'Short': ''},
         {'Metric': 'Avg equity run-up (close-to-close)', 'All': fmt_cur_pct_no_sign(avg_ru_val, avg_ru_pct), 'Long': '', 'Short': ''},
