@@ -1,5 +1,5 @@
+from datetime import datetime, timezone
 import pandas as pd
-import datetime
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -34,15 +34,18 @@ class BacktestEngine:
         self.processed_trades = []
         self.equity_curve = []
         
-    def _parse_time(self, time_str: str) -> datetime:
+    def _parse_time(self, time_str: str) -> Optional[datetime]:
+        if not time_str or not isinstance(time_str, str):
+            return None
+        clean_time = time_str.split(' (')[0]
         try:
             # First try the %d-%m-%y %H:%M format from strategy's active_trade format
-            return datetime.strptime(time_str.split(' (')[0], '%d-%m-%y %H:%M')
-        except:
+            return datetime.strptime(clean_time, '%d-%m-%y %H:%M')
+        except ValueError:
             try:
                 # Fallback to standard ISO format if outputting default pandas timestamps
-                return pd.to_datetime(time_str.split(' (')[0]).to_pydatetime()
-            except:
+                return pd.to_datetime(clean_time).to_pydatetime()
+            except (ValueError, TypeError):
                 return None
 
     def _build_candle_equity_curve(self, df: pd.DataFrame) -> list:
@@ -60,7 +63,6 @@ class BacktestEngine:
             })
 
         candle_curve = []
-        closed_equity = self.initial_capital  # running total of realised PnL
 
         # Sort df by time (should already be sorted, but ensure it)
         times = df['time'].values
@@ -74,7 +76,7 @@ class BacktestEngine:
             ts = times[i]
             if ts > 1e10:
                 ts /= 1000
-            candle_dt = datetime.datetime.utcfromtimestamp(ts)
+            candle_dt = datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
             candle_close = closes[i]
             candle_time_str = candle_dt.strftime('%d-%m-%y %H:%M')
 
@@ -146,10 +148,10 @@ class BacktestEngine:
         for _idx, _ts in enumerate(time_vals):
             try:
                 # Use fromtimestamp (LOCAL time) to match format_time() in strategies
-                _dt_str = datetime.datetime.fromtimestamp(float(_ts)).strftime('%d-%m-%y %H:%M')
+                _dt_str = datetime.fromtimestamp(float(_ts)).strftime('%d-%m-%y %H:%M')
                 if _dt_str not in time_str_to_idx:
                     time_str_to_idx[_dt_str] = _idx
-            except Exception:
+            except (ValueError, OSError, OverflowError):
                 pass
 
 
@@ -332,16 +334,29 @@ class BacktestEngine:
                         elif unit == 'm': bars_held = int(sec / (val * 60))
                         elif unit == 'd': bars_held = int(sec / (val * 86400))
                         elif unit == 'w': bars_held = int(sec / (val * 604800))
-                except Exception:
+                except (ValueError, ZeroDivisionError):
                     pass
             
+            # Create a more descriptive status for the UI (Item #7)
+            status_val = trade.get('status', 'CLOSED')
+            if status_val == 'CLOSED':
+                display_type = trade['type']
+            elif status_val == 'PARTIAL':
+                display_type = f"{trade['type']} (Partial)"
+            elif status_val.startswith('MILESTONE'):
+                m_label = status_val.title().replace('_', ' ')
+                display_type = f"{trade['type']} ({m_label})"
+            else:
+                display_type = f"{trade['type']} ({status_val.title().replace('_', ' ').replace('Sl', 'SL')})"
+
             processed_trade = {
                 'Symbol': self.symbol,
                 'Leverage': self.leverage,
                 'Entry Time': trade.get('entry_time', ''),
                 'Exit Time': trade.get('exit_time', ''),
                 'Position Type': trade['type'],
-                'Exit Type': trade.get('status', 'CLOSED'),
+                'Display Type': display_type,
+                'Exit Type': status_val,
                 'Position Size': position_size,
                 'Entry Price': entry_price,
                 'Exit Price': exit_price,
@@ -376,7 +391,7 @@ class BacktestEngine:
                     format='%d-%m-%y %H:%M',
                     errors='coerce'
                 )
-            except Exception:
+            except (ValueError, TypeError):
                 pass
 
         return self.processed_trades, equity_df

@@ -133,7 +133,7 @@ The buy-and-hold comparison uses the same symbol's returns. There is no BTC benc
 | 4 | Partial TP tracking bug | ✅ Done |
 | 5 | Live equity curve | ✅ Done |
 | 6 | Daily Sharpe/Sortino | ⬜ Pending |
-| 7 | Milestone exit display | ⬜ Pending |
+| 7 | Milestone exit display | ✅ Done |
 | 8 | Walk-forward split | ⬜ Pending |
 | 9 | Commission tiers | ⬜ Pending |
 | 10 | Streak tracking | ⬜ Pending |
