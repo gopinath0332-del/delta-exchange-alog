@@ -539,10 +539,19 @@ Every backtest now computes **Maximum Adverse Excursion (MAE)** and **Maximum Fa
 - **High MAE, winning trade** → the trade barely survived; your stop may be too tight or entry timing off.
 - **Low MFE, losing trade** → the setup had no edge; the trade moved against you from the start.
 
+---
 
-  max_position_size: 0.1 # 10% of capital
-  max_daily_loss: 0.02 # 2%
-  max_drawdown: 0.15 # 15%
+### HTML Report — Additional Charts
+
+The Overview tab of the HTML report also includes three additional Plotly charts:
+
+| Chart | What it shows |
+|-------|---------------|
+| **Monthly Returns Heatmap** | Year × Month grid; green = profitable month, red = losing. Helps spot seasonal patterns. |
+| **Weekly Equity Candlestick** | Equity curve resampled to weekly OHLC bars with blue entry (▲) and orange exit (×) trade markers overlaid. |
+| **Win/Loss Streak Chart** | Horizontal bars showing each consecutive run of wins (green) or losses (red) in chronological order; useful for spotting clustering of bad trades. |
+
+
   max_leverage: 10
 ```
 

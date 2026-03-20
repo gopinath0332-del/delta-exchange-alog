@@ -203,6 +203,28 @@
       <h2>MAE / MFE Chart</h2>
       <div class="chart-container">{{ mae_mfe_chart_html | safe }}</div>
       {% endif %}
+
+      {% if monthly_heatmap_html %}
+      <!-- Monthly returns heatmap: each cell = total PnL as % of capital for that month.
+           Green = profitable month, red = losing month. Great for spotting seasonal patterns. -->
+      <h2>Monthly Returns Heatmap</h2>
+      <div class="chart-container">{{ monthly_heatmap_html | safe }}</div>
+      {% endif %}
+
+      {% if candlestick_html %}
+      <!-- Weekly equity candlestick: equity curve resampled to weekly OHLC bars.
+           Blue triangles = trade entries, orange × = trade exits. -->
+      <h2>Equity Curve — Weekly Candlestick</h2>
+      <div class="chart-container">{{ candlestick_html | safe }}</div>
+      {% endif %}
+
+      {% if streak_chart_html %}
+      <!-- Win/loss streak chart: each bar = one consecutive run of wins (green) or losses (red).
+           Longer bars = more clustering; useful to spot drawdown-inducing loss runs. -->
+      <h2>Win / Loss Streaks</h2>
+      <div class="chart-container">{{ streak_chart_html | safe }}</div>
+      {% endif %}
+
       </div>
 
 

@@ -166,16 +166,19 @@ df = df.ffill()
 
 ---
 
-### 11. Richer HTML Report (`backtest/templates/report_template.html`)
+### 11. Richer HTML Report (`backtest/templates/report_template.html`) ✅ IMPLEMENTED
 
 **Problem**: Charts only show equity curve and drawdown. The report lacks visual richness compared to TradingView.
 
-**Suggested additions**:
-- **Candlestick chart with entry/exit markers** using Plotly's `go.Candlestick` + scatter overlays
-- **Monthly returns heatmap** (calendar heatmap for quick spotting of seasonal patterns)
-- **Consecutive win/loss streak** visualization
+**Fix Implemented** — three new Plotly charts added to the Overview tab:
 
-**Location**: `backtest/reporter.py` → `_create_charts()` + `backtest/templates/report_template.html`
+1. **Monthly Returns Heatmap** (`_create_monthly_returns_heatmap()`): Year × Month grid. Each cell = total PnL as % of trade capital for that calendar month. Green = profit, red = loss. Zero-centred symmetric colour scale. Helps spot seasonal patterns and consistently bad months.
+
+2. **Weekly Equity Candlestick** (`_create_candlestick_chart()`): Equity curve resampled to weekly OHLC bars via `pandas.resample('W')`, displayed as a Plotly Candlestick. Entry markers (blue ▲) and exit markers (orange ×) overlaid as scatter traces.
+
+3. **Win/Loss Streak Chart** (`_create_streak_chart()`): Horizontal bar chart where each bar = one consecutive run of wins (green) or losses (red), ordered chronologically. Helps identify drawdown-inducing loss clusters.
+
+**Files changed**: `backtest/reporter.py` (3 new methods + wired into `generate_report()`), `backtest/templates/report_template.html` (3 new `{% if %}` chart blocks in Overview tab).
 
 ---
 
@@ -258,7 +261,7 @@ Also move `trades`, `active_trade`, `current_position` state management into the
 | 8 | Live data fetch flag | 🟡 Medium | Medium | Convenience |
 | 9 | Multi-strategy comparison report | 🟡 Medium | Low | Reporting |
 | 10 | Fix deprecated `fillna` | 🟢 Low | Trivial | Code hygiene |
-| 11 | Richer HTML report (heatmap, OHLC) | 🟢 Low | High | Visual quality |
+| 11 | Richer HTML report (heatmap, candlestick, streaks) ✅ | 🟡 Medium | Low | Visual richness |
 | 12 | Timestamped report directories | 🟢 Low | Trivial | Usability |
 | 13 | BaseStrategy abstract class | 🟢 Low | Medium | Maintainability |
 | 14 | Missing metrics (CAGR, Calmar, etc.) | 🟢 Low | Low | Completeness |

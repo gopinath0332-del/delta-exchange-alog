@@ -395,6 +395,300 @@ class Reporter:
 
         return fig.to_html(full_html=False, include_plotlyjs='cdn')
 
+    # ===========================================================================
+    # IMPROVEMENT #11 — Richer HTML Report Charts
+    # ===========================================================================
+
+    def _create_monthly_returns_heatmap(self, trades: List[Dict[str, Any]]) -> str:
+        """
+        Build a calendar heatmap of monthly returns.
+
+        Each cell = sum of PnL / (sum of trade_capital) * 100 for that month.
+        Colour scale: green = profitable, red = losing. Cells show the % return.
+
+        Returns empty string if fewer than 2 months of trades exist.
+        """
+        if not trades:
+            return ""
+
+        rows = []
+        for t in trades:
+            exit_time = t.get('Exit Time', '')
+            pnl       = t.get('Profit/Loss', 0.0)
+            pos_size  = t.get('Position Size', 0.0)
+            entry_price = t.get('Entry Price', 0.0)
+            leverage    = t.get('Leverage', 1)
+
+            if not exit_time or exit_time == 'N/A':
+                continue
+            try:
+                # Accept both 'dd-mm-yy HH:MM' and ISO formats from the engine
+                try:
+                    dt = pd.to_datetime(exit_time, format='%d-%m-%y %H:%M')
+                except Exception:
+                    dt = pd.to_datetime(exit_time)
+                # Approximate trade capital: notional / leverage
+                trade_capital = (pos_size * entry_price / max(leverage, 1)) if pos_size and entry_price else 1.0
+                rows.append({'year': dt.year, 'month': dt.month, 'pnl': pnl, 'capital': trade_capital})
+            except Exception:
+                continue
+
+        if not rows:
+            return ""
+
+        df = pd.DataFrame(rows)
+        grouped = df.groupby(['year', 'month']).agg(pnl=('pnl', 'sum'), capital=('capital', 'sum')).reset_index()
+        grouped['ret_pct'] = (grouped['pnl'] / grouped['capital'].clip(lower=1)) * 100
+
+        years  = sorted(grouped['year'].unique())
+        months = list(range(1, 13))
+        month_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+        # Build z-matrix (rows = years, cols = months) and annotation text
+        z_matrix    = []
+        text_matrix = []
+        for yr in years:
+            z_row   = []
+            txt_row = []
+            for mo in months:
+                row = grouped[(grouped['year'] == yr) & (grouped['month'] == mo)]
+                if row.empty:
+                    z_row.append(None)
+                    txt_row.append('')
+                else:
+                    val = round(float(row['ret_pct'].iloc[0]), 2)
+                    z_row.append(val)
+                    txt_row.append(f"{val:+.1f}%")
+            z_matrix.append(z_row)
+            text_matrix.append(txt_row)
+
+        # Symmetric colour scale centred at zero
+        abs_max = max((abs(v) for row in z_matrix for v in row if v is not None), default=1)
+
+        fig = go.Figure(go.Heatmap(
+            z=z_matrix,
+            x=month_labels,
+            y=[str(yr) for yr in years],
+            text=text_matrix,
+            texttemplate='%{text}',
+            textfont=dict(size=12, color='white'),
+            colorscale=[
+                [0.0,  '#c0392b'],   # deep red
+                [0.45, '#e74c3c'],   # red
+                [0.50, '#2c3e50'],   # neutral dark
+                [0.55, '#27ae60'],   # green
+                [1.0,  '#1a5c36'],   # deep green
+            ],
+            zmin=-abs_max,
+            zmax=abs_max,
+            hovertemplate='%{y} %{x}: %{text}<extra></extra>',
+            showscale=True,
+            colorbar=dict(title='Return %', thickness=12),
+        ))
+
+        fig.update_layout(
+            title_text='Monthly Returns Heatmap',
+            height=max(200, 80 * len(years) + 80),
+            plot_bgcolor='#1a1a2e',
+            paper_bgcolor='white',
+            margin=dict(l=60, r=60, t=50, b=40),
+            xaxis=dict(side='top'),
+        )
+
+        return fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+    def _create_candlestick_chart(
+        self,
+        equity_df: pd.DataFrame,
+        trades: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Resample the equity curve into weekly OHLC bars displayed as a
+        candlestick chart, with entry (▲) and exit (✕) markers overlaid
+        as scatter traces.
+
+        This gives an at-a-glance view of which weeks saw entries/exits,
+        and how the equity moved in that context.
+
+        Returns empty string if equity_df is too short (<4 bars).
+        """
+        if equity_df is None or equity_df.empty or len(equity_df) < 4:
+            return ""
+
+        try:
+            edf = equity_df.copy()
+            # Ensure 'time' is datetime for resampling
+            if not pd.api.types.is_datetime64_any_dtype(edf['time']):
+                edf['time'] = pd.to_datetime(edf['time'], errors='coerce')
+            edf = edf.dropna(subset=['time'])
+            edf = edf.set_index('time').sort_index()
+
+            # Resample equity to weekly OHLC
+            weekly = edf['equity'].resample('W').ohlc().dropna()
+            if weekly.empty or len(weekly) < 2:
+                return ""
+
+            fig = go.Figure()
+
+            # Candlestick bars
+            fig.add_trace(go.Candlestick(
+                x=weekly.index,
+                open=weekly['open'],
+                high=weekly['high'],
+                low=weekly['low'],
+                close=weekly['close'],
+                name='Weekly Equity',
+                increasing_line_color='#27ae60',
+                decreasing_line_color='#e74c3c',
+                increasing_fillcolor='rgba(39,174,96,0.4)',
+                decreasing_fillcolor='rgba(231,76,60,0.4)',
+            ))
+
+            # Overlay entry and exit markers from trades if timestamps parseable
+            entry_times, entry_equities, entry_labels = [], [], []
+            exit_times,  exit_equities,  exit_labels  = [], [], []
+
+            equity_series = edf['equity']
+
+            for t in trades:
+                for time_key, equity_list, labels_list in [
+                    ('Entry Time', entry_times, entry_labels),
+                    ('Exit Time',  exit_times,  exit_labels),
+                ]:
+                    ts_str = t.get(time_key, '')
+                    pnl    = t.get('Profit/Loss', 0.0)
+                    try:
+                        try:
+                            dt = pd.to_datetime(ts_str, format='%d-%m-%y %H:%M')
+                        except Exception:
+                            dt = pd.to_datetime(ts_str)
+
+                        # Find nearest equity bar to place the marker
+                        idx = equity_series.index.asof(dt)
+                        eq  = float(equity_series.get(idx, equity_series.iloc[-1]))
+                        equity_list.append(dt)
+                        labels_list.append(f"{t.get('Position Type','')}: PnL {pnl:+.2f}")
+                    except Exception:
+                        continue
+
+            # Entry markers — green/red triangles based on direction
+            if entry_times:
+                fig.add_trace(go.Scatter(
+                    x=entry_times, y=entry_equities,
+                    mode='markers',
+                    marker=dict(symbol='triangle-up', size=9, color='#3498db',
+                                line=dict(width=1, color='#1a5276')),
+                    name='Entry',
+                    text=entry_labels,
+                    hovertemplate='<b>ENTRY</b><br>%{text}<extra></extra>',
+                ))
+
+            if exit_times:
+                fig.add_trace(go.Scatter(
+                    x=exit_times, y=exit_equities,
+                    mode='markers',
+                    marker=dict(symbol='x', size=9, color='#e67e22',
+                                line=dict(width=2, color='#935116')),
+                    name='Exit',
+                    text=exit_labels,
+                    hovertemplate='<b>EXIT</b><br>%{text}<extra></extra>',
+                ))
+
+            fig.update_layout(
+                title_text='Equity Curve — Weekly Candlestick with Trade Markers',
+                height=450,
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                margin=dict(l=60, r=40, t=50, b=60),
+                xaxis_rangeslider_visible=False,
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+                hovermode='x unified',
+            )
+            fig.update_xaxes(gridcolor='#f0f0f0', zerolinecolor='#ddd')
+            fig.update_yaxes(title_text='Equity ($)', gridcolor='#f0f0f0', zerolinecolor='#ddd')
+
+            return fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+        except Exception as exc:
+            logger.warning(f"Could not generate candlestick chart: {exc}")
+            return ""
+
+    def _create_streak_chart(self, trades: List[Dict[str, Any]]) -> str:
+        """
+        Visualise consecutive win/loss runs as a horizontal bar chart.
+
+        Each bar represents one streak: green = winning run, red = losing run.
+        The bar length = number of consecutive trades in that streak.
+        Bars are ordered chronologically (top-to-bottom = oldest-to-newest).
+
+        Helps identify clustering of good / bad trades and reveals whether
+        losses are isolated events or tend to come in groups.
+
+        Returns empty string if fewer than 3 completed trades exist.
+        """
+        closed = [t for t in trades if t.get('Profit/Loss') is not None]
+        if len(closed) < 3:
+            return ""
+
+        # Build streak list: each entry = (streak_length, is_win, label, start_idx)
+        streaks: List[Dict[str, Any]] = []
+        i = 0
+        streak_num = 1
+        while i < len(closed):
+            is_win = closed[i].get('Profit/Loss', 0.0) > 0
+            j = i
+            while j < len(closed) and (closed[j].get('Profit/Loss', 0.0) > 0) == is_win:
+                j += 1
+            length = j - i
+            label = f"{'W' * length if is_win else 'L' * length}  ({length} {'win' if is_win else 'loss'}{'s' if length > 1 else ''})"
+            streaks.append({'length': length, 'is_win': is_win, 'label': label, 'num': streak_num})
+            streak_num += 1
+            i = j
+
+        if not streaks:
+            return ""
+
+        # Lay out chart (oldest at top, newest at bottom)
+        y_labels = [f"Streak #{s['num']}" for s in streaks]
+        x_vals   = [s['length'] for s in streaks]
+        colours  = ['#27ae60' if s['is_win'] else '#e74c3c' for s in streaks]
+        texts    = [s['label'] for s in streaks]
+
+        fig = go.Figure(go.Bar(
+            x=x_vals,
+            y=y_labels,
+            orientation='h',
+            marker_color=colours,
+            text=texts,
+            textposition='inside',
+            insidetextanchor='start',
+            textfont=dict(color='white', size=11),
+            hovertemplate='%{y}: %{text}<extra></extra>',
+            name='',
+        ))
+
+        fig.update_layout(
+            title_text='Win / Loss Streaks (chronological)',
+            height=max(300, 30 * len(streaks) + 100),
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            margin=dict(l=90, r=40, t=50, b=40),
+            showlegend=False,
+            bargap=0.25,
+        )
+        fig.update_xaxes(
+            title_text='Consecutive trades',
+            gridcolor='#f0f0f0',
+            dtick=1,
+        )
+        fig.update_yaxes(
+            autorange='reversed',   # oldest streak at top
+            gridcolor='#f0f0f0',
+        )
+
+        return fig.to_html(full_html=False, include_plotlyjs='cdn')
+
     def generate_report(self, symbol: str, timeframe: str, metrics: Dict[str, Any],
                         trades: List[Dict[str, Any]], equity_df: pd.DataFrame,
                         filepath: str = None) -> str:
@@ -405,12 +699,15 @@ class Reporter:
             String path to the generated HTML file.
         """
         template = self.env.get_template("report_template.html")
-        chart_html = self._create_charts(equity_df)
+        chart_html           = self._create_charts(equity_df)
         trades_analysis_html = self._create_trades_analysis_charts(trades)
-        # Generate MAE / MFE scatter plot (empty string if no valid data)
-        mae_mfe_chart_html = self._create_mae_mfe_chart(trades)
-        
-        # Render HTML — pass the new mae_mfe_chart_html so the template can embed it
+        mae_mfe_chart_html   = self._create_mae_mfe_chart(trades)
+
+        # Improvement #11 — three additional overview charts
+        monthly_heatmap_html  = self._create_monthly_returns_heatmap(trades)
+        candlestick_html      = self._create_candlestick_chart(equity_df, trades)
+        streak_chart_html     = self._create_streak_chart(trades)
+
         html_out = template.render(
             symbol=symbol,
             timeframe=timeframe,
@@ -419,7 +716,12 @@ class Reporter:
             chart_html=chart_html,
             trades_analysis_html=trades_analysis_html,
             mae_mfe_chart_html=mae_mfe_chart_html,
+            # Improvement #11
+            monthly_heatmap_html=monthly_heatmap_html,
+            candlestick_html=candlestick_html,
+            streak_chart_html=streak_chart_html,
         )
+
         
         if filepath is None:
             filepath = self.reports_dir / f"{symbol}_{timeframe}_report.html"
