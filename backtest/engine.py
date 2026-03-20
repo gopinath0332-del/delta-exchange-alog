@@ -128,11 +128,30 @@ class BacktestEngine:
             df:          The full OHLCV DataFrame used for the backtest.
             raw_trades:  List of raw trade dicts produced by strategy.run_backtest().
         """
-        # Build a quick lookup: time_value -> row_index for efficient bar matching.
-        # df['time'] may be in seconds or milliseconds; normalise to seconds.
+        # ---------------------------------------------------------------------------
+        # Build a lookup: formatted-time-string → bar index.
+        #
+        # Strategies record trade timestamps via format_time() which calls:
+        #     datetime.datetime.fromtimestamp(ts_ms / 1000).strftime('%d-%m-%y %H:%M')
+        # i.e. the LOCAL timezone representation of each bar's unix timestamp.
+        #
+        # By building the same formatted strings from df['time'] here, we get
+        # an exact, timezone-agnostic mapping — no arithmetic, no offset mistakes.
+        # ---------------------------------------------------------------------------
+        # Normalise df['time'] to seconds (it may be ms or s depending on the data source)
         time_vals = df['time'].values.copy().astype(float)
-        # Convert timestamp to seconds if it looks like milliseconds (>= 1e10)
         time_vals = np.where(time_vals >= 1e10, time_vals / 1000.0, time_vals)
+
+        time_str_to_idx: Dict[str, int] = {}
+        for _idx, _ts in enumerate(time_vals):
+            try:
+                # Use fromtimestamp (LOCAL time) to match format_time() in strategies
+                _dt_str = datetime.datetime.fromtimestamp(float(_ts)).strftime('%d-%m-%y %H:%M')
+                if _dt_str not in time_str_to_idx:
+                    time_str_to_idx[_dt_str] = _idx
+            except Exception:
+                pass
+
 
         for trade in raw_trades:
             # Default — will be overridden if we can locate the candle window
@@ -141,10 +160,8 @@ class BacktestEngine:
             trade['mfe_price'] = 0.0
             trade['mfe_pct']   = 0.0
 
-            trade_type   = trade.get('type', 'LONG')
-            entry_price  = None
-            entry_dt     = self._parse_time(trade.get('entry_time', ''))
-            exit_dt      = self._parse_time(trade.get('exit_time', ''))
+            trade_type  = trade.get('type', 'LONG')
+            entry_price = None
 
             try:
                 entry_price = float(trade.get('entry_price', 0))
@@ -154,33 +171,29 @@ class BacktestEngine:
             if entry_price is None or entry_price <= 0:
                 continue
 
-            # Resolve candle window if we have valid timestamps.
-            # _parse_time() can return Python None OR a pandas NaT (from pd.to_datetime),
-            # so we must guard against both. pd.isnull() handles both cases safely.
-            entry_valid = entry_dt is not None and not pd.isnull(entry_dt)
-            exit_valid  = exit_dt  is not None and not pd.isnull(exit_dt)
+            # Strip any parenthetical suffix (e.g. "06-12-25 06:30 (open)") before lookup
+            entry_str = (trade.get('entry_time') or '').split(' (')[0].strip()
+            exit_str  = (trade.get('exit_time')  or '').split(' (')[0].strip()
 
-            if entry_valid and exit_valid:
-                # Convert parsed datetimes to unix seconds for comparison
-                entry_ts = entry_dt.replace(tzinfo=datetime.timezone.utc).timestamp()
-                exit_ts  = exit_dt.replace(tzinfo=datetime.timezone.utc).timestamp()
+            entry_idx = time_str_to_idx.get(entry_str)
+            exit_idx  = time_str_to_idx.get(exit_str)
 
-                # Allow a small tolerance (1/2 bar) to handle rounding
-                bar_duration_sec = 3600  # fallback: 1-hour bars
-                if len(time_vals) > 1:
-                    bar_duration_sec = max(float(time_vals[1] - time_vals[0]), 60)
-
-                tolerance = bar_duration_sec * 0.5
-
-                # Mask: bars that overlap the trade window
-                mask = (time_vals >= entry_ts - tolerance) & (time_vals <= exit_ts + tolerance)
-                indices = np.where(mask)[0]
+            if entry_idx is not None and exit_idx is not None:
+                # Scan the inclusive candle slice from entry bar to exit bar.
+                # We use min/max in case of data irregularities where exit < entry index.
+                i_start = min(entry_idx, exit_idx)
+                i_end   = max(entry_idx, exit_idx)
+                indices = np.arange(i_start, i_end + 1)
+            elif entry_idx is not None:
+                # Has entry but no exit — scan from entry to last bar (edge case)
+                indices = np.arange(entry_idx, len(df))
             else:
-                # No timestamps — fall back to first / last bar (edge case)
-                indices = np.arange(len(df))
+                # Cannot locate bars — skip (leave defaults at 0.0)
+                continue
 
             if len(indices) == 0:
                 continue
+
 
             # Extract high / low arrays for the trade window
             highs = df['high'].values[indices].astype(float)

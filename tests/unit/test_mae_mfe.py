@@ -57,7 +57,11 @@ def make_df(rows: list) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def ts_to_str(unix_sec: float) -> str:
-    return datetime.datetime.utcfromtimestamp(unix_sec).strftime('%d-%m-%y %H:%M')
+    """
+    Mimic strategy.format_time(): uses datetime.fromtimestamp() (LOCAL time),
+    not utcfromtimestamp(), so timestamps match what the engine sees from real trades.
+    """
+    return datetime.datetime.fromtimestamp(unix_sec).strftime('%d-%m-%y %H:%M')
 
 
 # ---------------------------------------------------------------------------
