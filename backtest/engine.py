@@ -107,7 +107,24 @@ class BacktestEngine:
         
         # Keep track of active partials to apply to the next matching trade exit
         partial_remaining_size_map = {}
-        
+
+        # Pre-pass: assign stable numeric IDs so each PARTIAL and its matching CLOSED
+        # exit share the same key, even if multiple trades share the same type+entry_time.
+        _next_id = 0
+        _partial_pending: dict = {}  # "type_entry_time" -> id
+        for t in raw_trades:
+            pair_key = f"{t.get('type', '')}_{t.get('entry_time', '')}"
+            if t.get('status') == 'PARTIAL':
+                t['_backtest_id'] = _next_id
+                _partial_pending[pair_key] = _next_id
+                _next_id += 1
+            elif pair_key in _partial_pending:
+                # Final close leg of a partial — reuse the same ID
+                t['_backtest_id'] = _partial_pending.pop(pair_key)
+            else:
+                t['_backtest_id'] = _next_id
+                _next_id += 1
+
         for trade in raw_trades:
             # Only process closed or partial closed trades
             if trade['status'] not in ['CLOSED', 'PARTIAL', 'TRAIL STOP', 'CHANNEL EXIT'] and not ('exit_price' in trade and trade['exit_price']):
@@ -124,9 +141,9 @@ class BacktestEngine:
             base_capital = self.equity if self.use_compounding else self.initial_capital
             trade_capital = base_capital * self.order_size_pct
             
-            # Identify the trade ID or unique entry for tracking partials
-            # Since the strategy trades sequentially, we can track by entry_time + type
-            trade_key = f"{trade['type']}_{trade.get('entry_time', '')}"
+            # Use the pre-assigned stable ID so partial/close pairs always share the same key,
+            # avoiding collisions when multiple trades of the same type share an entry timestamp.
+            trade_key = trade['_backtest_id']
             
             if trade_key in partial_remaining_size_map and trade['status'] != 'PARTIAL':
                 # This is the final 50% closing exit of a previously partially closed position

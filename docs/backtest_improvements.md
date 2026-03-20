@@ -130,7 +130,7 @@ The buy-and-hold comparison uses the same symbol's returns. There is no BTC benc
 | 1 | Leverage simulation | ✅ Done |
 | 2 | Funding rate cost | ⬜ Pending |
 | 3 | Slippage / spread | ⬜ Pending |
-| 4 | Partial TP tracking bug | ⬜ Pending |
+| 4 | Partial TP tracking bug | ✅ Done |
 | 5 | Live equity curve | ✅ Done |
 | 6 | Daily Sharpe/Sortino | ⬜ Pending |
 | 7 | Milestone exit display | ⬜ Pending |
