@@ -1,6 +1,7 @@
 import pandas as pd
 import datetime
-from typing import List, Dict, Any, Tuple
+import numpy as np
+from typing import List, Dict, Any, Optional, Tuple
 
 from core.logger import get_logger
 from core.config import get_config
@@ -98,13 +99,127 @@ class BacktestEngine:
 
         return candle_curve
 
+    # ---------------------------------------------------------------------------
+    # MAE / MFE Calculation
+    # ---------------------------------------------------------------------------
+
+    def _calculate_mae_mfe(
+        self,
+        df: pd.DataFrame,
+        raw_trades: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Annotate each raw trade dict (in-place) with Maximum Adverse Excursion
+        (MAE) and Maximum Favorable Excursion (MFE) values.
+
+        Definitions:
+          - MAE = the largest price move AGAINST the position during the trade
+                  (measures how much heat the trade took before resolving).
+          - MFE = the largest price move IN FAVOUR of the position during the
+                  trade (measures the best unrealised profit available).
+
+        Both values are returned in absolute price units and as a percentage
+        of the entry price.
+
+        The candle slice used is all bars whose timestamp falls between
+        entry_time and exit_time (inclusive), matched against df['time'].
+
+        Args:
+            df:          The full OHLCV DataFrame used for the backtest.
+            raw_trades:  List of raw trade dicts produced by strategy.run_backtest().
+        """
+        # Build a quick lookup: time_value -> row_index for efficient bar matching.
+        # df['time'] may be in seconds or milliseconds; normalise to seconds.
+        time_vals = df['time'].values.copy().astype(float)
+        # Convert timestamp to seconds if it looks like milliseconds (>= 1e10)
+        time_vals = np.where(time_vals >= 1e10, time_vals / 1000.0, time_vals)
+
+        for trade in raw_trades:
+            # Default — will be overridden if we can locate the candle window
+            trade['mae_price'] = 0.0
+            trade['mae_pct']   = 0.0
+            trade['mfe_price'] = 0.0
+            trade['mfe_pct']   = 0.0
+
+            trade_type   = trade.get('type', 'LONG')
+            entry_price  = None
+            entry_dt     = self._parse_time(trade.get('entry_time', ''))
+            exit_dt      = self._parse_time(trade.get('exit_time', ''))
+
+            try:
+                entry_price = float(trade.get('entry_price', 0))
+            except (TypeError, ValueError):
+                continue
+
+            if entry_price is None or entry_price <= 0:
+                continue
+
+            # Resolve candle window if we have valid timestamps.
+            # _parse_time() can return Python None OR a pandas NaT (from pd.to_datetime),
+            # so we must guard against both. pd.isnull() handles both cases safely.
+            entry_valid = entry_dt is not None and not pd.isnull(entry_dt)
+            exit_valid  = exit_dt  is not None and not pd.isnull(exit_dt)
+
+            if entry_valid and exit_valid:
+                # Convert parsed datetimes to unix seconds for comparison
+                entry_ts = entry_dt.replace(tzinfo=datetime.timezone.utc).timestamp()
+                exit_ts  = exit_dt.replace(tzinfo=datetime.timezone.utc).timestamp()
+
+                # Allow a small tolerance (1/2 bar) to handle rounding
+                bar_duration_sec = 3600  # fallback: 1-hour bars
+                if len(time_vals) > 1:
+                    bar_duration_sec = max(float(time_vals[1] - time_vals[0]), 60)
+
+                tolerance = bar_duration_sec * 0.5
+
+                # Mask: bars that overlap the trade window
+                mask = (time_vals >= entry_ts - tolerance) & (time_vals <= exit_ts + tolerance)
+                indices = np.where(mask)[0]
+            else:
+                # No timestamps — fall back to first / last bar (edge case)
+                indices = np.arange(len(df))
+
+            if len(indices) == 0:
+                continue
+
+            # Extract high / low arrays for the trade window
+            highs = df['high'].values[indices].astype(float)
+            lows  = df['low'].values[indices].astype(float)
+
+            if len(highs) == 0 or len(lows) == 0:
+                continue
+
+            max_high = float(np.nanmax(highs))
+            min_low  = float(np.nanmin(lows))
+
+            if trade_type == 'LONG':
+                # Favourable move: price went UP from entry (best high reached)
+                mfe_price = max(max_high - entry_price, 0.0)
+                # Adverse move: price went DOWN from entry (worst low reached)
+                mae_price = max(entry_price - min_low, 0.0)
+            else:  # SHORT
+                # Favourable move: price went DOWN from entry (lowest low reached)
+                mfe_price = max(entry_price - min_low, 0.0)
+                # Adverse move: price went UP from entry (highest high reached)
+                mae_price = max(max_high - entry_price, 0.0)
+
+            # Convert to percentage of entry price
+            trade['mae_price'] = round(mae_price, 8)
+            trade['mae_pct']   = round((mae_price / entry_price) * 100, 4)
+            trade['mfe_price'] = round(mfe_price, 8)
+            trade['mfe_pct']   = round((mfe_price / entry_price) * 100, 4)
+
     def run(self, df: pd.DataFrame) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
         logger.info(f"Running backtest for {self.symbol} on {self.timeframe} timeframe")
 
         # Run the strategy's built-in backtest logic to generate raw signals
         self.strategy.run_backtest(df)
         raw_trades = getattr(self.strategy, 'trades', [])
-        
+
+        # Annotate every raw trade with MAE / MFE BEFORE the processing loop so
+        # that the values are available when building each processed_trade dict.
+        self._calculate_mae_mfe(df, raw_trades)
+
         # Keep track of active partials to apply to the next matching trade exit
         partial_remaining_size_map = {}
 
@@ -221,7 +336,15 @@ class BacktestEngine:
                 'Profit/Loss': pnl,
                 'Return %': return_pct,
                 'Duration': duration_str,
-                'Bars Held': bars_held
+                'Bars Held': bars_held,
+                # MAE / MFE fields — populated by _calculate_mae_mfe() above.
+                # These represent the worst drawdown and best unrealised profit
+                # experienced during the life of this trade, measured in price
+                # points and as a percentage of entry price.
+                'MAE Price': trade.get('mae_price', 0.0),
+                'MAE %':     trade.get('mae_pct',   0.0),
+                'MFE Price': trade.get('mfe_price', 0.0),
+                'MFE %':     trade.get('mfe_pct',   0.0),
             }
             self.processed_trades.append(processed_trade)
 

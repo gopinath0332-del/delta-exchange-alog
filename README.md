@@ -512,8 +512,34 @@ backtesting:
   commission_maker: 0.0004 # 0.04%
   commission_taker: 0.0006 # 0.06%
   slippage: 0.0001 # 0.01%
+```
 
-risk_management:
+### MAE / MFE Backtest Metrics
+
+Every backtest now computes **Maximum Adverse Excursion (MAE)** and **Maximum Favorable Excursion (MFE)** for each individual trade.
+
+| Metric | What it means |
+|--------|--------------|
+| **MAE %** | Largest price move *against* the position during the trade lifetime, expressed as % of entry price. High MAE = the trade took heavy heat before resolving. Use this to tune stop-loss levels. |
+| **MFE %** | Largest price move *in favour* of the position during the trade lifetime (best unrealised profit seen). High MFE with low final return = profit was available but not captured. Use this to tune take-profit levels. |
+
+#### Where they appear in the HTML report
+
+1. **Trades tab** — `MAE %` (orange) and `MFE %` (blue) columns added to the trade list table.
+2. **Metrics tab** — A new "MAE / MFE Analysis" section in the Detailed Strategy Metrics table with Avg MAE %, Max MAE %, Avg MFE %, and Max MFE % broken out by All / Long / Short.
+3. **Overview tab** — A MAE/MFE **scatter chart** (X = MFE%, Y = MAE%):
+   - 🟢 Green dots = winning trades
+   - 🔴 Red dots = losing trades
+   - Dashed diagonal line = where MAE == MFE
+   - Trades **below the diagonal** (MFE > MAE) indicate setups with genuine follow-through.
+
+#### Interpretation guide
+
+- **High MFE, low return** → your exits are too early; widen TP or trail more aggressively.
+- **High MAE, winning trade** → the trade barely survived; your stop may be too tight or entry timing off.
+- **Low MFE, losing trade** → the setup had no edge; the trade moved against you from the start.
+
+
   max_position_size: 0.1 # 10% of capital
   max_daily_loss: 0.02 # 2%
   max_drawdown: 0.15 # 15%

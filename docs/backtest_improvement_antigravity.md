@@ -228,9 +228,21 @@ Also move `trades`, `active_trade`, `current_position` state management into the
 
 **Fix**: Add calculations in `backtest/metrics.py` → `calculate_metrics()` and expose in `Detailed Table` + terminal summary.
 
-**Location**: `backtest/metrics.py` → `calculate_metrics()` function
+**Location**: `backtrack/metrics.py` → `calculate_metrics()` function
 
 ---
+
+### 15. MAE / MFE Per-Trade Metrics (`engine.py`, `metrics.py`, `reporter.py`) ✅ IMPLEMENTED
+
+**Problem**: No per-trade analysis of how much profit was left on the table (MFE) or how much heat a trade took before resolving (MAE).
+
+**Fix Implemented**:
+- `backtest/engine.py` → New `_calculate_mae_mfe()` helper scans the OHLC candle slice for each trade and attaches `mae_price`, `mae_pct`, `mfe_price`, `mfe_pct` to every `processed_trade` dict.
+- `backtest/metrics.py` → `calc_stats()` now aggregates avg/max for both metrics (All / Long / Short). A new **MAE / MFE Analysis** header section is added to the Detailed Table in the HTML report.
+- `backtest/templates/report_template.html` → **MAE %** (orange) and **MFE %** (blue) columns added to the Trades table.
+- `backtest/reporter.py` → New `_create_mae_mfe_chart()` generates a Plotly scatter plot (X = MFE%, Y = MAE%, green = winners, red = losers, diagonal reference line).
+- `tests/unit/test_mae_mfe.py` → 14 unit tests (LONG, SHORT, single-bar, invalid timestamps, processed_trade key smoke-test) — all passing.
+- `README.md` → New **MAE / MFE Backtest Metrics** section with interpretation guide.
 
 ## 📋 Summary Table
 
@@ -250,6 +262,7 @@ Also move `trades`, `active_trade`, `current_position` state management into the
 | 12 | Timestamped report directories | 🟢 Low | Trivial | Usability |
 | 13 | BaseStrategy abstract class | 🟢 Low | Medium | Maintainability |
 | 14 | Missing metrics (CAGR, Calmar, etc.) | 🟢 Low | Low | Completeness |
+| 15 | **MAE / MFE per-trade metrics** ✅ | 🟢 Low | Low | Trade analysis |
 
 ---
 

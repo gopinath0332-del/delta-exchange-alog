@@ -196,7 +196,15 @@
       <h2>Trades Analysis</h2>
       <div class="chart-container">{{ trades_analysis_html | safe }}</div>
       {% endif %}
+
+      {% if mae_mfe_chart_html %}
+      <!-- MAE/MFE scatter: X=MFE%(opportunity seen), Y=MAE%(risk taken). Green=winner, Red=loser.
+           Trades below the diagonal had more favourable excursion than adverse — ideal setups. -->
+      <h2>MAE / MFE Chart</h2>
+      <div class="chart-container">{{ mae_mfe_chart_html | safe }}</div>
+      {% endif %}
       </div>
+
 
       <div id="metrics" class="tab-content">
       {% if 'Detailed Table' in metrics %}
@@ -234,6 +242,12 @@
 
       <div id="trades" class="tab-content">
       <h2>Trade List</h2>
+      <!-- MAE = Maximum Adverse Excursion: worst intra-trade price move against the position (% of entry).
+           MFE = Maximum Favorable Excursion: best unrealised profit available during the trade (% of entry). -->
+      <p style="color:#6c757d;font-size:0.9em;margin-top:-10px;">
+        <strong style="color:#fd7e14;">MAE %</strong> = max adverse move against position during trade &nbsp;|&nbsp;
+        <strong style="color:#0d6efd;">MFE %</strong> = max favourable move (best unrealised profit seen)
+      </p>
       <table class="trade-table">
         <thead>
           <tr>
@@ -246,6 +260,8 @@
             <th>Fee</th>
             <th>PnL</th>
             <th>Return %</th>
+            <th style="color:#fd7e14;">MAE %</th>
+            <th style="color:#0d6efd;">MFE %</th>
           </tr>
         </thead>
         <tbody>
@@ -269,11 +285,16 @@
             <td class="{{ 'success' if trade['Return %'] > 0 else 'danger' }}">
               {{ "%.2f"|format(trade['Return %']) }}%
             </td>
+            {# MAE %: how much the trade moved against us at worst (orange = risk taken) #}
+            <td style="color:#fd7e14;">{{ "%.2f"|format(trade.get('MAE %', 0.0)) }}%</td>
+            {# MFE %: best unrealised profit available during trade (blue = opportunity) #}
+            <td style="color:#0d6efd;">{{ "%.2f"|format(trade.get('MFE %', 0.0)) }}%</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       </div>
+
     </div>
 
     <script>
