@@ -128,6 +128,7 @@ strategies:
     # to match TradingView's HA values.  With only 30 days the HA smoothing is
     # insufficient and signals can fire on effectively-standard-candle values.
     historical_days: 90
+    stop_loss_pct: 0.60 # Cap max loss at 60% of margin per trade segment
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:

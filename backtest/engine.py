@@ -164,18 +164,15 @@ class BacktestEngine:
             else: # SHORT
                 pnl = (entry_price - exit_price) * position_size
                 
-            # Exchange Hard Stop Loss Check (IGNORED per user request)
-            # if self.stop_loss_pct is not None:
-            #     # Calculate max loss based on the fractional trade capital of this specific exit segment
-            #     segment_capital = trade_capital * (position_size / (trade_capital / entry_price))
-            #     max_loss = segment_capital * self.stop_loss_pct
-            #     
-            #     if pnl < -max_loss:
-            #         pnl = -max_loss
-            #         # Overwrite exit price logically where the stop loss hit
-            #         price_diff = max_loss / position_size
-            #         exit_price = (entry_price - price_diff) if trade['type'] == 'LONG' else (entry_price + price_diff)
-            #         trade['status'] = 'EXCHANGE SL'
+            # Hard Stop Loss Check — caps loss at stop_loss_pct of margin for this segment
+            if self.stop_loss_pct is not None:
+                segment_margin = (position_size * entry_price) / self.leverage
+                max_loss = segment_margin * self.stop_loss_pct
+                if pnl < -max_loss:
+                    pnl = -max_loss
+                    price_diff = max_loss / position_size
+                    exit_price = (entry_price - price_diff) if trade['type'] == 'LONG' else (entry_price + price_diff)
+                    trade['status'] = 'EXCHANGE SL'
                 
             # Commission
             # Fee is based on the dollar volume of the portion of the position being exited/entered
