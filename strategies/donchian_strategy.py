@@ -419,6 +419,7 @@ class DonchianChannelStrategy:
                 partial_trade["exit_time"] = format_time(current_time_ms)
                 partial_trade["exit_price"] = price
                 partial_trade["status"] = "PARTIAL"
+                partial_trade["exit_pct"] = self.partial_pct  # Track exit percentage
                 entry = float(self.active_trade['entry_price'])
                 partial_trade["points"] = price - entry if self.current_position == 1 else entry - price
                 self.trades.append(partial_trade)
@@ -428,18 +429,23 @@ class DonchianChannelStrategy:
         elif action == "MILESTONE_EXIT":
             # Parse milestone index from reason string
             milestone_idx = 0
+            exit_pct = 0.0
             if reason:
                 import re
                 match = re.search(r"Milestone (\d+):", reason)
                 if match:
                     milestone_idx = int(match.group(1)) - 1
-            if 0 <= milestone_idx < len(self.milestones_hit):
+            
+            if 0 <= milestone_idx < len(self.profit_milestones):
                 self.milestones_hit[milestone_idx] = True
+                exit_pct = self.profit_milestones[milestone_idx].get("exit_pct", 0.0)
+                
             if self.active_trade:
                 milestone_trade = self.active_trade.copy()
                 milestone_trade["exit_time"] = format_time(current_time_ms)
                 milestone_trade["exit_price"] = price
                 milestone_trade["status"] = f"MILESTONE_{milestone_idx + 1}"
+                milestone_trade["exit_pct"] = exit_pct  # Track exit percentage
                 entry = float(self.active_trade['entry_price'])
                 milestone_trade["points"] = price - entry if self.current_position == 1 else entry - price
                 self.trades.append(milestone_trade)

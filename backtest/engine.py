@@ -235,21 +235,26 @@ class BacktestEngine:
         # that the values are available when building each processed_trade dict.
         self._calculate_mae_mfe(df, raw_trades)
 
-        # Keep track of active partials to apply to the next matching trade exit
-        partial_remaining_size_map = {}
+        # Track the remaining fraction of each trade (1.0 = 100% of initial position remains)
+        remaining_pct_map = {}
 
-        # Pre-pass: assign stable numeric IDs so each PARTIAL and its matching CLOSED
-        # exit share the same key, even if multiple trades share the same type+entry_time.
+        # Pre-pass: assign stable numeric IDs ... (rest is unchanged but I'll replace the loop part)
         _next_id = 0
         _partial_pending: dict = {}  # "type_entry_time" -> id
         for t in raw_trades:
             pair_key = f"{t.get('type', '')}_{t.get('entry_time', '')}"
-            if t.get('status') == 'PARTIAL':
-                t['_backtest_id'] = _next_id
-                _partial_pending[pair_key] = _next_id
-                _next_id += 1
+            # Treat both PARTIAL and MILESTONE as pending partial legs
+            is_partial = t.get('status') == 'PARTIAL' or 'MILESTONE' in str(t.get('status', ''))
+            
+            if is_partial:
+                if pair_key not in _partial_pending:
+                    t['_backtest_id'] = _next_id
+                    _partial_pending[pair_key] = _next_id
+                    _next_id += 1
+                else:
+                    t['_backtest_id'] = _partial_pending[pair_key]
             elif pair_key in _partial_pending:
-                # Final close leg of a partial — reuse the same ID
+                # Final close leg — reuse the same ID and clear from pending
                 t['_backtest_id'] = _partial_pending.pop(pair_key)
             else:
                 t['_backtest_id'] = _next_id
@@ -257,36 +262,49 @@ class BacktestEngine:
 
         for trade in raw_trades:
             # Only process closed or partial closed trades
-            if trade['status'] not in ['CLOSED', 'PARTIAL', 'TRAIL STOP', 'CHANNEL EXIT'] and not ('exit_price' in trade and trade['exit_price']):
+            if trade['status'] not in ['CLOSED', 'PARTIAL', 'TRAIL STOP', 'CHANNEL EXIT'] and not ('exit_price' in trade and trade['exit_price']) and not 'MILESTONE' in str(trade.get('status', '')):
                 continue 
                 
             entry_price = float(trade['entry_price'])
             exit_price = float(trade['exit_price']) if trade.get('exit_price') and trade['exit_price'] != '-' else entry_price
             
             if exit_price == entry_price:
-                # Might be unbroken trade due to end of data, skip if no real exit
                 continue
                 
             # Sizing (Compound Sizing based on current Equity to match TradingView)
             base_capital = self.equity if self.use_compounding else self.initial_capital
             trade_capital = base_capital * self.order_size_pct
             
-            # Use the pre-assigned stable ID so partial/close pairs always share the same key,
-            # avoiding collisions when multiple trades of the same type share an entry timestamp.
             trade_key = trade['_backtest_id']
             
-            if trade_key in partial_remaining_size_map and trade['status'] != 'PARTIAL':
-                # This is the final 50% closing exit of a previously partially closed position
-                position_size = partial_remaining_size_map[trade_key]
-                del partial_remaining_size_map[trade_key]
+            # Initial total notional size if this were a single full trade
+            # trade_capital is the margin, leverage scales it to notional
+            total_initial_size = (trade_capital * self.leverage) / entry_price
+            
+            # Determine what fraction of the REMAINING position we are closing now
+            # exit_pct in trade is "fraction of remaining to close"
+            current_remaining_pct = remaining_pct_map.get(trade_key, 1.0)
+            
+            # Default exit behavior if exit_pct not specified:
+            # - PARTIAL: close 50% of current
+            # - CLOSED/TRAIL STOP/etc: close 100% of current
+            if 'exit_pct' in trade:
+                exit_pct_of_remaining = float(trade['exit_pct'])
+            elif trade['status'] == 'PARTIAL':
+                exit_pct_of_remaining = 0.5
             else:
-                # Standard full position sizing (leverage scales notional, trade_capital is the margin)
-                position_size = (trade_capital * self.leverage) / entry_price
-                if trade['status'] == 'PARTIAL':
-                    # Only calculate PnL on 50% size if partial, and save the other 50% for later
-                    half_size = position_size / 2.0
-                    partial_remaining_size_map[trade_key] = half_size
-                    position_size = half_size
+                exit_pct_of_remaining = 1.0 # Close all that's left
+                
+            # Actual size of this specific exit segment
+            position_size = total_initial_size * current_remaining_pct * exit_pct_of_remaining
+            
+            # Update remaining percentage for this trade key
+            new_remaining_pct = current_remaining_pct * (1.0 - exit_pct_of_remaining)
+            if new_remaining_pct <= 0.0001: # Effectively flat
+                if trade_key in remaining_pct_map:
+                    del remaining_pct_map[trade_key]
+            else:
+                remaining_pct_map[trade_key] = new_remaining_pct
             
             # PnL
             if trade['type'] == 'LONG':
