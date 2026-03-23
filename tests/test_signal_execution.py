@@ -61,8 +61,10 @@ class TestTradingExecution(unittest.TestCase):
             symbol="BTCUSD",
             action="ENTRY_LONG",
             price=50000.0,
+            market_price=50000.0,
             rsi=55.0,
             reason="Test Long",
+            mode="live",
             strategy_name="TestStrategy"
         )
         
@@ -99,8 +101,11 @@ class TestTradingExecution(unittest.TestCase):
             symbol="BTCUSD",
             action="ENTRY_SHORT",
             price=50000.0,
+            market_price=50000.0,
             rsi=25.0,
-            reason="Test Short"
+            reason="Test Short",
+            mode="live",
+            strategy_name="TestStrategy"
         )
         
         self.mock_client.set_leverage.assert_called_with(123, '5')
@@ -126,8 +131,11 @@ class TestTradingExecution(unittest.TestCase):
             symbol="BTCUSD",
             action="ENTRY_LONG",
             price=50000.0,
+            market_price=50000.0,
             rsi=55.0,
-            reason="Test Long Duplicate"
+            reason="Test Long Duplicate",
+            mode="live",
+            strategy_name="TestStrategy"
         )
         
         # Verify get_positions was called

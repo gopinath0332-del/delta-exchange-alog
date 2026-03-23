@@ -128,7 +128,7 @@ strategies:
     # to match TradingView's HA values.  With only 30 days the HA smoothing is
     # insufficient and signals can fire on effectively-standard-candle values.
     historical_days: 90
-    stop_loss_pct: 0.50 # Cap max loss at 60% of margin per trade segment
+    stop_loss_pct: 0.50 # Cap max loss at 50% of margin per trade segment
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:
@@ -167,12 +167,6 @@ multi_coin:
         position_sizing_type: "atr" # Switch from "margin" to "atr"
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         log_file: logs/slvon.log
-      - symbol: RIVERUSD
-        timeframe: 6h
-        leverage: 5
-        target_margin: 50
-        candle_type: standard
-        log_file: logs/river.log
 
 # Firestore Configuration (for trade journaling)
 firestore:
