@@ -251,7 +251,8 @@ def execute_strategy_signal(
     enable_partial_tp: bool = False,
     timeframe: str = "1h",
     atr: Optional[float] = None,
-    sizing_config: Optional[Dict[str, Any]] = None
+    sizing_config: Optional[Dict[str, Any]] = None,
+    stop_loss_price: Optional[float] = None
 ):
     """
     Execute a strategy signal by placing orders and sending notifications.
@@ -557,8 +558,30 @@ def execute_strategy_signal(
                     notifier.send_error(f"Order Failed: {symbol}", str(e))
                     return {"success": False, "error": str(e)}
 
-                # --- EXCHANGE BRACKET STOP-LOSS (Removed) ---
-                # Bracket stop-loss placement has been disabled as per user request.
+                # --- EXCHANGE BRACKET STOP-LOSS ---
+                if is_entry and stop_loss_price and enable_orders:
+                    try:
+                        # Format price according to tick size precision
+                        tick_size = float(product.get('tick_size', '0.01'))
+                        p_decimals = 2
+                        if tick_size < 1:
+                            import math
+                            p_decimals = math.ceil(abs(math.log10(tick_size)))
+                        
+                        sl_price_str = f"{stop_loss_price:.{p_decimals}f}"
+                        
+                        logger.info(f"Placing exchange bracket stop-loss at {sl_price_str} for {symbol}")
+                        client.place_bracket_order(
+                            product_id=product_id,
+                            product_symbol=symbol,
+                            stop_price=sl_price_str,
+                            stop_order_type="market_order"
+                        )
+                        logger.info(f"Bracket stop-loss placed successfully for {symbol}")
+                    except Exception as sle:
+                        logger.error(f"Failed to place bracket stop-loss for {symbol}: {sle}")
+                        # Don't fail the whole trade if SL fails, but notify
+                        notifier.send_error(f"Stop-Loss Failed: {symbol}", f"Could not place bracket SL at {stop_loss_price}: {sle}")
             else:
                 logger.info("Skipping actual order placement (ENABLE_ORDER_PLACEMENT is false.)")  # noqa
 

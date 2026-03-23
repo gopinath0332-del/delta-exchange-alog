@@ -35,6 +35,7 @@ class DonchianChannelStrategy:
         self.atr_mult_trail = cfg.get("atr_mult_trail", 2.0)
         self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Changed default to True
         self.partial_pct = cfg.get("partial_pct", 0.5)
+        self.stop_loss_pct = cfg.get("stop_loss_pct", None)  # Fixed stop loss % (e.g. 0.50 for 50%)
 
         # Profit Milestone Exits (works alongside ATR partial TP)
         self.enable_profit_milestones = cfg.get("enable_profit_milestones", False)
@@ -70,6 +71,7 @@ class DonchianChannelStrategy:
         self.trailing_stop_level = None
         self.partial_exit_done = False
         self.milestones_hit = [False] * len(self.profit_milestones)
+        self.initial_sl_price = None  # Initial hard stop loss price
 
         # Duration State
         self.last_long_duration_bars = 0
@@ -400,6 +402,14 @@ class DonchianChannelStrategy:
                 "status": "OPEN",
                 "logs": []
             }
+            # Calculate Initial Stop Loss Price (if pct configured)
+            if self.stop_loss_pct is not None:
+                # Formula: Price * (1 - SL% / Leverage)
+                # E.g. Price=50, SL=0.50 (50%), Leverage=5 -> 50 * (1 - 0.1) = 45
+                self.initial_sl_price = price * (1 - self.stop_loss_pct / self.leverage)
+                logger.info(f"Calculated initial SL for LONG: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
+            else:
+                self.initial_sl_price = None
             
         elif action == "ENTRY_SHORT":
             self.current_position = -1
@@ -412,6 +422,14 @@ class DonchianChannelStrategy:
                 "status": "OPEN",
                 "logs": []
             }
+            # Calculate Initial Stop Loss Price (if pct configured)
+            if self.stop_loss_pct is not None:
+                # Formula: Price * (1 + SL% / Leverage)
+                # E.g. Price=50, SL=0.50 (50%), Leverage=5 -> 50 * (1 + 0.1) = 55
+                self.initial_sl_price = price * (1 + self.stop_loss_pct / self.leverage)
+                logger.info(f"Calculated initial SL for SHORT: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
+            else:
+                self.initial_sl_price = None
 
         elif action == "PARTIAL_EXIT":
             if self.active_trade:
@@ -488,6 +506,7 @@ class DonchianChannelStrategy:
             self.partial_exit_done = False
             self.milestones_hit = [False] * len(self.profit_milestones)
             self.long_entry_bar = None
+            self.initial_sl_price = None
 
         elif action == "EXIT_SHORT":
             self.current_position = 0
@@ -507,6 +526,7 @@ class DonchianChannelStrategy:
             self.trailing_stop_level = None
             self.partial_exit_done = False
             self.milestones_hit = [False] * len(self.profit_milestones)
+            self.initial_sl_price = None
 
     def set_position(self, position: int):
         self.current_position = position

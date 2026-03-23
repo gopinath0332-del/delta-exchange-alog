@@ -654,6 +654,8 @@ donchian_channel:
   # NEW: EMA Trend Filter
   ema_length: 100 # EMA period for entry filter
   ema_source: "close" # Source for EMA calculation
+  # NEW: Fixed Stop Loss
+  stop_loss_pct: 0.50 # Optional: Fixed stop loss % (e.g. 0.50 = 50% of margin)
 ```
 
 **Entry Logic**:

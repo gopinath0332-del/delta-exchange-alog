@@ -554,7 +554,8 @@ def run_strategy_terminal(
                              enable_partial_tp=getattr(strategy, 'enable_partial_tp', False),
                              timeframe=timeframe,
                              atr=current_atr if current_atr else getattr(strategy, 'last_atr', None),
-                             sizing_config=symbol_settings
+                             sizing_config=symbol_settings,
+                             stop_loss_price=getattr(strategy, 'initial_sl_price', None)
                          )
                          
                          # Check for successful execution and actual fill price
