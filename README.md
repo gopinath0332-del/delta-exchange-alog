@@ -669,6 +669,16 @@ donchian_channel:
 2. **50% Partial TP**: At entry ± 4× ATR (now enabled by default)
 3. **Channel Exit**: Price breaks opposite channel level
 
+**Strategy Logic Summary**:
+
+| Action | Price Source | Logic Type | Key Indicator |
+| :--- | :--- | :--- | :--- |
+| **Entries** | Closed Candle | Trend Following | Donchian High/Low + EMA |
+| **Channel Exits** | Closed Candle | Trend Reversal | Donchian Low/High |
+| **Trailing SL** | Closed Candle | Ratchet | ATR Multiplier |
+| **Partial TP** | **Live Price** | Target Hit | ATR Multiplier |
+| **Milestone Exit**| **Live / Exch PnL**| Scale Out | PnL % + Leverage |
+
 **Benefits of EMA Filter**:
 
 - ✅ Reduces false breakouts in sideways markets
