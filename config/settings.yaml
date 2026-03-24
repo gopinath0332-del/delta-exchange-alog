@@ -166,7 +166,7 @@ multi_coin:
         candle_type: heikin-ashi
         position_sizing_type: "atr" # Switch from "margin" to "atr"
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
-        log_file: logs/slvon.log
+        log_file: logs/arc.log
 
 # Firestore Configuration (for trade journaling)
 firestore:
