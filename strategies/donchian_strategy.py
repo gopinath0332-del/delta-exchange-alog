@@ -407,7 +407,7 @@ class DonchianChannelStrategy:
                 # Formula: Price * (1 - SL% / Leverage)
                 # E.g. Price=50, SL=0.50 (50%), Leverage=5 -> 50 * (1 - 0.1) = 45
                 self.initial_sl_price = price * (1 - self.stop_loss_pct / self.leverage)
-                logger.info(f"Calculated initial SL for LONG: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
+                logger.debug(f"Calculated initial SL for LONG: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
             else:
                 self.initial_sl_price = None
             
@@ -427,7 +427,7 @@ class DonchianChannelStrategy:
                 # Formula: Price * (1 + SL% / Leverage)
                 # E.g. Price=50, SL=0.50 (50%), Leverage=5 -> 50 * (1 + 0.1) = 55
                 self.initial_sl_price = price * (1 + self.stop_loss_pct / self.leverage)
-                logger.info(f"Calculated initial SL for SHORT: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
+                logger.debug(f"Calculated initial SL for SHORT: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
             else:
                 self.initial_sl_price = None
 

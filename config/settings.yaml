@@ -159,7 +159,7 @@ multi_coin:
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         target_margin: 50
         log_file: logs/pippin.log
-      - symbol: SLVONUSD
+      - symbol: ARCUSD
         timeframe: 1h
         leverage: 5
         target_margin: 50
