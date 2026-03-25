@@ -323,6 +323,13 @@ class DonchianChannelStrategy:
                     self.entry_price = close_closed
                     self.tp_level = close_closed + (atr_closed * self.atr_mult_tp)
                     self.trailing_stop_level = close_closed - (atr_closed * self.atr_mult_trail)
+                    
+                    # Pre-calculate Initial Stop Loss Price for runner (important for bracket SL)
+                    if self.stop_loss_pct is not None:
+                        # Formula: Price * (1 - SL% / Leverage)
+                        self.initial_sl_price = close_closed * (1 - self.stop_loss_pct / self.leverage)
+                        logger.debug(f"Pre-calculated initial SL for LONG: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
+                    
                     self.partial_exit_done = False
                     self.long_entry_bar = len(df) + closed_idx # Mark entry index
                     self.last_action_candle_ts = closed_candle_ts
@@ -355,6 +362,13 @@ class DonchianChannelStrategy:
                     self.entry_price = close_closed
                     self.tp_level = close_closed - (atr_closed * self.atr_mult_tp)
                     self.trailing_stop_level = close_closed + (atr_closed * self.atr_mult_trail)
+                    
+                    # Pre-calculate Initial Stop Loss Price for runner (important for bracket SL)
+                    if self.stop_loss_pct is not None:
+                        # Formula: Price * (1 + SL% / Leverage)
+                        self.initial_sl_price = close_closed * (1 + self.stop_loss_pct / self.leverage)
+                        logger.debug(f"Pre-calculated initial SL for SHORT: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
+                    
                     self.partial_exit_done = False
                     self.last_action_candle_ts = closed_candle_ts
                     return action, reason
@@ -570,12 +584,21 @@ class DonchianChannelStrategy:
                 }
                 logger.info(f"Created reconciled active trade for {side} at {entry_price}")
 
-            elif expected_pos == 0 and self.active_trade:
-                self.active_trade["exit_time"] = format_time(time.time()*1000) + " (Rec)"
-                self.active_trade["status"] = "CLOSED (SYNC)"
-                self.trades.append(self.active_trade)
-                self.active_trade = None
-                logger.info("Closed active trade during reconciliation (Flat on exchange)")
+            elif expected_pos == 0:
+                if self.active_trade:
+                    self.active_trade["exit_time"] = format_time(time.time()*1000) + " (Rec)"
+                    self.active_trade["status"] = "CLOSED (SYNC)"
+                    self.trades.append(self.active_trade)
+                    self.active_trade = None
+                    logger.info("Closed active trade during reconciliation (Flat on exchange)")
+                
+                # IMPORTANT: Clear stale state to prevent reuse in next trade
+                self.entry_price = None
+                self.tp_level = None
+                self.trailing_stop_level = None
+                self.initial_sl_price = None
+                self.partial_exit_done = False
+                self.milestones_hit = [False] * len(self.profit_milestones)
 
         # CATCH-UP LOGIC: Even if state was already synced (or just updated),
         # check if current market price (or exchange PnL) justifies marking milestones as "already hit".
