@@ -76,7 +76,8 @@ class DiscordNotifier:
                         market_price: Optional[float] = None,
                         lot_size: Optional[int] = None,
                         target_margin: Optional[float] = None,
-                        timeframe: Optional[str] = None):
+                        timeframe: Optional[str] = None,
+                        stop_loss_price: Optional[float] = None):
         """
         Send a formatted trade alert with ANSI color codes.
 
@@ -134,6 +135,15 @@ class DiscordNotifier:
         message += (
             f"RSI: \u001b[0;33m{rsi:.2f}\u001b[0m\n"
         )
+        
+        # Show Stop Loss if available
+        if stop_loss_price is not None:
+            # For cryptos with many decimals, we need to handle precision
+            p_decimals = 2
+            if stop_loss_price < 1:
+                import math
+                p_decimals = max(2, math.ceil(abs(math.log10(stop_loss_price))) + 2)
+            message += f"Stop Loss: \u001b[0;31m${stop_loss_price:,.{p_decimals}f}\u001b[0m\n"
         
         # Show lot size if available
         if lot_size is not None:

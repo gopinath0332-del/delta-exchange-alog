@@ -114,7 +114,8 @@ class EmailNotifier:
                         market_price: Optional[float] = None,
                         lot_size: Optional[int] = None,
                         target_margin: Optional[float] = None,
-                        timeframe: Optional[str] = None):
+                        timeframe: Optional[str] = None,
+                        stop_loss_price: Optional[float] = None):
         """
         Send a formatted trade alert email.
 
@@ -141,6 +142,7 @@ class EmailNotifier:
         # Show the configured target margin so the recipient knows the capital allocation
         target_margin_line = f"<li><strong>Target Margin:</strong> ${target_margin:,.2f}</li>" if target_margin is not None else ""
         timeframe_line = f"<li><strong>Timeframe:</strong> {timeframe}</li>" if timeframe else ""
+        stop_loss_line = f"<li><strong>Stop Loss:</strong> ${stop_loss_price:,.4f}</li>" if stop_loss_price is not None else ""
 
         # HTML Body
         body = f"""
@@ -156,6 +158,7 @@ class EmailNotifier:
               {target_margin_line}
               {timeframe_line}
               <li><strong>RSI:</strong> {rsi:.2f}</li>
+              {stop_loss_line}
               <li><strong>Reason:</strong> {reason}</li>
             </ul>
             <p>Sent from Delta Exchange Trading Bot</p>

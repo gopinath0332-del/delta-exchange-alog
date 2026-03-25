@@ -721,7 +721,8 @@ def execute_strategy_signal(
                 lot_size=lot_size,
                 # Pass configured target margin so Discord/email shows the capital allocation setting
                 target_margin=target_margin if is_entry else None,
-                timeframe=timeframe
+                timeframe=timeframe,
+                stop_loss_price=stop_loss_price
             )
         except Exception as e:
             logger.error(f"Failed to send trade alert: {e}")

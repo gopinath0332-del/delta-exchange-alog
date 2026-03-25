@@ -297,6 +297,7 @@ Displayed whenever a new position is opened:
 | Price | Execution / fill price |
 | Market Price | Raw candlestick LTP (shown if different from signal price, e.g. Heikin Ashi) |
 | RSI | RSI value at signal time |
+| **Stop Loss** | Hard stop loss price (for entry signals) |
 | Lot Size | Number of contracts placed |
 | **Target Margin** | Configured `TARGET_MARGIN_{ASSET}` from `.env` — shows the capital allocation for this trade |
 | Reason | Signal trigger description |
