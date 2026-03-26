@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import plotly.graph_objects as go
@@ -691,10 +691,22 @@ class Reporter:
 
     def generate_report(self, symbol: str, timeframe: str, metrics: Dict[str, Any],
                         trades: List[Dict[str, Any]], equity_df: pd.DataFrame,
-                        filepath: str = None) -> str:
+                        filepath: Optional[str] = None,
+                        candle_type: str = "standard") -> str:
         """
         Generate the HTML report.
-        
+
+        Args:
+            symbol:      Trading symbol (e.g. 'BTCUSDT').
+            timeframe:   Candle timeframe (e.g. '1h').
+            metrics:     Computed backtest metrics dict.
+            trades:      List of processed trade dicts from BacktestEngine.
+            equity_df:   Per-candle equity curve DataFrame.
+            filepath:    Optional explicit output path; auto-generated if None.
+            candle_type: 'standard' or 'heikin_ashi'. Passed to the template
+                         so the report header can display a badge when Heikin
+                         Ashi candles were used. Defaults to 'standard'.
+
         Returns:
             String path to the generated HTML file.
         """
@@ -708,6 +720,9 @@ class Reporter:
         candlestick_html      = self._create_candlestick_chart(equity_df, trades)
         streak_chart_html     = self._create_streak_chart(trades)
 
+        # Build a human-readable candle type label for the report header
+        candle_type_label = "Heikin Ashi" if candle_type == "heikin_ashi" else "Standard"
+
         html_out = template.render(
             symbol=symbol,
             timeframe=timeframe,
@@ -720,6 +735,9 @@ class Reporter:
             monthly_heatmap_html=monthly_heatmap_html,
             candlestick_html=candlestick_html,
             streak_chart_html=streak_chart_html,
+            # Candle type info for the report header badge
+            candle_type=candle_type,
+            candle_type_label=candle_type_label,
         )
 
         

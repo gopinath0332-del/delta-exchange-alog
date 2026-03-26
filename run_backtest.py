@@ -25,6 +25,7 @@ from backtest.data_loader import DataLoader
 from backtest.engine import BacktestEngine
 from backtest.metrics import calculate_metrics
 from backtest.reporter import Reporter
+from backtest.candle_transform import apply_heikin_ashi
 
 def get_strategy_instance(strategy_name: str, timeframe: str):
     """Factory to get the requested strategy instance."""
@@ -61,6 +62,50 @@ def get_strategy_instance(strategy_name: str, timeframe: str):
         strategy._update_bars_per_day(timeframe)
     return strategy
 
+def prompt_candle_type() -> str:
+    """
+    Interactively ask the user to select a candle type for the backtest.
+
+    Returns:
+        'standard' (default, selected on Enter press) or 'heikin_ashi'.
+    """
+    candle_options = [
+        ("standard",    "Standard (default)"),
+        ("heikin_ashi", "Heikin Ashi"),
+    ]
+
+    print("\nCandle Type:")
+    for i, (key, label) in enumerate(candle_options, 1):
+        print(f"  {i}. {label}")
+    print()
+
+    try:
+        choice = input(
+            f"Select candle type (1-{len(candle_options)}) [default: 1]: "
+        ).strip()
+
+        # Empty input → default (Standard)
+        if not choice:
+            print("Defaulting to Standard candles.")
+            return "standard"
+
+        idx = int(choice) - 1
+        if 0 <= idx < len(candle_options):
+            selected_key, selected_label = candle_options[idx]
+            print(f"Selected: {selected_label}")
+            return selected_key
+        else:
+            print("Invalid choice. Defaulting to Standard candles.")
+            return "standard"
+
+    except KeyboardInterrupt:
+        print("\nExiting.")
+        sys.exit(0)
+    except ValueError:
+        print("Invalid input. Defaulting to Standard candles.")
+        return "standard"
+
+
 def print_summary(metrics: dict):
     """Print metrics summary to terminal."""
     print("\n" + "="*50)
@@ -87,17 +132,44 @@ def print_summary(metrics: dict):
     print(f"Average Loss:        ${metrics['Average Loss']:,.2f}")
     print("="*50 + "\n")
 
-def run_backtest_for_file(filepath: Path, strategy_name: str, loader: DataLoader, reporter: Reporter) -> dict:
-    """Run backtest for a single CSV file."""
+def run_backtest_for_file(
+    filepath: Path,
+    strategy_name: str,
+    loader: DataLoader,
+    reporter: Reporter,
+    candle_type: str = "standard"
+) -> dict:
+    """
+    Run backtest for a single CSV file.
+
+    Args:
+        filepath:      Path to the CSV data file.
+        strategy_name: Name of the strategy to instantiate.
+        loader:        DataLoader instance for loading and parsing CSVs.
+        reporter:      Reporter instance for generating HTML reports.
+        candle_type:   'standard' or 'heikin_ashi'. When 'heikin_ashi',
+                       the raw OHLCV data is transformed before being fed
+                       to the strategy, matching live-bot Heikin Ashi mode.
+    """
     logger = get_logger(__name__)
-    
+
     symbol, timeframe = loader.parse_filename(filepath)
+    # Load raw standard OHLCV data from the CSV file
     df = loader.load_data(filepath)
-    
+
     if df.empty:
         logger.warning(f"No data loaded from {filepath}")
         return None
-        
+
+    # -----------------------------------------------------------------
+    # Apply Heikin Ashi transform BEFORE strategy sees the data.
+    # The raw 'close' is preserved inside the returned DataFrame as
+    # 'raw_close' so that downstream price calculations remain correct.
+    # -----------------------------------------------------------------
+    if candle_type == "heikin_ashi":
+        logger.info(f"{symbol} | Applying Heikin Ashi transform to {len(df)} bars")
+        df = apply_heikin_ashi(df)
+
     try:
         strategy = get_strategy_instance(strategy_name, timeframe)
     except ValueError as e:
@@ -128,15 +200,17 @@ def run_backtest_for_file(filepath: Path, strategy_name: str, loader: DataLoader
         trades_df.to_csv(csv_path, index=False)
         logger.info(f"Trades saved to {csv_path}")
     
-    # Generate HTML report
+    # Generate HTML report — pass candle_type so the report header shows
+    # which candle type was used (useful when comparing runs).
     reporter.generate_report(
         symbol=symbol,
         timeframe=timeframe,
         metrics=metrics,
         trades=trades,
-        equity_df=equity_df
+        equity_df=equity_df,
+        candle_type=candle_type,
     )
-    
+
     return metrics
 
 def main():
@@ -145,7 +219,14 @@ def main():
     parser.add_argument("--symbol", type=str, help="Specific symbol to test (e.g. BTCUSDT)")
     parser.add_argument("--timeframe", type=str, help="Specific timeframe to test (e.g. 1h)")
     parser.add_argument("--file", type=str, help="Specific CSV file to test")
-    
+    parser.add_argument(
+        "--candle-type",
+        type=str,
+        choices=["standard", "heikin_ashi"],
+        default=None,  # None means we will ask interactively if not provided
+        help="Candle type to use: 'standard' (default) or 'heikin_ashi'"
+    )
+
     args = parser.parse_args()
     
     if not args.strategy:
@@ -181,9 +262,17 @@ def main():
             print("Invalid input. Exiting.")
             sys.exit(1)
     
+    # -----------------------------------------------------------------------
+    # Step 2: Interactive candle type selection (skipped if --candle-type was
+    # passed on the command line).
+    # -----------------------------------------------------------------------
+    if args.candle_type is None:
+        args.candle_type = prompt_candle_type()
+
     # Initialize basic logging for CLI output
     setup_logging(log_level="INFO")
     logger = get_logger(__name__)
+    logger.info(f"Candle type selected: {args.candle_type}")
     
     config = get_config()
     data_folder = config.backtesting.data_folder
@@ -218,13 +307,19 @@ def main():
         logger.error("No files matched the given filters.")
         sys.exit(1)
         
-    logger.info(f"Starting backtest on {len(files_to_process)} dataset(s)...")
-    
+    logger.info(
+        f"Starting backtest on {len(files_to_process)} dataset(s) "
+        f"[candle type: {args.candle_type}]..."
+    )
+
     all_metrics = []
-    
+
     # Process each file with progress bar
     for filepath in tqdm(files_to_process, desc="Backtesting"):
-        metrics = run_backtest_for_file(filepath, args.strategy, loader, reporter)
+        metrics = run_backtest_for_file(
+            filepath, args.strategy, loader, reporter,
+            candle_type=args.candle_type
+        )
         if metrics:
             all_metrics.append(metrics)
             
