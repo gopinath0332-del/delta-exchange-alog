@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Backtest Report - {{ symbol }}</title>
+    <title>Backtest Report - {{ symbol }}{% if candle_type == 'heikin_ashi' %} (Heikin Ashi){% endif %}</title>
     <style>
       body {
         font-family:
@@ -72,11 +72,25 @@
         margin-bottom: 5px;
         text-transform: uppercase;
       }
+      /* Heikin Ashi badge shown next to the report heading */
+      .badge-ha {
+        display: inline-block;
+        background: #6f42c1;
+        color: white;
+        font-size: 0.55em;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 12px;
+        vertical-align: middle;
+        margin-left: 10px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
       .stat-value {
         font-size: 1.4em;
         font-weight: bold;
       }
-      
+
       /* Detailed Metrics Table */
       .detailed-metrics-table {
         background: white;
@@ -158,7 +172,12 @@
   </head>
   <body>
     <div class="container">
-      <h1>Backtest Report: {{ symbol }} ({{ timeframe }})</h1>
+      <h1>
+        Backtest Report: {{ symbol }} ({{ timeframe }})
+        {% if candle_type == 'heikin_ashi' %}
+        <span class="badge-ha">Heikin Ashi</span>
+        {% endif %}
+      </h1>
 
       <div class="tabs">
         <button class="tab-btn active" onclick="openTab(event, 'overview')">Overview</button>
