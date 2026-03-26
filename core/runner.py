@@ -405,93 +405,18 @@ def run_strategy_terminal(
                              logger.info("Backtesting history for warmup...")
                              strategy.run_backtest(df.iloc[:-1])
                              logger.info("Backtest warmup complete.")
-
-                             # --- RECONCILIATION STEP ---
-                             # After backtest, we might still be out of sync if a trade happened 
-                             # while bot was off or failed to record.
-                             try:
-                                 logger.info("Reconciling state with live positions...")
-                                 
-                                 # Reuse the product_id cached at startup — no extra get_products() call.
-                                 positions = []
-                                 if cached_product_id is not None:
-                                     logger.info(f"Reconciliation: Using cached product_id={cached_product_id} for {symbol}")
-                                     positions = client.get_positions(product_id=cached_product_id)
-                                 else:
-                                     logger.warning(f"Could not resolve product ID for {symbol}. Trying without ID (might fail)...")
-                                     positions = client.get_positions()
-
-                                 logger.info(f"Reconciliation: Fetched {len(positions)} positions.")
-                                 # logger.info(f"Positions raw data: {positions}")
-
-                                 # If we filtered by product_id, API might return the single object directly
-                                 if isinstance(positions, dict):
-                                     logger.info("Positions returned as single dict object. Wrapping in list.")
-                                     positions = [positions]
-                                 
-
-                                 
-                                 # Find position for this symbol/product
-                                 # Try multiple keys for symbol match
-                                 current_pos = None
-                                 for p in positions:
-                                     if isinstance(p, (str, int, float)):
-                                         logger.error(f"Position data is primitive type {type(p)}, expected dict: {p}")
-                                         continue
-                                     
-                                     # If we filtered by product_id, a single result is our position.
-                                     if len(positions) == 1 and cached_product_id is not None:
-                                          current_pos = p
-                                          break
-                                          
-                                     p_symbol = p.get('product_symbol') or p.get('symbol') or p.get('product_id') # Fallback check
-                                     if str(p_symbol) == symbol:
-                                         current_pos = p
-                                         break
-                                 
-                                 size = 0.0
-                                 entry_price = 0.0
-                                 if current_pos:
-                                     val_size = current_pos.get('size')
-                                     if val_size is not None:
-                                         size = float(val_size)
-                                     
-                                     val_price = current_pos.get('entry_price')
-                                     if val_price is not None:
-                                         entry_price = float(val_price)
-                                         
-                                     logger.info(f"Reconciliation: Found position for {symbol}: Size={size}, Price={entry_price}")
-                                     # Store for milestone/signal logic to avoid refetch
-                                     live_pos_data = current_pos
-                                 else:
-                                     logger.info(f"Reconciliation: No position found for {symbol}")
-
-                                 # Pass current market price and live position data to enable milestone catch-up logic
-                                 current_market_price = float(closes.iloc[-1]) if not closes.empty else 0.0
-                                 try:
-                                     strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
-                                 except TypeError:
-                                     # Fallback for strategies that don't accept live_pos_data or current_market_price
-                                     try:
-                                         strategy.reconcile_position(size, entry_price, current_market_price)
-                                     except TypeError:
-                                         strategy.reconcile_position(size, entry_price)
-                                 
-                                 
-                             except Exception as e:
-                                 logger.error(f"Failed to reconcile positions: {e}")
-                                 
-                             # ---------------------------
+                             logger.info("Warmup complete. Position reconciliation will happen in the main loop.")
                      
-                     # --- FETCH LIVE POSITION FOR SIGNALS & DASHBOARD ---
-                     # Reuse cached_product_id from startup — avoids get_products() on every cycle.
                      try:
+                         # 3. CONSOLIDATED RECONCILIATION & POSITION FETCH
+                         # Fetch live position data for signal check, dashboard, and reconciliation.
+                         # This happens EVERY cycle now.
+                         live_pos_data = None
                          if cached_product_id is not None:
                              pid = cached_product_id
-                             # Use get_positions (plural) which now hits /v2/positions/margined
+                             # Use get_positions (plural) which hits /v2/positions/margined
                              all_positions = client.get_positions(product_id=pid)
                              
-                             # Handle response structure: It returns a list
                              if isinstance(all_positions, dict):
                                   all_positions = [all_positions]
                                   
@@ -501,15 +426,33 @@ def run_strategy_terminal(
                                       if p_id and str(p_id) == str(pid):
                                           live_pos_data = p
                                           break
-                                      # If filtered by ID and only 1 result, take it
                                       if len(all_positions) == 1:
                                           live_pos_data = p
                                           break
+                         
+                         size = 0.0
+                         entry_price = 0.0
+                         if live_pos_data:
+                             size = float(live_pos_data.get('size', 0.0))
+                             entry_price = float(live_pos_data.get('entry_price', 0.0))
+                             logger.info(f"Cycle Position: {symbol} Size={size}, Price={entry_price}")
                          else:
-                             logger.warning(f"Could not resolve product ID for {symbol} for signal checking.")
+                             logger.info(f"Cycle Position: {symbol} FLAT")
+
+                         # Trigger Reconciliation EVERY cycle.
+                         # This ensures bot state recovers if exchange position changes externally.
+                         current_market_price = float(closes.iloc[-1]) if not closes.empty else 0.0
+                         try:
+                             # Try matching Rule 3 signature first
+                             strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
+                         except TypeError:
+                             try:
+                                 strategy.reconcile_position(size, entry_price, current_market_price)
+                             except TypeError:
+                                 strategy.reconcile_position(size, entry_price)
 
                      except Exception as e:
-                         logger.warning(f"Failed to fetch live position for signal analysis: {e}")
+                         logger.warning(f"Failed to fetch position or reconcile: {e}")
 
                      # Now process current live candle
                      current_time_ms = int(time.time() * 1000)
