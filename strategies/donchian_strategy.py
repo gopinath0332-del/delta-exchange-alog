@@ -567,12 +567,21 @@ class DonchianChannelStrategy:
             if price_changed:
                 logger.warning(f"Reconciling Entry Price: Internal {self.entry_price} -> Exchange {entry_price}")
 
+            # Only reset partial_exit_done and milestones on a GENUINELY NEW position
+            # (position direction flipped, or bot was flat and now sees a position).
+            # A mere entry-price correction should NOT clear these flags — they represent
+            # real exits that already happened and must not re-fire on restart.
+            truly_new_position = (self.current_position != expected_pos)
+
             self.current_position = expected_pos
             self.entry_price = entry_price
             
-            # Reset milestone/partial flags on sync
-            self.milestones_hit = [False] * len(self.profit_milestones)
-            self.partial_exit_done = False
+            if truly_new_position:
+                # New position direction -> safe to reset flags
+                self.milestones_hit = [False] * len(self.profit_milestones)
+                self.partial_exit_done = False
+            # else: price_changed only — preserve partial_exit_done and milestones_hit
+            # so previously completed exits are not re-triggered.
             
             if expected_pos != 0 and not self.active_trade:
                 side = "LONG" if expected_pos == 1 else "SHORT"
@@ -600,33 +609,12 @@ class DonchianChannelStrategy:
                 self.partial_exit_done = False
                 self.milestones_hit = [False] * len(self.profit_milestones)
 
-        # CATCH-UP LOGIC: Even if state was already synced (or just updated),
-        # check if current market price (or exchange PnL) justifies marking milestones as "already hit".
-        # This prevents the bot from re-triggering exits on every restart if price is > threshold.
-        if self.current_position != 0:
-            pnl_pct = 0.0
-            pnl_source = "Manual"
-            
-            if live_pos_data:
-                unrealized_pnl = float(live_pos_data.get('unrealized_pnl', 0.0))
-                margin = float(live_pos_data.get('margin', 0.0))
-                if margin > 0:
-                    pnl_pct = (unrealized_pnl / margin) * 100.0
-                    pnl_source = "Exchange"
-            
-            # Manual Fallback if Exchange data unavailable
-            if pnl_source == "Manual" and self.entry_price and current_price:
-                if self.current_position == 1: # LONG
-                    pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
-                else: # SHORT
-                    pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
-                
-            for i, milestone in enumerate(self.profit_milestones):
-                threshold = milestone.get('pnl_pct', 0)
-                if pnl_pct >= threshold:
-                    if not self.milestones_hit[i]:
-                        logger.info(f"Reconciliation Catch-up: Marking Milestone {i+1} as ALREADY HIT ({pnl_source} PnL: {pnl_pct:.2f}% >= {threshold}%)")
-                        self.milestones_hit[i] = True
+        # CATCH-UP LOGIC: We used to mark milestones as ALREADY HIT here if PnL exceeded threshold.
+        # This was too aggressive and caused missed exits if the bot was offline when the target was hit.
+        # Now, we let check_signals() handle it. If we are pass a milestone but it's not marked hit,
+        # it will fire a signal normally during the next cycle.
+        # We rely on the truly_new_position guard above to keep flags set across simple restarts.
+        pass
 
     def run_backtest(self, df: pd.DataFrame):
         """Run backtest."""
