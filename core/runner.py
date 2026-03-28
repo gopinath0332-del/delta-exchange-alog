@@ -147,9 +147,9 @@ def run_strategy_terminal(
         logger.info("Initialized RSISupertrendStrategy")
     elif strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
         from strategies.donchian_strategy import DonchianChannelStrategy
-        strategy = DonchianChannelStrategy()
+        strategy = DonchianChannelStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized DonchianChannelStrategy")
+        logger.info(f"Initialized DonchianChannelStrategy for {symbol}")
     elif strategy_name.lower() in ["ema-cross", "ema_cross", "emacross"]:
         from strategies.ema_cross_strategy import EMACrossStrategy
         strategy = EMACrossStrategy()
