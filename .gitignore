@@ -69,6 +69,7 @@ logs/
 data/*.csv
 data/*.parquet
 data/trading.db
+data/state/
 
 # Reports
 reports/*.pdf

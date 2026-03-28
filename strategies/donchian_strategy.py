@@ -673,6 +673,11 @@ class DonchianChannelStrategy:
         # Now, we let check_signals() handle it. If we are pass a milestone but it's not marked hit,
         # it will fire a signal normally during the next cycle.
         # We rely on the truly_new_position guard above to keep flags set across simple restarts.
+        
+        # PERSIST TO DISK (Ensure Cold Start state is saved)
+        if self.current_position != 0:
+            self._save_to_disk()
+        
         pass
 
     def run_backtest(self, df: pd.DataFrame):
