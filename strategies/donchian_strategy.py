@@ -1,12 +1,17 @@
 import logging
-from typing import Dict, Optional, Tuple, Any
+import datetime
+from typing import Dict, Optional, Tuple, Any, List
 import pandas as pd
 import ta
 import numpy as np
 from core.config import get_config
 from core.candle_utils import get_closed_candle_index
+from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
 
 logger = logging.getLogger(__name__)
+
+def format_time(ts_ms): 
+    return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
 
 class DonchianChannelStrategy:
     """
@@ -21,12 +26,13 @@ class DonchianChannelStrategy:
     - Trailing Stop: Dynamically updated ATR based stop.
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "ARCUSD"):
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("donchian_channel", {})
 
         # Parameters
+        self.symbol = symbol  # Passed from runner/config
         self.trade_mode = cfg.get("trade_mode", "Both") # "Long", "Short", "Both"
         self.enter_period = cfg.get("enter_period", 20)
         self.exit_period = cfg.get("exit_period", 10)
@@ -541,9 +547,53 @@ class DonchianChannelStrategy:
             self.partial_exit_done = False
             self.milestones_hit = [False] * len(self.profit_milestones)
             self.initial_sl_price = None
+        
+        # PERSIST TO DISK
+        # Save after any position state update to ensure restarts pick up latest flags.
+        self._save_to_disk()
 
     def set_position(self, position: int):
         self.current_position = position
+
+    def _save_to_disk(self):
+        """Save current trade flags to disk for persistence across restarts."""
+        try:
+            state = {
+                "partial_exit_done": self.partial_exit_done,
+                "milestones_hit": self.milestones_hit,
+                "entry_price": self.entry_price,
+                "tp_level": self.tp_level,
+                "trailing_stop_level": self.trailing_stop_level,
+                "initial_sl_price": self.initial_sl_price,
+                "current_position": self.current_position
+            }
+            save_strategy_state(self.symbol, "donchian_channel", state)
+        except Exception as e:
+            logger.error(f"Error saving strategy state for {self.symbol}: {e}")
+
+    def _load_from_disk(self) -> bool:
+        """
+        Attempt to restore trade flags from disk.
+        Returns True if state was successfully restored.
+        """
+        try:
+            state = load_strategy_state(self.symbol, "donchian_channel")
+            if not state:
+                return False
+            
+            self.partial_exit_done = state.get("partial_exit_done", False)
+            self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
+            
+            # Restore levels if they aren't already set
+            if getattr(self, 'tp_level', None) is None: self.tp_level = state.get("tp_level")
+            if getattr(self, 'trailing_stop_level', None) is None: self.trailing_stop_level = state.get("trailing_stop_level")
+            if getattr(self, 'initial_sl_price', None) is None: self.initial_sl_price = state.get("initial_sl_price")
+            
+            logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}, Milestones={self.milestones_hit}")
+            return True
+        except Exception as e:
+            logger.warning(f"Error loading strategy state for {self.symbol}: {e}")
+            return False
 
     def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None):
         """Reconcile internal strategy state with Live Exchange position."""
@@ -567,12 +617,29 @@ class DonchianChannelStrategy:
             if price_changed:
                 logger.warning(f"Reconciling Entry Price: Internal {self.entry_price} -> Exchange {entry_price}")
 
+            # Genuinely new if direction changed (e.g. LONG -> SHORT or SHORT -> LONG).
+            # Moving from 0 (init) to 1 (active) is a "Cold Start".
+            # Moving from 0 (was flat) to 1 (active) on a LIVE cycle is a "New Entry".
+            # We use persistence to distinguish them.
+            if self.current_position == 0 and expected_pos != 0:
+                # Cold Start / Re-syncing existing position
+                # Try to load previous state to avoid duplicate signals.
+                found = self._load_from_disk()
+                if found:
+                    logger.info("Cold Start: Re-synced with existing position using persistent state.")
+                else:
+                    logger.info("Cold Start: Re-synced with existing position. No persistent state found.")
+                
+            truly_new_position = (self.current_position != 0 and self.current_position != expected_pos)
+
             self.current_position = expected_pos
             self.entry_price = entry_price
             
-            # Reset milestone/partial flags on sync
-            self.milestones_hit = [False] * len(self.profit_milestones)
-            self.partial_exit_done = False
+            if truly_new_position:
+                # Genuinely flipped direction -> reset all flags
+                self.milestones_hit = [False] * len(self.profit_milestones)
+                self.partial_exit_done = False
+                clear_strategy_state(self.symbol, "donchian_channel") # Clean slate
             
             if expected_pos != 0 and not self.active_trade:
                 side = "LONG" if expected_pos == 1 else "SHORT"
@@ -599,34 +666,19 @@ class DonchianChannelStrategy:
                 self.initial_sl_price = None
                 self.partial_exit_done = False
                 self.milestones_hit = [False] * len(self.profit_milestones)
+                clear_strategy_state(self.symbol, "donchian_channel")
 
-        # CATCH-UP LOGIC: Even if state was already synced (or just updated),
-        # check if current market price (or exchange PnL) justifies marking milestones as "already hit".
-        # This prevents the bot from re-triggering exits on every restart if price is > threshold.
+        # CATCH-UP LOGIC: We used to mark milestones as ALREADY HIT here if PnL exceeded threshold.
+        # This was too aggressive and caused missed exits if the bot was offline when the target was hit.
+        # Now, we let check_signals() handle it. If we are pass a milestone but it's not marked hit,
+        # it will fire a signal normally during the next cycle.
+        # We rely on the truly_new_position guard above to keep flags set across simple restarts.
+        
+        # PERSIST TO DISK (Ensure Cold Start state is saved)
         if self.current_position != 0:
-            pnl_pct = 0.0
-            pnl_source = "Manual"
-            
-            if live_pos_data:
-                unrealized_pnl = float(live_pos_data.get('unrealized_pnl', 0.0))
-                margin = float(live_pos_data.get('margin', 0.0))
-                if margin > 0:
-                    pnl_pct = (unrealized_pnl / margin) * 100.0
-                    pnl_source = "Exchange"
-            
-            # Manual Fallback if Exchange data unavailable
-            if pnl_source == "Manual" and self.entry_price and current_price:
-                if self.current_position == 1: # LONG
-                    pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
-                else: # SHORT
-                    pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
-                
-            for i, milestone in enumerate(self.profit_milestones):
-                threshold = milestone.get('pnl_pct', 0)
-                if pnl_pct >= threshold:
-                    if not self.milestones_hit[i]:
-                        logger.info(f"Reconciliation Catch-up: Marking Milestone {i+1} as ALREADY HIT ({pnl_source} PnL: {pnl_pct:.2f}% >= {threshold}%)")
-                        self.milestones_hit[i] = True
+            self._save_to_disk()
+        
+        pass
 
     def run_backtest(self, df: pd.DataFrame):
         """Run backtest."""

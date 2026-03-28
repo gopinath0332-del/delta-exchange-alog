@@ -11,6 +11,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 - **Structured Logging**: Human-readable logs using `structlog`
 - **Modular Architecture**: Clean separation of concerns for easy extension
 - **Multiple Timeframes**: 5m, 15m, 1h, 3h, 4h, 1d (configurable)
+- **Strategy State Persistence**: Local JSON-based state storage to preserve trade flags (milestones, partial exits) across restarts (NEW)
 - **Notifications**: Discord webhooks and Email alerts with color-coded status messages
 - **PDF Reports**: Professional trading reports with charts
 - **Premium Strategies**: Multiple strategies with ATR-based trailing stops and partial exits
@@ -52,7 +53,8 @@ delta-exchange-alog/
 │   ├── models.py       # Pydantic data models
 │   ├── fetcher.py      # Historical data fetcher
 │   ├── storage.py      # Data persistence
-│   └── preprocessor.py # Data processing
+│   ├── preprocessor.py # Data processing
+│   └── state/          # Persistent strategy state (JSON) - NEW
 ├── strategies/         # Trading strategies (all use closed candle logic)
 │   ├── double_dip_rsi.py      # Double-Dip RSI strategy (BTCUSD)
 │   ├── cci_ema_strategy.py    # CCI + 50 EMA strategy (BTCUSD)
@@ -497,6 +499,26 @@ db.collection("trades")
 
 > [!NOTE]
 > Firestore journaling failures are logged but will never interrupt trade execution. The service degrades gracefully if Firestore is unavailable.
+
+### Strategy State Persistence
+
+The platform includes a local persistence mechanism to ensure that strategy-specific trade flags (like Milestone Hits and Partial Exits) are preserved even if the bot application restarts.
+
+#### How it Works
+
+1.  **Action Persistence**: Every time a strategy executes an action (e.g., hits a 50% profit milestone or performs a partial take-profit), it saves its current state to a JSON file in `data/state/`.
+2.  **Restart Recovery**: On startup, the strategy reconciles its position with the exchange. If it finds an active trade, it loads the corresponding state file to restore all previously hit milestones.
+3.  **Isolation**: State files are named by symbol (e.g., `ARCUSD_donchian_channel_state.json`), ensuring that different coins in multi-coin mode do not interfere with each other.
+4.  **Automatic Cleanup**: When a position is closed on the exchange, the state file is automatically deleted to stay clean for the next trade.
+
+#### Benefits
+
+- ✅ **No Duplicate Signals**: Prevents the bot from re-firing a "Partial Exit" signal every time you restart.
+- ✅ **Perfect Continuity**: Allows the bot to remember exactly which milestones were already captured, even if the "warmup" backtest misses them due to slight price discrepancies.
+- ✅ **Offline Tolerance**: If a milestone is missed while the bot is offline, the persistence layer ensures the bot knows it still needs to fire that exit on the next cycle.
+
+> [!TIP]
+> **Git Protection**: The `data/state/` directory is automatically ignored by Git (via `.gitignore`) to prevent your private trade state from being committed to the repository.
 
 ### Trading Settings (settings.yaml)
 
