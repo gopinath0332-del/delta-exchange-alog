@@ -259,6 +259,11 @@ def execute_strategy_signal(
     """
     # 1. Get symbol configuration
     trade_config = get_trade_config(symbol, sizing_config=sizing_config)
+
+    # Save the original HA candle signal price BEFORE it is potentially overwritten by the
+    # actual exchange fill price. We need this to compute the SL percentage-move later.
+    # The `price` param is the HA close from runner; `execution_price` (fill) may differ.
+    original_signal_price = price
     
     try:
         # 1. Resolve Product ID
@@ -557,6 +562,34 @@ def execute_strategy_signal(
                     logger.error(f"Failed to place order: {e}")
                     notifier.send_error(f"Order Failed: {symbol}", str(e))
                     return {"success": False, "error": str(e)}
+
+                # --- RECALCULATE SL USING ACTUAL FILL PRICE ---
+                # The initial_sl_price was calculated from the Heikin-Ashi closed candle price
+                # (close_closed) in check_signals(). The actual exchange fill price may differ
+                # (usually higher for longs, lower for shorts) due to HA smoothing vs real market.
+                # This would cause the realized SL loss-% to deviate from the configured value.
+                # Fix: preserve the same percentage-move ratio but anchor it to the fill price.
+                if is_entry and stop_loss_price and execution_price and original_signal_price > 0:
+                    if action == "ENTRY_LONG":
+                        # Percentage drop from HA-signal price to SL price
+                        sl_drop_pct = (original_signal_price - stop_loss_price) / original_signal_price
+                        adjusted_sl = round(execution_price * (1.0 - sl_drop_pct), 5)
+                        logger.info(
+                            f"SL recalculated to fill price: {adjusted_sl:.5f} "
+                            f"(was {stop_loss_price:.5f} based on HA-close {original_signal_price:.5f}, "
+                            f"fill={execution_price:.5f}, drop={sl_drop_pct*100:.2f}%)"
+                        )
+                        stop_loss_price = adjusted_sl
+                    elif action == "ENTRY_SHORT":
+                        # Percentage rise from HA-signal price to SL price
+                        sl_rise_pct = (stop_loss_price - original_signal_price) / original_signal_price
+                        adjusted_sl = round(execution_price * (1.0 + sl_rise_pct), 5)
+                        logger.info(
+                            f"SL recalculated to fill price: {adjusted_sl:.5f} "
+                            f"(was {stop_loss_price:.5f} based on HA-close {original_signal_price:.5f}, "
+                            f"fill={execution_price:.5f}, rise={sl_rise_pct*100:.2f}%)"
+                        )
+                        stop_loss_price = adjusted_sl
 
                 # --- EXCHANGE BRACKET STOP-LOSS ---
                 if is_entry and stop_loss_price and enable_orders:
