@@ -1,5 +1,5 @@
 [Unit]
-Description=Delta Exchange Trading Bot - PIUSD Donchian Channel (4H Standard)
+Description=Delta Exchange Trading Bot - BIOUSD Donchian Channel (4H Standard)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,15 +7,15 @@ Wants=network-online.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/delta-exchange-alog
-# Runs strategy ID 11: PIUSD Donchian Channel, 4H Standard, 5x leverage, $50 target margin
+# Runs strategy ID 11: BIOUSD Donchian Channel, 4H Standard, 5x leverage, $50 target margin
 ExecStart=/home/pi/delta-exchange-alog/venv/bin/python3 -u /home/pi/delta-exchange-alog/run_terminal.py --strategy 11 --non-interactive
 Restart=on-failure
 RestartSec=60
 EnvironmentFile=/home/pi/delta-exchange-alog/config/.env
 
-# Logging — stdout goes to pi.log, stderr (crashes/tracebacks) to pi.error.log
-StandardOutput=append:/home/pi/delta-exchange-alog/logs/pi.log
-StandardError=append:/home/pi/delta-exchange-alog/logs/pi.error.log
+# Logging — stdout goes to bio.log, stderr (crashes/tracebacks) to bio.error.log
+StandardOutput=append:/home/pi/delta-exchange-alog/logs/bio.log
+StandardError=append:/home/pi/delta-exchange-alog/logs/bio.error.log
 
 [Install]
 WantedBy=multi-user.target

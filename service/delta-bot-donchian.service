@@ -1,5 +1,5 @@
 [Unit]
-Description=Delta Exchange Trading Bot - Donchian Channel (PIUSD, PIPPINUSD, RIVERUSD, BERAUSD, PAXGUSD)
+Description=Delta Exchange Trading Bot - Donchian Channel (BIOUSD, PIPPINUSD, ARCUSD)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/delta-exchange-alog
-# Runs all 5 Donchian coins in a single process using parallel threads.
-# Each coin's logs still go to its own per-symbol file (logs/pi.log etc.)
+# Runs configured Donchian coins in a single process using parallel threads.
+# Each coin's logs still go to its own per-symbol file (logs/bio.log etc.)
 # because _add_per_symbol_log_handler() in runner.py attaches a thread-filtered
 # RotatingFileHandler per coin.  The shared DeltaRestClient serialises all API
 # calls via the in-process threading.Lock in RateLimiter — no startup burst.
@@ -19,7 +19,7 @@ EnvironmentFile=/home/pi/delta-exchange-alog/config/.env
 
 # This captures Python-level crashes / uncaught exceptions from the main thread.
 # Per-coin trade/signal logs are written directly to their own files by the
-# thread-filtered log handlers (logs/pi.log, logs/pippin.log, etc.).
+# thread-filtered log handlers (logs/bio.log, logs/pippin.log, logs/arc.log).
 StandardOutput=append:/home/pi/delta-exchange-alog/logs/donchian-service.log
 StandardError=append:/home/pi/delta-exchange-alog/logs/donchian-service.error.log
 

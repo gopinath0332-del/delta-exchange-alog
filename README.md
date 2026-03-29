@@ -22,7 +22,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
   - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
   - Donchian Channel (RIVERUSD, PIPPINUSD) - Breakout strategy with 100 EMA trend filter and ATR trailing stop
-  - **Donchian Channel (PIUSD)** - 4H Standard, 5x leverage, $50 target margin
+  - **Donchian Channel (BIOUSD)** - 4H Standard, 5x leverage, $50 target margin
   - **Donchian Channel (BERAUSD)** - 1H Heikin Ashi, 5x leverage, $50 target margin
   - **Donchian Channel (PAXGUSD)** - 1H Heikin Ashi, 5x leverage, $30 target margin (NEW)
   - **EMA Cross (BTCUSD)** - 10/20 EMA crossover with position flipping
@@ -62,7 +62,7 @@ delta-exchange-alog/
 │   ├── macd_psar_100ema_strategy.py # MACD + PSAR + 100 EMA (XRPUSD)
 │   ├── rsi_200_ema_strategy.py # RSI + 200 EMA strategy (ETHUSD)
 │   ├── rsi_supertrend_strategy.py # RSI + Supertrend strategy (RIVERUSD)
-│   ├── donchian_strategy.py   # Donchian Channel strategy (RIVERUSD, PIPPINUSD, PIUSD, BERAUSD)
+│   ├── donchian_strategy.py   # Donchian Channel strategy (RIVERUSD, PIPPINUSD, BIOUSD, BERAUSD)
 │   ├── ema_cross_strategy.py  # EMA Cross strategy (BTCUSD) - NEW
 │   └── examples/       # Example strategies
 ├── backtesting/        # Backtesting engine
@@ -724,27 +724,27 @@ ENABLE_ORDER_PLACEMENT_PIPPIN=true
 > [!NOTE]
 > Environment variables use `PIPPIN` as the base asset name (not `PIPPINUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
 
-### 6. Donchian Channel Strategy (PIUSD)
+### 6. Donchian Channel Strategy (BIOUSD)
 
-Same Donchian Channel strategy, configured for the **PIUSD** futures pair.
+Same Donchian Channel strategy, configured for the **BIOUSD** futures pair.
 
 - **Timeframe**: 4H with **Standard** candles
 - **Leverage**: 5x
 - **Target Margin**: $50
 - **Strategy ID**: 11 (`--strategy 11`)
-- **Service File**: `service/delta-bot-pi.service`
+- **Service File**: `service/delta-bot-bio.service`
 
 **Configuration** (`config/.env`):
 
 ```env
-# PIUSD — base asset key is 'PI' (code strips 'USD' from symbol)
-TARGET_MARGIN_PI=50   # Use $50 margin for positions
-LEVERAGE_PI=5
-ENABLE_ORDER_PLACEMENT_PI=true
+# BIOUSD — base asset key is 'BIO' (code strips 'USD' from symbol)
+TARGET_MARGIN_BIO=50   # Use $50 margin for positions
+LEVERAGE_BIO=5
+ENABLE_ORDER_PLACEMENT_BIO=true
 ```
 
 > [!NOTE]
-> Environment variables use `PI` as the base asset name (not `PIUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
+> Environment variables use `BIO` as the base asset name (not `BIOUSD`) because the code automatically strips "USD" from trading symbols when parsing configuration.
 
 **Running manually**:
 
@@ -755,11 +755,11 @@ python3 run_terminal.py --strategy 11 --non-interactive
 **Deploying as a systemd service**:
 
 ```bash
-sudo cp service/delta-bot-pi.service /etc/systemd/system/
+sudo cp service/delta-bot-bio.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable delta-bot-pi
-sudo systemctl start delta-bot-pi
-sudo systemctl status delta-bot-pi
+sudo systemctl enable delta-bot-bio
+sudo systemctl start delta-bot-bio
+sudo systemctl status delta-bot-bio
 ```
 
 ### 7. Donchian Channel Strategy (BERAUSD)

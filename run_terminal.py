@@ -123,12 +123,12 @@ def main():
             "desc": "Long/Short based on EMA 10/20 crossover."
         },
         {
-            # PIUSD Donchian Channel — 4H Standard, 5x leverage, $50 target margin
+            # BIOUSD Donchian Channel — 4H Standard, 5x leverage, $50 target margin
             # Reuses the existing DonchianChannelStrategy (no new strategy code needed).
-            # Start/stop: sudo systemctl start/stop delta-bot-pi
+            # Start/stop: sudo systemctl start/stop delta-bot-bio
             "id": 11,
-            "name": "PIUSD Donchian Channel (4H Standard)",
-            "symbol": "PIUSD",
+            "name": "BIOUSD Donchian Channel (4H Standard)",
+            "symbol": "BIOUSD",
             "monitor": "donchian_channel",
             "timeframe": "4h",
             "candle_type": "standard",
@@ -161,15 +161,15 @@ def main():
         },
         {
             # Multi-coin Donchian Channel service.
-            # Runs PI, PIPPIN, RIVER, BERA, PAXG in parallel threads sharing one
+            # Runs BIOUSD, PIPPINUSD, ARCUSD in parallel threads sharing one
             # DeltaRestClient so API calls are serialized automatically (no rate-limit burst).
             # Each coin gets its own log file and its own Discord startup message.
             # Symbols/log-files are configured in settings.yaml under multi_coin.donchian_channel.
             # On Raspberry Pi this is the entry used by delta-bot-donchian.service.
             "id": 14,
-            "name": "Donchian Channel — Multi-Coin (PI, PIPPIN, RIVER, BERA, PAXG)",
+            "name": "Donchian Channel — Multi-Coin (BIOUSD, PIPPINUSD, ARCUSD)",
             "multi_coin_key": "donchian_channel",  # key under multi_coin in settings.yaml
-            "desc": "Runs Donchian Channel for all 5 coins in parallel threads. API calls serialized via shared client."
+            "desc": "Runs Donchian Channel for BIOUSD, PIPPINUSD, ARCUSD in parallel threads. API calls serialized via shared client."
         }
     ]
 
