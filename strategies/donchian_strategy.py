@@ -558,6 +558,12 @@ class DonchianChannelStrategy:
     def _save_to_disk(self):
         """Save current trade flags to disk for persistence across restarts."""
         try:
+            if self.current_position == 0:
+                # Flat position -> delete the state file to stay clean.
+                clear_strategy_state(self.symbol, "donchian_channel")
+                return
+
+            # Active position -> save the state.
             state = {
                 "partial_exit_done": self.partial_exit_done,
                 "milestones_hit": self.milestones_hit,
@@ -569,7 +575,7 @@ class DonchianChannelStrategy:
             }
             save_strategy_state(self.symbol, "donchian_channel", state)
         except Exception as e:
-            logger.error(f"Error saving strategy state for {self.symbol}: {e}")
+            logger.error(f"Error managing strategy state for {self.symbol}: {e}")
 
     def _load_from_disk(self) -> bool:
         """
