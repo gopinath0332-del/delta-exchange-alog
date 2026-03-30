@@ -270,7 +270,6 @@ class EMACrossStrategy:
                 "status": "OPEN",
                 "logs": []
             }
-            logger.info(f"ENTRY_LONG at {price:.2f}")
         
         elif action == "ENTRY_SHORT":
             self.current_position = -1
@@ -283,7 +282,6 @@ class EMACrossStrategy:
                 "status": "OPEN",
                 "logs": []
             }
-            logger.info(f"ENTRY_SHORT at {price:.2f}")
         
         elif action == "EXIT_LONG":
             self.current_position = 0
@@ -294,7 +292,6 @@ class EMACrossStrategy:
                 self.active_trade["status"] = "CLOSED"
                 self.active_trade["points"] = price - self.active_trade["entry_price"]
                 self.trades.append(self.active_trade)
-                logger.info(f"EXIT_LONG at {price:.2f}, PnL: {self.active_trade['points']:.2f}")
                 self.active_trade = None
             
             self.entry_price = None
@@ -308,7 +305,6 @@ class EMACrossStrategy:
                 self.active_trade["status"] = "CLOSED"
                 self.active_trade["points"] = self.active_trade["entry_price"] - price
                 self.trades.append(self.active_trade)
-                logger.info(f"EXIT_SHORT at {price:.2f}, PnL: {self.active_trade['points']:.2f}")
                 self.active_trade = None
             
             self.entry_price = None
