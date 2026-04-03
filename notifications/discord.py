@@ -77,7 +77,8 @@ class DiscordNotifier:
                         lot_size: Optional[int] = None,
                         target_margin: Optional[float] = None,
                         timeframe: Optional[str] = None,
-                        stop_loss_price: Optional[float] = None):
+                        stop_loss_price: Optional[float] = None,
+                        atr: Optional[float] = None):
         """
         Send a formatted trade alert with ANSI color codes.
 
@@ -116,6 +117,26 @@ class DiscordNotifier:
         
         if timeframe:
             message += f"Timeframe: \u001b[1;37m{timeframe}\u001b[0m\n"
+            
+        # Volatility Rating (for entries)
+        if target_margin and margin_used and "ENTRY" in side.upper():
+            # % reduction from target margin
+            reduction_pct = ((target_margin - margin_used) / target_margin) * 100
+            
+            if reduction_pct <= 1:
+                rating = "Stable"
+                adj_text = "Full size"
+            elif reduction_pct < 20:
+                rating = "Moderate"
+                adj_text = f"-{reduction_pct:.1f}% adjustment"
+            elif reduction_pct < 50:
+                rating = "High"
+                adj_text = f"-{reduction_pct:.1f}% adjustment"
+            else:
+                rating = "Extreme"
+                adj_text = f"-{reduction_pct:.1f}% adjustment"
+                
+            message += f"Market Volatility: \u001b[1;37m{rating}\u001b[0m ({adj_text})\n"
 
         message += (
             f"Price: \u001b[0;36m${price:,.2f}\u001b[0m\n"

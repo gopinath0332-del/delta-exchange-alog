@@ -62,7 +62,8 @@ class NotificationManager:
                         lot_size: Optional[int] = None,
                         target_margin: Optional[float] = None,
                         timeframe: Optional[str] = None,
-                        stop_loss_price: Optional[float] = None):
+                        stop_loss_price: Optional[float] = None,
+                        atr: Optional[float] = None):
         """
         Send trade alert to all enabled channels.
 
@@ -83,14 +84,15 @@ class NotificationManager:
             target_margin: Configured target margin from .env (e.g. TARGET_MARGIN_PAXG=30)
             timeframe: Candle timeframe (e.g. 1h, 4h)
             stop_loss_price: Optional hard stop loss price
+            atr: ATR volatility value
         """
         # Send to Discord
         if self.discord:
-            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price)
+            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price, atr)
             
         # Send to Email (if configured)
         if self.email:
-            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price)
+            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price, atr)
             
         logger.info(f"Alert sent: {side} {symbol} @ {price} (RSI: {rsi:.2f})")
 
