@@ -94,7 +94,7 @@ class NotificationManager:
         if self.email:
             self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price, atr)
             
-        logger.info(f"Alert sent: {side} {symbol} @ {price} (RSI: {rsi:.2f})")
+        logger.info(f"Alert sent: {side} {symbol} @ {price:,.8g} (RSI: {rsi:.2f})")
 
     def send_fee_breakdown(
         self,

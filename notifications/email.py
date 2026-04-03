@@ -33,6 +33,12 @@ class EmailNotifier:
         self.password = config.email_password
         self.from_addr = config.email_from
         self.recipients = config.email_recipients
+        
+    def _f(self, val: Optional[float], decimals: int = 8) -> str:
+        """Format currency to full precision, removing trailing zeros."""
+        if val is None:
+            return "0"
+        return f"{val:,.{decimals}f}".rstrip('0').rstrip('.')
 
     def send_email(self, subject: str, body: str, is_html: bool = False):
         """
@@ -141,9 +147,9 @@ class EmailNotifier:
         strategy_line = f"<li><strong>Strategy:</strong> {strategy_name}</li>" if strategy_name else ""
         lot_size_line = f"<li><strong>Lot Size:</strong> {lot_size} contracts</li>" if lot_size is not None else ""
         # Show the configured target margin so the recipient knows the capital allocation
-        target_margin_line = f"<li><strong>Target Margin:</strong> ${target_margin:,.2f}</li>" if target_margin is not None else ""
+        target_margin_line = f"<li><strong>Target Margin:</strong> ${self._f(target_margin)}</li>" if target_margin is not None else ""
         timeframe_line = f"<li><strong>Timeframe:</strong> {timeframe}</li>" if timeframe else ""
-        stop_loss_line = f"<li><strong>Stop Loss:</strong> ${stop_loss_price:,.4f}</li>" if stop_loss_price is not None else ""
+        stop_loss_line = f"<li><strong>Stop Loss:</strong> ${self._f(stop_loss_price)}</li>" if stop_loss_price is not None else ""
         
         vol_line = ""
         if target_margin and margin_used and "ENTRY" in side.upper():
@@ -160,7 +166,7 @@ class EmailNotifier:
               {strategy_line}
               <li><strong>Symbol:</strong> {symbol}</li>
               <li><strong>Side:</strong> <span style="color: {'green' if side == 'LONG' else 'red'}">{side}</span></li>
-              <li><strong>Price:</strong> ${price:,.2f}</li>
+              <li><strong>Price:</strong> ${self._f(price)}</li>
               {lot_size_line}
               {target_margin_line}
               {timeframe_line}
