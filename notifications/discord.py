@@ -23,6 +23,12 @@ class DiscordNotifier:
         self.webhook_url = webhook_url
         self.last_alert_time: Dict[str, float] = {}
         self.throttle_interval = 60  # Min seconds between identical alerts
+        
+    def _f(self, val: Optional[float], decimals: int = 8) -> str:
+        """Format currency to full precision, removing trailing zeros."""
+        if val is None:
+            return "0"
+        return f"{val:,.{decimals}f}".rstrip('0').rstrip('.')
 
     def send_message(self, message: str, title: Optional[str] = None, color: Optional[int] = None):
         """
@@ -139,7 +145,7 @@ class DiscordNotifier:
             message += f"Market Volatility: \u001b[1;37m{rating}\u001b[0m ({adj_text})\n"
 
         message += (
-            f"Price: \u001b[0;36m${price:,.2f}\u001b[0m\n"
+            f"Price: \u001b[0;36m${self._f(price)}\u001b[0m\n"
         )
 
         # Show Market Price if available and significantly different (> 0.05% diff)
@@ -151,7 +157,7 @@ class DiscordNotifier:
             # If price (HA) and market_price are different, show Market Price
             # We want to show it e.g. "Market Price: $22.28"
             if pct_diff > 0.01: # Show if diff > 0.01%
-                message += f"Market Price: \u001b[0;36m${market_price:,.2f}\u001b[0m\n"
+                message += f"Market Price: \u001b[0;36m${self._f(market_price)}\u001b[0m\n"
 
         message += (
             f"RSI: \u001b[0;33m{rsi:.2f}\u001b[0m\n"
@@ -159,12 +165,7 @@ class DiscordNotifier:
         
         # Show Stop Loss if available
         if stop_loss_price is not None:
-            # For cryptos with many decimals, we need to handle precision
-            p_decimals = 2
-            if stop_loss_price < 1:
-                import math
-                p_decimals = max(2, math.ceil(abs(math.log10(stop_loss_price))) + 2)
-            message += f"Stop Loss: \u001b[0;31m${stop_loss_price:,.{p_decimals}f}\u001b[0m\n"
+            message += f"Stop Loss: \u001b[0;31m${self._f(stop_loss_price)}\u001b[0m\n"
         
         # Show lot size if available
         if lot_size is not None:
@@ -173,7 +174,7 @@ class DiscordNotifier:
         # Show target margin (configured capital allocation) for entry signals
         # This tells the trader what margin budget was set for this position
         if target_margin is not None:
-            message += f"Target Margin: \u001b[0;35m${target_margin:,.2f}\u001b[0m\n"
+            message += f"Target Margin: \u001b[0;35m${self._f(target_margin)}\u001b[0m\n"
         
         # Color-code [DISABLED] tag in reason if present
         if "[DISABLED]" in reason:
@@ -183,23 +184,23 @@ class DiscordNotifier:
         message += f"Time: {time.strftime('%H:%M:%S UTC')}"
         
         if margin_used is not None:
-            message += f"\nMargin Used: \u001b[0;35m${margin_used:,.2f}\u001b[0m"
+            message += f"\nMargin Used: \u001b[0;35m${self._f(margin_used)}\u001b[0m"
         
         # Show PnL, funding, and fees only for exit signals
         if "EXIT" in side.upper():
             if pnl is not None:
                 # Color code: green for profit, red for loss
                 pnl_color = "0;32" if pnl >= 0 else "0;31"
-                message += f"\nP&L: \u001b[{pnl_color}m${pnl:+,.2f}\u001b[0m"
+                message += f"\nP&L: \u001b[{pnl_color}m${self._f(pnl)}\u001b[0m"
             
             if funding_charges is not None:
-                message += f"\nFunding: ${funding_charges:+,.4f}"
+                message += f"\nFunding: ${self._f(funding_charges)}"
             
             if trading_fees is not None:
-                message += f"\nFees: ${trading_fees:,.4f}"
+                message += f"\nFees: ${self._f(trading_fees)}"
             
         if remaining_margin is not None:
-            message += f"\nRemaining Wallet: \u001b[0;36m${remaining_margin:,.2f}\u001b[0m"
+            message += f"\nRemaining Wallet: \u001b[0;36m${self._f(remaining_margin)}\u001b[0m"
         
         # Wrap in ANSI code block for Discord
         formatted_message = f"```ansi\n{message}\n```"
@@ -271,9 +272,9 @@ class DiscordNotifier:
                 amt = float(t.get("amount", 0))
                 funding_total += amt
                 color = "0;32" if amt >= 0 else "0;31"
-                lines.append(f"  {ts}  \u001b[{color}m${amt:+.4f}\u001b[0m")
+                lines.append(f"  {ts}  \u001b[{color}m${self._f(amt)}\u001b[0m")
             subtotal_color = "0;32" if funding_total >= 0 else "0;31"
-            lines.append(f"Subtotal: \u001b[{subtotal_color}m${funding_total:+.4f}\u001b[0m")
+            lines.append(f"Subtotal: \u001b[{subtotal_color}m${self._f(funding_total)}\u001b[0m")
 
         if funding_txns and trading_fee_txns:
             lines.append("")
@@ -285,8 +286,8 @@ class DiscordNotifier:
                 ts = self._format_ts(t.get("created_at"))
                 amt = float(t.get("amount", 0))
                 fee_total += amt
-                lines.append(f"  {ts}  \u001b[0;31m${abs(amt):.4f}\u001b[0m")
-            lines.append(f"Subtotal: \u001b[0;31m${abs(fee_total):.4f}\u001b[0m")
+                lines.append(f"  {ts}  \u001b[0;31m${self._f(abs(amt))}\u001b[0m")
+            lines.append(f"Subtotal: \u001b[0;31m${self._f(abs(fee_total))}\u001b[0m")
 
         # Net fees line
         if funding_txns and trading_fee_txns:
@@ -295,7 +296,7 @@ class DiscordNotifier:
             fee_sum = sum(float(t.get("amount", 0)) for t in trading_fee_txns)
             net = funding_sum + fee_sum
             net_color = "0;32" if net >= 0 else "0;31"
-            lines.append(f"Net Fees: \u001b[{net_color}m${net:+.4f}\u001b[0m")
+            lines.append(f"Net Fees: \u001b[{net_color}m${self._f(net)}\u001b[0m")
 
         body = "\n".join(lines)
         formatted = f"```ansi\n{body}\n```"
