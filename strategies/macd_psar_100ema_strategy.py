@@ -30,6 +30,7 @@ class MACDPSAR100EMAStrategy:
         self.sar_start = cfg.get("sar_start", 0.005)
         self.sar_increment = cfg.get("sar_increment", 0.005)
         self.sar_max = cfg.get("sar_max", 0.2)
+        self.atr_length = cfg.get("atr_length", 14)  # For backtest sizing
         
         # Dashboard/Live State
         self.last_macd_line = 0.0
@@ -81,6 +82,10 @@ class MACDPSAR100EMAStrategy:
             max_step=self.sar_max
         )
         df['sar'] = psar.psar()
+        
+        # ATR
+        atr = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=self.atr_length)
+        df['atr'] = atr.average_true_range()
         
         return df
 
@@ -145,7 +150,7 @@ class MACDPSAR100EMAStrategy:
                 
         return None, ""
 
-    def update_position_state(self, action: str, current_time_ms: float, current_rsi: float = 0.0, price: float = 0.0, reason: str = ""):
+    def update_position_state(self, action: str, current_time_ms: float, indicators: Any = None, price: float = 0.0, reason: str = ""):
         """Update internal state."""
         import datetime
         def format_time(ts_ms):
@@ -160,6 +165,7 @@ class MACDPSAR100EMAStrategy:
                 "entry_hist": self.last_hist, # Log MACD Hist for Dashboard
                 "entry_macd_hist": self.last_hist, # Keep for legacy/debug
                 "entry_ema": self.last_ema,
+                "atr": indicators.get('atr') if isinstance(indicators, dict) else None,
                 "exit_time": None,
                 "exit_price": None,
                 "status": "OPEN",
@@ -311,6 +317,6 @@ class MACDPSAR100EMAStrategy:
                     reason = " & ".join(parts)
             
             if action:
-                self.update_position_state(action, current_time, price=current_close, reason=reason)
+                self.update_position_state(action, current_time, indicators={'atr': row.get('atr')}, price=current_close, reason=reason)
                 
         logger.info(f"Backtest complete. Trades: {len(self.trades)}")

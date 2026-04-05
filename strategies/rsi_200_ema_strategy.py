@@ -272,6 +272,7 @@ class RSI200EMAStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "entry_rsi": rsi,
+                "atr": indicators.get('atr') if isinstance(indicators, dict) else None,
                 "exit_time": None,
                 "exit_price": None,
                 "exit_rsi": None,
@@ -392,13 +393,13 @@ class RSI200EMAStrategy:
             # Check Trailing Stop Hit
             if self.current_position == 1 and self.trailing_stop_level is not None:
                 if close < self.trailing_stop_level:
-                    self.update_position_state("EXIT_LONG", current_time_ms, rsi, close, "Trailing SL Hit")
+                    self.update_position_state("EXIT_LONG", current_time_ms, {'rsi': rsi, 'atr': atr}, close, "Trailing SL Hit")
                     continue
             
             # Check Partial TP
             if self.enable_partial_tp and self.current_position == 1 and not self.partial_exit_done and self.tp_level is not None:
                 if close >= self.tp_level:
-                    self.update_position_state("PARTIAL_EXIT", current_time_ms, rsi, close, "Partial TP Hit")
+                    self.update_position_state("PARTIAL_EXIT", current_time_ms, {'rsi': rsi, 'atr': atr}, close, "Partial TP Hit")
                     # Continue to check for other signals
             
             # --- Logic ---
@@ -439,6 +440,7 @@ class RSI200EMAStrategy:
             
             if action:
                 reason = "RSI Exit" if action == "EXIT_LONG" else "Entry"
-                self.update_position_state(action, current_time_ms, prev_rsi, close, reason)
+                # Pass indicators as a dict to record ATR in trade history
+                self.update_position_state(action, current_time_ms, {'rsi': prev_rsi, 'atr': prev_atr}, close, reason)
                 
         logger.info(f"Backtest complete. Trades: {len(self.trades)}")

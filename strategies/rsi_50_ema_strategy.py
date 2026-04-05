@@ -30,6 +30,7 @@ class RSI50EMAStrategy:
         self.ema_length = cfg.get("ema_length", 50)
         self.rsi_length = cfg.get("rsi_length", 14)
         self.rsi_entry_level = cfg.get("rsi_entry_level", 40.0)
+        self.atr_length = cfg.get("atr_length", 14)  # For backtest sizing
         
         self.indicator_label = "RSI"
         
@@ -51,10 +52,10 @@ class RSI50EMAStrategy:
         # Action Tracking
         self.last_action_candle_ts = None
         
-    def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float]:
+    def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float, float]:
         """
-        Calculate RSI and EMA for the given dataframe.
-        Expected columns: 'close'
+        Calculate RSI, EMA, and ATR for the given dataframe.
+        Expected columns: 'close', 'high', 'low'
         """
         try:
             # Ensure we have enough data
@@ -71,12 +72,17 @@ class RSI50EMAStrategy:
             # RSI
             rsi_series = ta.momentum.rsi(df['close'], window=self.rsi_length)
             
+            # ATR
+            atr_series = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=self.atr_length)
+            
             current_ema = ema_series.iloc[-1]
             current_rsi = rsi_series.iloc[-1]
+            current_atr = atr_series.iloc[-1]
             
             # Cache for dashboard (Live)
             self.last_ema = current_ema
             self.last_rsi = current_rsi
+            self.last_atr = current_atr
             
             # Dynamic Closed Candle Logic
             closed_idx = get_closed_candle_index(df, current_time * 1000, self.timeframe)
@@ -94,7 +100,7 @@ class RSI50EMAStrategy:
                 self.last_closed_ema = 0.0
                 self.last_closed_rsi = 0.0
             
-            return current_rsi, current_ema
+            return current_rsi, current_ema, current_atr
             
         except Exception as e:
             logger.error(f"Error calculating indicators: {e}")
@@ -112,7 +118,7 @@ class RSI50EMAStrategy:
 
         # Get indicators (Pass current time for dynamic logic)
         current_time_s = current_time_ms / 1000.0
-        rsi, ema = self.calculate_indicators(df, current_time=current_time_s)
+        rsi, ema, atr = self.calculate_indicators(df, current_time=current_time_s)
         
         # Determine which index to use for SIGNALS
         closed_idx = get_closed_candle_index(df, current_time_ms, self.timeframe)
@@ -205,6 +211,7 @@ class RSI50EMAStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "entry_rsi": rsi,
+                "atr": indicators.get('atr') if isinstance(indicators, dict) else None,
                 "exit_time": None,
                 "exit_price": None,
                 "exit_rsi": None,
@@ -261,9 +268,10 @@ class RSI50EMAStrategy:
         # Pre-calc indicators for speed
         ema_series = ta.trend.ema_indicator(df['close'], window=self.ema_length)
         rsi_series = ta.momentum.rsi(df['close'], window=self.rsi_length)
+        atr_series = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=self.atr_length)
         
         for i in range(len(df)):
-            if i < self.ema_length: continue
+            if i < max(self.ema_length, self.atr_length): continue
             
             current_time_s = df['time'].iloc[i]
             current_time_ms = current_time_s * 1000
@@ -272,8 +280,9 @@ class RSI50EMAStrategy:
             
             ema = ema_series.iloc[i]
             rsi = rsi_series.iloc[i]
+            atr = atr_series.iloc[i]
             
-            if pd.isna(ema) or pd.isna(rsi): continue
+            if pd.isna(ema) or pd.isna(rsi) or pd.isna(atr): continue
             
             # --- Logic ---
             action = None
@@ -285,6 +294,7 @@ class RSI50EMAStrategy:
             prev_close = df['close'].iloc[i-1]
             prev_ema = ema_series.iloc[i-1]
             prev_rsi = rsi_series.iloc[i-1]
+            prev_atr = atr_series.iloc[i-1]
             
             if self.current_position == 0:
                 if (prev_close > prev_ema) and (prev_rsi > self.rsi_entry_level):
@@ -295,6 +305,6 @@ class RSI50EMAStrategy:
                     action = "EXIT_LONG"
             
             if action:
-                self.update_position_state(action, current_time_ms, prev_rsi, close)
+                self.update_position_state(action, current_time_ms, {"rsi": prev_rsi, "atr": prev_atr}, close)
                 
         logger.info(f"Backtest complete. Trades: {len(self.trades)}")

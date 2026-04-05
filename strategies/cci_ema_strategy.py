@@ -219,6 +219,7 @@ class CCIEMAStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "entry_cci": cci,
+                "atr": indicators.get('atr') if isinstance(indicators, dict) else None,
                 "exit_time": None,
                 "exit_price": None,
                 "exit_cci": None,
@@ -318,6 +319,6 @@ class CCIEMAStrategy:
                     action = "EXIT_LONG"
             
             if action:
-                self.update_position_state(action, current_time_ms, {'cci': cci}, close)
+                self.update_position_state(action, current_time_ms, {'cci': cci, 'atr': atr}, close)
                 
         logger.info(f"Backtest complete. Trades: {len(self.trades)}")

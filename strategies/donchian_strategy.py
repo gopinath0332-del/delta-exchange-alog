@@ -420,6 +420,7 @@ class DonchianChannelStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "status": "OPEN",
+                "atr": indicators.get('atr') if isinstance(indicators, dict) else None,
                 "logs": []
             }
             # Calculate Initial Stop Loss Price (if pct configured)
@@ -440,6 +441,7 @@ class DonchianChannelStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "status": "OPEN",
+                "atr": indicators.get('atr') if isinstance(indicators, dict) else None,
                 "logs": []
             }
             # Calculate Initial Stop Loss Price (if pct configured)

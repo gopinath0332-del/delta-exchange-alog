@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional, Tuple
 
 from core.logger import get_logger
 from core.config import get_config
+from core.trading import calculate_position_size
 
 logger = get_logger(__name__)
 
@@ -273,13 +274,45 @@ class BacktestEngine:
                 
             # Sizing (Compound Sizing based on current Equity to match TradingView)
             base_capital = self.equity if self.use_compounding else self.initial_capital
-            trade_capital = base_capital * self.order_size_pct
+            target_margin = base_capital * self.order_size_pct
+            
+            # Risk Management Config
+            rm_cfg = self.config.risk_management
+            sizing_type = rm_cfg.position_sizing_type
+            atr_mult = rm_cfg.atr_margin_multiplier
+            atr_cap = rm_cfg.atr_margin_cap_multiplier
+            
+            # Check if ATR is available for this trade
+            atr_val = trade.get('atr')
+            
+            # Only use ATR sizing if it's enabled and ATR value is available
+            use_atr_sizing = (sizing_type == "atr" and atr_val is not None)
+            
+            # Calculate notional size using centralized logic
+            # We assume contract_value=1.0 for backtest (size is in units of base asset)
+            calculated_size = calculate_position_size(
+                target_margin=target_margin,
+                price=entry_price,
+                leverage=self.leverage,
+                contract_value=1.0, 
+                enable_partial_tp=True, # Always use even numbers for clean backtest segments
+                sizing_type="atr" if use_atr_sizing else "margin",
+                atr=atr_val,
+                atr_multiplier=atr_mult,
+                atr_margin_cap_multiplier=atr_cap
+            )
             
             trade_key = trade['_backtest_id']
             
-            # Initial total notional size if this were a single full trade
-            # trade_capital is the margin, leverage scales it to notional
-            total_initial_size = (trade_capital * self.leverage) / entry_price
+            # total_initial_size is the notional size (in units)
+            total_initial_size = float(calculated_size)
+            
+            # Actual margin used for this trade (for logging/UI if needed)
+            actual_margin_used = (total_initial_size * entry_price) / self.leverage
+            
+            # For backtest reporting, we update trade_capital to reflect actual margin used 
+            # if it was capped or adjusted by ATR logic
+            trade_capital = actual_margin_used
             
             # Determine what fraction of the REMAINING position we are closing now
             # exit_pct in trade is "fraction of remaining to close"

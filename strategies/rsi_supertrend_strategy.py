@@ -168,9 +168,9 @@ class RSISupertrendStrategy:
             logger.error("Error calculating Supertrend: %s", str(e))
             return pd.Series([0.0] * len(df), index=df.index), pd.Series([0] * len(df), index=df.index)
     
-    def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float, int]:
+    def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float, int, float]:
         """
-        Calculate RSI and Supertrend for the given dataframe.
+        Calculate RSI, Supertrend, and ATR for the given dataframe.
         
         Expected columns: 'open', 'high', 'low', 'close', 'time'
         
@@ -178,12 +178,13 @@ class RSISupertrendStrategy:
         - current_rsi: Current RSI value
         - current_supertrend: Current Supertrend value
         - current_direction: Current Supertrend direction (-1 bullish, 1 bearish)
+        - current_atr: Current ATR value
         """
         try:
             # Ensure we have enough data
             min_required = max(self.rsi_length, self.atr_length) + 1
             if len(df) < min_required:
-                return 0.0, 0.0, 0
+                return 0.0, 0.0, 0, 0.0
                 
             if current_time is None:
                 import time
@@ -192,18 +193,35 @@ class RSISupertrendStrategy:
             # Calculate RSI
             rsi_series = ta.momentum.rsi(df['close'], window=self.rsi_length)
             
-            # Calculate Supertrend
-            supertrend_series, direction_series = self.calculate_supertrend(df)
+            # Calculate ATR (Wilder's RMA as expected by strategy)
+            # We can use the logic from calculate_supertrend or just recalc here for simplicity
+            # Actually, calculate_supertrend doesn't return the ATR series.
             
             # Get current values
             current_rsi = rsi_series.iloc[-1]
             current_supertrend = supertrend_series.iloc[-1]
             current_direction = direction_series.iloc[-1]
             
+            # Recalculate ATR series to get the last value
+            high = df['high'].astype(float).values
+            low = df['low'].astype(float).values
+            close = df['close'].astype(float).values
+            tr = np.zeros(len(df))
+            tr[0] = high[0] - low[0]
+            for i in range(1, len(df)):
+                tr[i] = max(high[i] - low[i], abs(high[i] - close[i-1]), abs(low[i] - close[i-1]))
+            
+            atr = np.zeros(len(df))
+            atr[self.atr_length - 1] = np.mean(tr[:self.atr_length])
+            for i in range(self.atr_length, len(df)):
+                atr[i] = (atr[i-1] * (self.atr_length - 1) + tr[i]) / self.atr_length
+            current_atr = atr[-1]
+            
             # Cache for dashboard (Live)
             self.last_rsi = current_rsi
             self.last_supertrend = current_supertrend
             self.last_supertrend_dir = current_direction
+            self.last_atr = current_atr
             
             # Dynamic Closed Candle Logic (for 1h timeframe)
             last_candle_ts = df['time'].iloc[-1]
@@ -233,11 +251,11 @@ class RSISupertrendStrategy:
                 self.last_closed_supertrend = 0.0
                 self.last_closed_supertrend_dir = 0
             
-            return current_rsi, current_supertrend, current_direction
+            return current_rsi, current_supertrend, current_direction, current_atr
             
         except Exception as e:
             logger.error(f"Error calculating indicators: {e}")
-            return 0.0, 0.0, 0
+            return 0.0, 0.0, 0, 0.0
 
     def check_signals(self, df: pd.DataFrame, current_time_ms: float) -> Tuple[Optional[str], str]:
         """
@@ -254,7 +272,7 @@ class RSISupertrendStrategy:
 
         # Get indicators (Pass current time for dynamic logic)
         current_time_s = current_time_ms / 1000.0
-        rsi, supertrend, direction = self.calculate_indicators(df, current_time=current_time_s)
+        rsi, supertrend, direction, atr = self.calculate_indicators(df, current_time=current_time_s)
         
         # Determine which index to use for SIGNALS
         # Same logic as calculate_indicators
@@ -346,6 +364,7 @@ class RSISupertrendStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "entry_rsi": rsi,
+                "atr": indicators.get('atr') if isinstance(indicators, dict) else None,
                 "exit_time": None,
                 "exit_price": None,
                 "exit_rsi": None,
@@ -452,6 +471,20 @@ class RSISupertrendStrategy:
                     action = "EXIT_LONG"
             
             if action:
-                self.update_position_state(action, current_time_ms, prev_rsi, close)
+                # We need to get the ATR for the indicators dict
+                # For Wilder's ATR matching Supertrend:
+                high = df['high'].iloc[:i+1].astype(float).values
+                low = df['low'].iloc[:i+1].astype(float).values
+                close = df['close'].iloc[:i+1].astype(float).values
+                tr = np.zeros(len(high))
+                tr[0] = high[0] - low[0]
+                for j in range(1, len(high)):
+                    tr[j] = max(high[j] - low[j], abs(high[j] - close[j-1]), abs(low[j] - close[j-1]))
+                
+                atr_val = np.mean(tr[:self.atr_length])
+                for j in range(self.atr_length, len(high)):
+                    atr_val = (atr_val * (self.atr_length - 1) + tr[j]) / self.atr_length
+                
+                self.update_position_state(action, current_time_ms, {"rsi": prev_rsi, "atr": atr_val}, close)
                 
         logger.info("Backtest complete. Trades: %d", len(self.trades))

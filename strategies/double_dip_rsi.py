@@ -267,9 +267,16 @@ class DoubleDipRSIStrategy:
 
         return None, ""
 
-    def update_position_state(self, action: str, current_time_ms: float, current_rsi: float = 0.0, price: float = 0.0, reason: str = ""):
+    def update_position_state(self, action: str, current_time_ms: float, indicators: Any = None, price: float = 0.0, reason: str = ""):
         """Update internal state based on executed action."""
         import datetime
+        
+        # Backward compatibility for current_rsi parameter
+        current_rsi = 0.0
+        if isinstance(indicators, (float, int)):
+            current_rsi = indicators
+        elif isinstance(indicators, dict):
+            current_rsi = indicators.get('rsi', 0.0)
         
         def format_time(ts_ms):
             return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
@@ -278,11 +285,16 @@ class DoubleDipRSIStrategy:
             self.current_position = 1
             self.last_long_entry_time = current_time_ms
             
+            # Extract indicators if available
+            rsi = indicators.get('rsi', 0.0) if isinstance(indicators, dict) else current_rsi
+            atr = indicators.get('atr') if isinstance(indicators, dict) else None
+            
             self.active_trade = {
                 "type": "LONG",
                 "entry_time": format_time(current_time_ms),
-                "entry_rsi": current_rsi,
+                "entry_rsi": rsi,
                 "entry_price": price,
+                "atr": atr,
                 "exit_time": None,
                 "exit_rsi": None,
                 "exit_price": None,
@@ -294,11 +306,16 @@ class DoubleDipRSIStrategy:
             self.current_position = -1
             self.last_long_duration = 0.0 # Reset per logic
             
+            # Extract indicators if available
+            rsi = indicators.get('rsi', 0.0) if isinstance(indicators, dict) else current_rsi
+            atr = indicators.get('atr') if isinstance(indicators, dict) else None
+            
             self.active_trade = {
                 "type": "SHORT",
                 "entry_time": format_time(current_time_ms),
-                "entry_rsi": current_rsi,
+                "entry_rsi": rsi,
                 "entry_price": price,
+                "atr": atr,
                 "exit_time": None,
                 "exit_rsi": None,
                 "exit_price": None,
@@ -466,7 +483,8 @@ class DoubleDipRSIStrategy:
             action, reason = self.check_signals(subset, current_time)
             
             if action:
-                self.update_position_state(action, current_time, current_rsi, current_price, reason=reason)
+                atr = float(subset['atr'].iloc[-1])
+                self.update_position_state(action, current_time, {'rsi': current_rsi, 'atr': atr}, current_price, reason=reason)
                 
         logger.info(f"Backtest complete. Trades: {len(self.trades)}")
 

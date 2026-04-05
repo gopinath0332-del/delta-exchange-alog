@@ -40,6 +40,7 @@ class EMACrossStrategy:
         self.fast_ema_length = cfg.get("fast_ema_length", 10)
         self.slow_ema_length = cfg.get("slow_ema_length", 20)
         self.allow_flip = cfg.get("allow_flip", True)  # Allow same-bar close & reverse
+        self.atr_length = cfg.get("atr_length", 14)  # Default for sizing if needed
         
         # Mode Flags
         self.allow_long = self.trade_mode in ["Long", "Both"]
@@ -74,16 +75,16 @@ class EMACrossStrategy:
                    f"Fast EMA={self.fast_ema_length}, Slow EMA={self.slow_ema_length}, "
                    f"Allow Flip={self.allow_flip}")
     
-    def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float]:
+    def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float, float]:
         """
-        Calculate Fast and Slow EMA values.
+        Calculate Fast EMA, Slow EMA, and ATR values.
         
         Args:
             df: DataFrame with OHLC data
             current_time: Current timestamp in seconds
             
         Returns:
-            Tuple of (fast_ema, slow_ema)
+            Tuple of (fast_ema, slow_ema, atr)
         """
         try:
             min_periods = max(self.fast_ema_length, self.slow_ema_length) + 1
@@ -99,12 +100,17 @@ class EMACrossStrategy:
             fast_ema_series = close.ewm(span=self.fast_ema_length, adjust=False).mean()
             slow_ema_series = close.ewm(span=self.slow_ema_length, adjust=False).mean()
             
+            # Calculate ATR
+            atr_series = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=self.atr_length)
+            
             current_fast_ema = fast_ema_series.iloc[-1]
             current_slow_ema = slow_ema_series.iloc[-1]
+            current_atr = atr_series.iloc[-1]
             
             # Cache for dashboard
             self.last_fast_ema = current_fast_ema
             self.last_slow_ema = current_slow_ema
+            self.last_atr = current_atr
             
             # Determine closed candle index based on timeframe
             closed_idx = get_closed_candle_index(df, current_time * 1000, self.timeframe)
@@ -123,7 +129,7 @@ class EMACrossStrategy:
                 self.last_closed_fast_ema = 0.0
                 self.last_closed_slow_ema = 0.0
             
-            return current_fast_ema, current_slow_ema
+            return current_fast_ema, current_slow_ema, current_atr
             
         except Exception as e:
             logger.error(f"Error calculating EMA indicators: {e}")
@@ -146,7 +152,7 @@ class EMACrossStrategy:
             return None, ""
         
         current_time_s = current_time_ms / 1000.0
-        fast_ema, slow_ema = self.calculate_indicators(df, current_time=current_time_s)
+        fast_ema, slow_ema, atr = self.calculate_indicators(df, current_time=current_time_s)
         
         # Determine Closed Candle Index (using timeframe)
         closed_idx = get_closed_candle_index(df, current_time_ms, self.timeframe)
@@ -267,6 +273,7 @@ class EMACrossStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "entry_ema": f"{self.last_fast_ema:.2f}/{self.last_slow_ema:.2f}",
+                "atr": indicators.get('atr') if isinstance(indicators, dict) else None,
                 "status": "OPEN",
                 "logs": []
             }
@@ -279,6 +286,7 @@ class EMACrossStrategy:
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
                 "entry_ema": f"{self.last_fast_ema:.2f}/{self.last_slow_ema:.2f}",
+                "atr": indicators.get('atr') if isinstance(indicators, dict) else None,
                 "status": "OPEN",
                 "logs": []
             }
@@ -374,13 +382,14 @@ class EMACrossStrategy:
         
         min_periods = max(self.fast_ema_length, self.slow_ema_length) + 1
         
-        # Pre-calculate EMAs
+        # Pre-calculate EMAs and ATR
         close = df['close'].astype(float)
         fast_ema_series = close.ewm(span=self.fast_ema_length, adjust=False).mean()
         slow_ema_series = close.ewm(span=self.slow_ema_length, adjust=False).mean()
+        atr_series = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=self.atr_length)
         
         for i in range(len(df)):
-            if i < min_periods:
+            if i < max(min_periods, self.atr_length):
                 continue
             
             current_time_ms = df['time'].iloc[i] * 1000
@@ -390,25 +399,27 @@ class EMACrossStrategy:
             slow_ema = slow_ema_series.iloc[i]
             fast_prev = fast_ema_series.iloc[i - 1]
             slow_prev = slow_ema_series.iloc[i - 1]
+            atr = atr_series.iloc[i]
             
-            if pd.isna(fast_ema) or pd.isna(slow_ema):
+            if pd.isna(fast_ema) or pd.isna(slow_ema) or pd.isna(atr):
                 continue
             
             # Detect Crossovers
             bullish_cross = (fast_prev <= slow_prev) and (fast_ema > slow_ema)
             bearish_cross = (fast_prev >= slow_prev) and (fast_ema < slow_ema)
             
-            # Cache EMA values
+            # Cache indicator values
             self.last_fast_ema = fast_ema
             self.last_slow_ema = slow_ema
+            self.last_atr = atr
             
             # Signal Logic
             if self.current_position == 0:
                 # Flat - look for entries
                 if self.allow_long and bullish_cross:
-                    self.update_position_state("ENTRY_LONG", current_time_ms, None, current_close)
+                    self.update_position_state("ENTRY_LONG", current_time_ms, {"atr": atr}, current_close)
                 elif self.allow_short and bearish_cross:
-                    self.update_position_state("ENTRY_SHORT", current_time_ms, None, current_close)
+                    self.update_position_state("ENTRY_SHORT", current_time_ms, {"atr": atr}, current_close)
             
             elif self.current_position == 1:
                 # Long - look for exit
@@ -416,7 +427,7 @@ class EMACrossStrategy:
                     self.update_position_state("EXIT_LONG", current_time_ms, None, current_close)
                     # Check for flip to short
                     if self.allow_flip and self.allow_short:
-                        self.update_position_state("ENTRY_SHORT", current_time_ms, None, current_close)
+                        self.update_position_state("ENTRY_SHORT", current_time_ms, {"atr": atr}, current_close)
             
             elif self.current_position == -1:
                 # Short - look for exit
@@ -424,6 +435,6 @@ class EMACrossStrategy:
                     self.update_position_state("EXIT_SHORT", current_time_ms, None, current_close)
                     # Check for flip to long
                     if self.allow_flip and self.allow_long:
-                        self.update_position_state("ENTRY_LONG", current_time_ms, None, current_close)
+                        self.update_position_state("ENTRY_LONG", current_time_ms, {"atr": atr}, current_close)
         
         logger.info(f"Backtest warmup complete. Trades: {len(self.trades)}")
