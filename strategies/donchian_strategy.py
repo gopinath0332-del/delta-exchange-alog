@@ -1,3 +1,10 @@
+import logging
+import datetime
+from typing import Dict, Optional, Tuple, Any
+import pandas as pd
+import numpy as np
+from core.config import get_config
+from core.candle_utils import get_closed_candle_index
 from strategies.base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -123,6 +130,9 @@ class DonchianChannelStrategy(BaseStrategy):
             low_close = np.abs(df['low'] - df['close'].shift())
             true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
             atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
+            
+            # New: Standardized ATR for Global Risk-Based Sizing
+            self._calculate_atr(df, self.atr_period)
             
             # NEW: EMA Calculation
             ema_src = df[self.ema_source] if self.ema_source in df.columns else df['close']

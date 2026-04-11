@@ -168,6 +168,9 @@ class BBBreakoutStrategy(BaseStrategy):
 
         # ATR
         atr_series = _calc_atr(df, self.atr_length)
+        
+        # New: Standardized ATR for Global Risk-Based Sizing
+        self._calculate_atr(df, self.atr_length)
 
         # Keltner Channels (using same basis as BB)
         kc_upper = basis + self.kc_mult * atr_series

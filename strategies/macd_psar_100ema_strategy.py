@@ -6,9 +6,12 @@ import numpy as np
 from core.config import get_config
 from core.candle_utils import get_closed_candle_index
 
+from strategies.base_strategy import BaseStrategy
+from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
+
 logger = logging.getLogger(__name__)
 
-class MACDPSAR100EMAStrategy:
+class MACDPSAR100EMAStrategy(BaseStrategy):
     """
     MACD + 100 EMA + PSAR Filtered Long Only Strategy.
     
@@ -18,6 +21,8 @@ class MACDPSAR100EMAStrategy:
     """
     
     def __init__(self, symbol: str = "BTCUSD"):
+        super().__init__(symbol, "macd_psar_100ema")
+        
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("macd_psar_100ema", {})
@@ -31,6 +36,9 @@ class MACDPSAR100EMAStrategy:
         self.sar_increment = cfg.get("sar_increment", 0.005)
         self.sar_max = cfg.get("sar_max", 0.2)
         
+        # Persistence
+        self.load_state()
+
         # Dashboard/Live State
         self.last_macd_line = 0.0
         self.last_signal_line = 0.0
@@ -38,15 +46,12 @@ class MACDPSAR100EMAStrategy:
         self.last_ema = 0.0
         self.last_sar = 0.0
         
-        self.current_position = 0  # 1 for Long, 0 for Flat
         self.indicator_label = "Hist" # Dashboard Label
         
         # Timeframe (set by runner, defaults to 1h)
         self.timeframe = "1h"
         
-        # Trade History
-        self.trades = [] 
-        self.active_trade = None
+        logger.info(f"MACDPSAR100EMAStrategy initialized for {symbol}")
         
     def calculate_indicators(self, df: pd.DataFrame):
         """Calculate Technical Indicators (MACD, EMA, SAR)."""
@@ -81,6 +86,9 @@ class MACDPSAR100EMAStrategy:
             max_step=self.sar_max
         )
         df['sar'] = psar.psar()
+        
+        # New: Standardized ATR for Risk-Based Sizing
+        self._calculate_atr(df, 14)
         
         return df
 

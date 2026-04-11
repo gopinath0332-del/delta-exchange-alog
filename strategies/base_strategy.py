@@ -26,6 +26,28 @@ class BaseStrategy:
         self.timeframe: str = "1h"
         self.indicator_label: str = "IND"
         self.leverage: int = 1
+        
+        # New: Shared Indicator State
+        self.last_atr: Optional[float] = None
+
+    def _calculate_atr(self, df, period=14) -> float:
+        """
+        Standardized ATR (Average True Range) calculation.
+        Caches the latest value in self.last_atr and returns it.
+        """
+        if df.empty or len(df) < period + 1:
+            self.last_atr = 0.0
+            return 0.0
+
+        import pandas as pd
+        high = df["high"].astype(float)
+        low = df["low"].astype(float)
+        prev_close = df["close"].shift(1).astype(float)
+        tr = pd.concat([high - low, abs(high - prev_close), abs(low - prev_close)], axis=1).max(axis=1)
+        atr_series = tr.rolling(period).mean()
+        
+        self.last_atr = float(atr_series.iloc[-1]) if not pd.isna(atr_series.iloc[-1]) else 0.0
+        return self.last_atr
 
     def save_state(self, extra_data: Optional[Dict[str, Any]] = None):
         """

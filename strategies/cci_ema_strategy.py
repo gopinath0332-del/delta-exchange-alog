@@ -6,9 +6,12 @@ import ta
 from core.config import get_config
 from core.candle_utils import get_closed_candle_index
 
+from strategies.base_strategy import BaseStrategy
+from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
+
 logger = logging.getLogger(__name__)
 
-class CCIEMAStrategy:
+class CCIEMAStrategy(BaseStrategy):
     """
     CCI + 50 EMA Strategy for BTCUSD (1H).
     
@@ -25,6 +28,8 @@ class CCIEMAStrategy:
     """
     
     def __init__(self, symbol: str = "BTCUSD"):
+        super().__init__(symbol, "cci_ema")
+        
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("cci_ema", {})
@@ -37,27 +42,22 @@ class CCIEMAStrategy:
         self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Enable partial TP by default
         self.partial_pct = cfg.get("partial_pct", 0.5)  # 50% partial exit when enabled
         
+        # Persistence
+        self.load_state()
+
         self.indicator_label = "CCI"
         
         # Timeframe (set by runner, defaults to 1h)
         self.timeframe = "1h"
         
         # State
-        self.current_position = 0  # 1 for Long, 0 for Flat
-        self.last_entry_price = 0.0
         self.partial_profit_taken = False
         
         # Indicator Cache (for dashboard)
         self.last_cci = 0.0
         self.last_ema = 0.0
-        self.last_atr = 0.0
         
-        # Trade History
-        self.trades = []
-        self.active_trade = None
-        
-        # Action Tracking
-        self.last_action_candle_ts = None
+        logger.info(f"CCIEMAStrategy initialized for {symbol}")
         
     def calculate_indicators(self, df: pd.DataFrame) -> Tuple[float, float, float]:
         """
@@ -75,19 +75,13 @@ class CCIEMAStrategy:
             # EMA
             ema_series = ta.trend.ema_indicator(df['close'], window=self.ema_length)
             
-            # ATR (Uses High, Low, Close)
-            atr_series = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=self.atr_length)
-            
-            current_cci = cci_series.iloc[-1]
-            current_ema = ema_series.iloc[-1]
-            current_atr = atr_series.iloc[-1]
-            
-            current_atr = atr_series.iloc[-1]
+            # ATR (Uses High, Low, Close) - Standardized via BaseStrategy
+            current_atr = self._calculate_atr(df, self.atr_length)
             
             # Cache for dashboard (Live)
             self.last_cci = current_cci
             self.last_ema = current_ema
-            self.last_atr = current_atr
+            # self.last_atr is updated inside _calculate_atr
             
             # Cache Last Closed Candle (Index -2)
             if len(df) >= 2:
