@@ -18,10 +18,10 @@ emaLength = input.int(200, "EMA Length")
 // Trade Mode
 tradeMode = input.string("BOTH", "Trade Mode", options=["LONG", "SHORT", "BOTH"])
 
-// ATR Stop Loss
-useSL = input.bool(true, "Use ATR Stop Loss")
-atrLength = input.int(14, "ATR Length")
-atrMult = input.float(2.0, "ATR Multiplier")
+// ATR Trailing Stop Loss
+useSL     = input.bool(true,  "Use Trailing Stop Loss")
+atrLength = input.int(14,     "ATR Length")
+atrMult   = input.float(2.0,  "ATR Multiplier")
 
 // Squeeze Filter
 useSqueeze = input.bool(true, "Use Squeeze Filter")
@@ -97,31 +97,41 @@ if canTrade and (tradeMode == "SHORT" or tradeMode == "BOTH")
     if shortExit
         strategy.close("Short")
 
-// ===== STOP LOSS ===== //
+// ===== TRAILING STOP LOSS ===== //
+
+var float trailLongSL  = na
+var float trailShortSL = na
+
+if strategy.position_size > 0
+    // Ratchet SL upward as price rises — never pulls back down
+    trailLongSL  := math.max(nz(trailLongSL, low), close - atr * atrMult)
+else if strategy.position_size < 0
+    // Ratchet SL downward as price falls — never pulls back up
+    trailShortSL := math.min(nz(trailShortSL, high), close + atr * atrMult)
+else
+    trailLongSL  := na
+    trailShortSL := na
 
 if useSL
-    longSL = strategy.position_avg_price - atr * atrMult
-    shortSL = strategy.position_avg_price + atr * atrMult
-
-    strategy.exit("Long SL", from_entry="Long", stop=longSL)
-    strategy.exit("Short SL", from_entry="Short", stop=shortSL)
+    strategy.exit("Long TSL",  from_entry="Long",  stop=trailLongSL)
+    strategy.exit("Short TSL", from_entry="Short", stop=trailShortSL)
 
 // ===== VISUALS ===== //
 
-plot(basis, color=color.blue)
-plot(upper, color=color.red)
-plot(lower, color=color.green)
-plot(ema, color=color.orange)
+plot(basis, color=color.blue,   title="BB Basis")
+plot(upper, color=color.red,    title="BB Upper")
+plot(lower, color=color.green,  title="BB Lower")
+plot(ema,   color=color.orange, title="EMA")
 
-// Squeeze highlight
-bgcolor(isSqueeze ? color.new(color.yellow, 85) : na)
+// Trailing SL — orange line, only visible while in a trade
+activeTSL = strategy.position_size > 0 ? trailLongSL : strategy.position_size < 0 ? trailShortSL : na
+plot(activeTSL, title="Trailing SL", color=color.new(color.orange, 0), style=plot.style_linebr, linewidth=2)
 
-// Position background
-inLong = strategy.position_size > 0
+// Background: position takes priority over squeeze highlight
+inLong  = strategy.position_size > 0
 inShort = strategy.position_size < 0
-
-bgcolor(inLong ? color.new(color.green, 85) : na)
-bgcolor(inShort ? color.new(color.red, 85) : na)
+bg = inLong ? color.new(color.green, 85) : inShort ? color.new(color.red, 85) : isSqueeze ? color.new(color.yellow, 85) : na
+bgcolor(bg)
 
 // ===== ALERTS ===== //
 
