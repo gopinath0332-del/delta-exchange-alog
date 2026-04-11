@@ -13,7 +13,7 @@ src = input.source(close, "Source")
 
 // EMA Trend Filter
 useEMA = input.bool(true, "Use EMA Filter")
-emaLength = input.int(200, "EMA Length")
+emaLength = input.int(100, "EMA Length")
 
 // Trade Mode
 tradeMode = input.string("BOTH", "Trade Mode", options=["LONG", "SHORT", "BOTH"])
@@ -26,7 +26,7 @@ atrMult   = input.float(2.0,  "ATR Multiplier")
 // Squeeze Filter (TTM Squeeze: BB inside Keltner Channels)
 useSqueeze    = input.bool(true, "Use Squeeze Filter")
 kcMult        = input.float(1.5, "KC Multiplier", minval=0.1, step=0.1, tooltip="Keltner Channel multiplier. Standard TTM Squeeze uses 1.5")
-squeezeWindow = input.int(5, "Squeeze Window (bars)", minval=1, maxval=20, tooltip="Allow entry within N bars after squeeze fires. Squeeze releases first, BB breakout follows a few bars later.")
+squeezeWindow = input.int(10, "Squeeze Window (bars)", minval=1, maxval=20, tooltip="Allow entry within N bars after squeeze fires. Squeeze releases first, BB breakout follows a few bars later.")
 
 // RVOL (Relative Volume) Filter
 useVolume = input.bool(true, "Use RVOL Filter", tooltip="Only enter when current bar volume is N× the average. Filters low-conviction breakouts.")
