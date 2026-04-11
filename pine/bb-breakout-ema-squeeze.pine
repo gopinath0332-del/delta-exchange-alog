@@ -40,9 +40,12 @@ dev = bbMult * ta.stdev(src, bbLength)
 upper = basis + dev
 lower = basis - dev
 
-// BB Width
-bbWidth = (upper - lower) / basis
-isSqueeze = bbWidth < squeezeThreshold
+// BB Width & Squeeze Detection
+bbWidth      = (upper - lower) / basis
+isSqueeze    = bbWidth < squeezeThreshold
+wasInSqueeze = bbWidth[1] < squeezeThreshold
+// Squeeze Release: bands were narrow last bar, now expanding = breakout moment
+squeezeRelease = wasInSqueeze and not isSqueeze
 
 // EMA
 ema = ta.ema(close, emaLength)
@@ -61,10 +64,13 @@ longBreakout = ta.crossover(close, upper)
 shortBreakout = ta.crossunder(close, lower)
 
 // Apply filters
-longEntry = longBreakout and (not useEMA or close > ema) and (not useSqueeze or isSqueeze) and (not useVolume or highVolume)
-shortEntry = shortBreakout and 
-             (not useEMA or close < ema) and 
-             (not useSqueeze or isSqueeze) and 
+longEntry = longBreakout and
+             (not useEMA or close > ema) and
+             (not useSqueeze or squeezeRelease) and
+             (not useVolume or highVolume)
+shortEntry = shortBreakout and
+             (not useEMA or close < ema) and
+             (not useSqueeze or squeezeRelease) and
              (not useVolume or highVolume)
 
 // ===== EXIT CONDITIONS ===== //
