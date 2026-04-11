@@ -82,7 +82,7 @@ class DataLoader:
             
             # Convert timezone-aware/naive datetimes to Unix epoch seconds (float)
             # We explicitly cast to 'datetime64[s]' to handle ns/us/ms resolutions robustly
-            df['time'] = df['time'].dt.floor('s').view('int64') / 10**9
+            df['time'] = df['time'].dt.floor('s').astype('int64') // 10**9
             
             # Sort by time to ensure chronological order
             df = df.sort_values('time').reset_index(drop=True)

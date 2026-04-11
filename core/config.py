@@ -34,6 +34,8 @@ class RiskManagementConfig(BaseModel):
     position_sizing_type: str = Field(default="margin")
     atr_margin_multiplier: float = Field(default=2.0, gt=0)
     atr_margin_cap_multiplier: float = Field(default=1.5, gt=0)
+    enable_profit_milestones: bool = Field(default=True)
+    profit_milestones: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class NotificationsConfig(BaseModel):
