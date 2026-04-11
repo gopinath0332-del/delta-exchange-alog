@@ -412,6 +412,31 @@ class DonchianChannelStrategy(BaseStrategy):
                 self.partial_exit_done = True
                 self.active_trade["partial_exit"] = True
 
+        elif action == "MILESTONE_EXIT":
+            if self.active_trade:
+                # Extract milestone index and exit percentage from reason
+                import re
+                milestone_idx = 0
+                exit_pct = 0.0
+                match = re.search(r"Milestone (\d+):", reason)
+                if match:
+                    milestone_idx = int(match.group(1)) - 1
+                
+                if 0 <= milestone_idx < len(self.profit_milestones):
+                    milestone = self.profit_milestones[milestone_idx]
+                    exit_pct = milestone.get("exit_pct", 0.0) if isinstance(milestone, dict) else getattr(milestone, "exit_pct", 0.0)
+                    self.milestones_hit[milestone_idx] = True
+
+                milestone_trade = self.active_trade.copy()
+                milestone_trade["exit_time"] = format_time(current_time_ms)
+                milestone_trade["exit_price"] = price
+                milestone_trade["status"] = f"MILESTONE_{milestone_idx + 1}"
+                milestone_trade["exit_pct"] = exit_pct
+                entry = float(self.active_trade.get('entry_price', price))
+                milestone_trade["points"] = price - entry if self.current_position == 1 else entry - price
+                self.trades.append(milestone_trade)
+                self.active_trade["milestone_exit"] = True
+
 
         elif action == "EXIT_LONG":
             self.current_position = 0

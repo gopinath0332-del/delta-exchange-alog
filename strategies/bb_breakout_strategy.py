@@ -455,6 +455,31 @@ class BBBreakoutStrategy(BaseStrategy):
             logger.debug(f"State: ENTRY_SHORT @ {price}, TSL={_tsl}")
             self.save_state()
 
+        elif action == "MILESTONE_EXIT":
+            if self.active_trade:
+                import re
+                milestone_idx = 0
+                exit_pct = 0.0
+                match = re.search(r"Milestone (\d+):", reason)
+                if match:
+                    milestone_idx = int(match.group(1)) - 1
+                
+                if 0 <= milestone_idx < len(self.profit_milestones):
+                    milestone = self.profit_milestones[milestone_idx]
+                    exit_pct = milestone.get("exit_pct", 0.0) if isinstance(milestone, dict) else getattr(milestone, "exit_pct", 0.0)
+                    self.milestones_hit[milestone_idx] = True
+
+                milestone_trade = self.active_trade.copy()
+                milestone_trade["exit_time"] = fmt(current_time_ms)
+                milestone_trade["exit_price"] = price
+                milestone_trade["status"] = f"MILESTONE_{milestone_idx + 1}"
+                milestone_trade["exit_pct"] = exit_pct
+                entry = float(self.active_trade.get('entry_price', price))
+                milestone_trade["points"] = price - entry if self.current_position == 1 else entry - price
+                self.trades.append(milestone_trade)
+                self.active_trade["milestone_exit"] = True
+                self.save_state()
+
         elif action == "EXIT_LONG":
             self.current_position = 0
             if self.active_trade:
@@ -623,6 +648,37 @@ class BBBreakoutStrategy(BaseStrategy):
 
             recent_release = self._bars_since_squeeze_fire <= self.squeeze_window
             high_volume = rvol >= self.rvol_min
+            
+            # Update last known values for update_position_state
+            self.last_atr = atr
+            self.last_upper = upper
+            self.last_lower = lower
+
+            # ── Profit Milestone Check ─────────────────────────────────────
+            if self.enable_profit_milestones and self.entry_price and self.current_position != 0:
+                # Use high/low for the current bar to detect intra-bar hits
+                bar_high = float(df["high"].iloc[i])
+                bar_low = float(df["low"].iloc[i])
+                
+                for idx, milestone in enumerate(self.profit_milestones):
+                    if self.milestones_hit[idx]:
+                        continue
+                        
+                    pnl_threshold = milestone["pnl_pct"]
+                    if self.current_position == 1:
+                        # Long milestone price
+                        milestone_price = self.entry_price * (1 + pnl_threshold / (100 * self.leverage))
+                        if bar_high >= milestone_price:
+                            reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={milestone['exit_pct']}"
+                            self.update_position_state("MILESTONE_EXIT", current_time_ms, None, milestone_price, reason)
+                            break # Only one milestone per bar
+                    else:
+                        # Short milestone price
+                        milestone_price = self.entry_price * (1 - pnl_threshold / (100 * self.leverage))
+                        if bar_low <= milestone_price:
+                            reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={milestone['exit_pct']}"
+                            self.update_position_state("MILESTONE_EXIT", current_time_ms, None, milestone_price, reason)
+                            break # Only one milestone per bar
 
             # ── Trailing Stop Ratchet ──────────────────────────────────────
             if self.use_atr_sl and self.trailing_stop_level is not None:
