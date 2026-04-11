@@ -7,11 +7,12 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 - **Multiple Trading Modes**: Backtesting, Paper Trading, and Live Trading
 - **Delta Exchange Integration**: Official `delta-rest-client` library with rate limiting
 - **Closed Candle Logic**: Standardized signal generation on confirmed candle closes (eliminates backtest vs. live discrepancies)
+- **Global Profit Milestones**: Unified system in `BaseStrategy` to take partial profits at 50% and 100% PnL across ALL strategies (NEW)
 - **Firestore Trade Journaling**: Comprehensive trade tracking with auto-calculated analytics (PnL %, days held, status tracking)
 - **Structured Logging**: Human-readable logs using `structlog`
 - **Modular Architecture**: Clean separation of concerns for easy extension
 - **Multiple Timeframes**: 5m, 15m, 1h, 3h, 4h, 1d (configurable)
-- **Strategy State Persistence**: Local JSON-based state storage to preserve trade flags (milestones, partial exits) across restarts (NEW)
+- **Strategy State Persistence**: Local JSON-based state storage to preserve trade flags (milestones, partial exits) across restarts
 - **Notifications**: Discord webhooks and Email alerts with color-coded status messages
 - **PDF Reports**: Professional trading reports with charts
 - **Premium Strategies**: Multiple strategies with ATR-based trailing stops and partial exits
@@ -26,7 +27,9 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - **Donchian Channel (BERAUSD)** - 1H Heikin Ashi, 5x leverage, $50 target margin
   - **Donchian Channel (PAXGUSD)** - 1H Heikin Ashi, 5x leverage, $30 target margin (NEW)
   - **EMA Cross (BTCUSD)** - 10/20 EMA crossover with position flipping
+  - **BB Breakout (RIVERUSD, ARCUSD)** - Bollinger Band breakout with TTM Squeeze, RVOL, and HTF EMA filters
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
+- **Global Settings**: Centralized configuration of all strategy logic and risk rules in `settings.yaml` (NEW)
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
 
 ## Project Structure
@@ -63,7 +66,8 @@ delta-exchange-alog/
 │   ├── rsi_200_ema_strategy.py # RSI + 200 EMA strategy (ETHUSD)
 │   ├── rsi_supertrend_strategy.py # RSI + Supertrend strategy (RIVERUSD)
 │   ├── donchian_strategy.py   # Donchian Channel strategy (RIVERUSD, PIPPINUSD, BIOUSD, BERAUSD)
-│   ├── ema_cross_strategy.py  # EMA Cross strategy (BTCUSD) - NEW
+│   ├── ema_cross_strategy.py  # EMA Cross strategy (BTCUSD)
+│   ├── bb_breakout_strategy.py # BB Breakout + TTM Squeeze + Volume + HTF Filter (NEW)
 │   └── examples/       # Example strategies
 ├── backtesting/        # Backtesting engine
 ├── trading/            # Live trading engine
@@ -235,7 +239,29 @@ You can set global defaults in `config/settings.yaml`:
 risk_management:
   position_sizing_type: "margin" # Default sizing method: "margin" or "atr"
   atr_margin_multiplier: 2.0 # Multiplier for ATR unit
+
+  # Global Profit Milestones (takes 30% at >=50% PnL, another 30% at >=100% PnL)
+  enable_profit_milestones: true
+  profit_milestones:
+    - pnl_pct: 50.0  # Trigger at 50% Unrealized Margin PnL
+      exit_pct: 0.30 # Exit 30% of the current active position size
+    - pnl_pct: 100.0 # Trigger at 100% Unrealized Margin PnL
+      exit_pct: 0.30 # Exit 30% of the remaining active position size
 ```
+
+### Global Profit Milestones (NEW)
+
+All strategies now inherit a centralized **Profit Milestone** system from the `BaseStrategy`. This allows the bot to systematically scale out of positions as they reach high-profit targets, securing gains without closing the full position prematurely.
+
+**How it works:**
+1.  **PnL Calculation**: The bot calculates `Unrealized Margin PnL %` using real-time exchange data for your open positions.
+2.  **Sequential Execution**: Milestones are checked sequentially. If the first milestone (e.g. 50%) is hit, 30% of the position is sold. The bot then waits to hit the next threshold (e.g. 100%).
+3.  **State Locking**: Hit milestones are saved to your local `state.json` file. This prevents the bot from accidentally "double-selling" the same milestone if the application restarts.
+4.  **Flexible Logic**: While global defaults are set in `risk_management`, individual strategies can be programmed to use their own custom milestone arrays if needed.
+
+**Configuration:**
+- `enable_profit_milestones`: Global master switch.
+- `profit_milestones`: A list of trigger levels (`pnl_pct`) and the fraction of the position to exit (`exit_pct`).
 
 **Symbol-Specific Overrides:**
 
@@ -800,7 +826,54 @@ sudo systemctl start delta-bot-bera
 sudo systemctl status delta-bot-bera
 ```
 
-### 8. Donchian Channel Strategy (PAXGUSD)
+### 8. Bollinger Band Breakout Strategy (RIVERUSD, ARCUSD)
+
+- **Timeframe**: 1 hour with **Standard** candles
+- **Type**: Trend-following breakout strategy (Long & Short)
+- **Signal Logic**: Identifies volatility compression (Squeeze) and trades high-conviction breakouts.
+- **Entry Conditions**:
+  - **Long Breakout**: Price closes above the Upper Bollinger Band.
+  - **Short Breakdown**: Price closes below the Lower Bollinger Band.
+- **Filters (Must all pass)**:
+  - **TTM Squeeze Filter**: Entry is only allowed if a "Squeeze" (Bollinger Bands inside Keltner Channels) was released within the last 10 bars. 
+  - **EMA Filter**: Longs must be above 100 EMA; Shorts must be below 100 EMA.
+  - **HTF Trend Filter**: Longs must be above 4H 100 EMA; Shorts must be below 4H 100 EMA.
+  - **RVOL Filter**: Current volume must be at least 1.5× the recent average volume.
+- **Exits**:
+  - **Basis Cross**: Long exits when price closes below the BB Basis (20 SMA); Short exits when price closes above it.
+  - **ATR Trailing SL**: Dynamic trailing stop loss (defaults to 2× ATR).
+  - **Global Milestones**: Automatically takes 30% profits at 50% PnL and 100% PnL.
+
+**Configuration** (`config/settings.yaml`):
+
+```yaml
+bb_breakout:
+  trade_mode: "Both" # "Long", "Short", "Both"
+  bb_length: 20
+  bb_mult: 2.0
+  atr_length: 14
+  atr_mult: 2.0 # ATR trailing stop multiplier
+  use_ema: true
+  ema_length: 100
+  use_squeeze: true
+  kc_mult: 1.5
+  squeeze_window: 10 # Post-squeeze release window
+  use_volume: true
+  rvol_min: 1.5
+  use_htf: true
+  htf_ema_length: 100
+  htf_multiplier: 4 # Simulates 4H on 1H chart
+```
+
+**Backtesting Setup**:
+This strategy is fully integrated into the backtester. To run a test on ARCUSD:
+```bash
+python3 run_backtest.py --strategy bb-breakout --symbol ARCUSD --timeframe 1h
+```
+
+---
+
+### 9. Donchian Channel Strategy (PAXGUSD)
 
 Same Donchian Channel strategy, configured for the **PAXGUSD** (PAX Gold) futures pair.
 
@@ -838,7 +911,7 @@ sudo systemctl start delta-bot-paxg
 sudo systemctl status delta-bot-paxg
 ```
 
-### 8. EMA Cross Strategy (BTCUSD)
+### 10. EMA Cross Strategy (BTCUSD)
 
 - **Timeframe**: 4 hours with **Standard** candles
 - **Type**: Both long and short crossover strategy
@@ -990,6 +1063,8 @@ python main.py report --backtest-id latest --output report.pdf
   - [x] RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA and ATR-based exits
   - [x] RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit (RMA-based ATR)
   - [x] Donchian Channel (RIVERUSD, PIPPINUSD, PIUSD, BERAUSD, PAXGUSD) - Breakout with ATR trailing stop
+  - [x] BB Breakout (RIVERUSD, ARCUSD) - Bollinger Band breakout with TTM Squeeze, RVOL, and HTF EMA filters
+- [x] **Global Profit Milestones** - Unified scaling-out system for all strategies (50% and 100% TP)
 - [x] **3-Hour Candle Aggregation** - Local candle aggregation for custom timeframes
 - [x] **Position Reconciliation** - Automatic sync with exchange on restart
 - [x] **ATR-based Risk Management** - Dynamic trailing stops and partial exits
