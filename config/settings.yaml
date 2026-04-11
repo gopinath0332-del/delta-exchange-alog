@@ -120,13 +120,6 @@ strategies:
     atr_mult_trail: 2.0 # ATR multiplier for trailing stop
     enable_partial_tp: true # Enable partial TP by default (updated from Pine)
     partial_pct: 0.5 # 50% partial exit when enabled
-    # Profit Milestone Exits (works alongside ATR partial TP)
-    enable_profit_milestones: true
-    profit_milestones:
-      - pnl_pct: 50 # When PnL >= 50%
-        exit_pct: 0.30 # Sell 30% of remaining position
-      - pnl_pct: 100 # When PnL >= 100%
-        exit_pct: 0.30 # Sell another 30% of remaining
     bars_per_day: 24 # For 1H timeframe
     min_long_days: 0 # Minimum long duration (set to 0 per Pine script)
     # NEW: EMA Trend Filter
@@ -168,13 +161,6 @@ strategies:
     use_htf: true
     htf_multiplier: 4 # 4 = simulate 4H on 1H data (4 * 100 = EMA 400)
     htf_ema_length: 100 # EMA length on the simulated HTF (matches Pine htfLength=100)
-    # Profit Milestone Exits
-    enable_profit_milestones: true
-    profit_milestones:
-      - pnl_pct: 50
-        exit_pct: 0.30
-      - pnl_pct: 100
-        exit_pct: 0.30
     # Data
     historical_days: 60 # Days of history to fetch for warmup/backtest
 
