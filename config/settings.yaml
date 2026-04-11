@@ -200,8 +200,43 @@ multi_coin:
       - symbol: "ARCUSD"
         timeframe: "1h"
         candle_type: "standard"
+        leverage: 5
+        target_margin: 50
         log_file: "logs/bb_arc.log"
-####### EVERY TIME NEW COIN ADDED TO THE LIST, MAKE SURE ADD ENTRY IN .ENV FILE.########
+####### EVERY TIME A NEW COIN IS ADDED, ADD IT UNDER single_coin (and multi_coin if applicable) IN settings.yaml ########
+
+# Single-Coin Symbol Settings
+# Used for strategies launched individually (e.g. python run_terminal.py --strategy 9).
+# Key = base asset name: symbol with USD stripped, uppercase (matches base_asset in get_trade_config).
+# The global ENABLE_ORDER_PLACEMENT in .env is the only kill-switch for order execution.
+single_coin:
+  PIPPIN:
+    leverage: 5
+    target_margin: 50
+  BIO:
+    leverage: 5
+    target_margin: 50
+  ARC:
+    leverage: 5
+    target_margin: 50
+  RIVER:
+    leverage: 5
+    target_margin: 50
+  BERA:
+    leverage: 5
+    target_margin: 50
+  PAXG:
+    leverage: 5
+    target_margin: 30
+  BTC:
+    leverage: 5
+    target_margin: 50
+  ETH:
+    leverage: 5
+    target_margin: 50
+  XRP:
+    leverage: 5
+    target_margin: 50
 
 # Firestore Configuration (for trade journaling)
 firestore:
