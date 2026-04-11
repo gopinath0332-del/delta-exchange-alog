@@ -38,7 +38,8 @@ def _calc_atr(df: pd.DataFrame, length: int) -> pd.Series:
     high_close = np.abs(df["high"] - df["close"].shift(1))
     low_close = np.abs(df["low"] - df["close"].shift(1))
     tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    return tr.ewm(span=length, adjust=False).mean()
+    # TradeView's ta.atr uses Wilder's RMA (alpha = 1/length), NOT standard EMA (span=length).
+    return tr.ewm(alpha=1.0/length, adjust=False).mean()
 
 
 class BBBreakoutStrategy(BaseStrategy):
@@ -94,9 +95,7 @@ class BBBreakoutStrategy(BaseStrategy):
         self.leverage: int = 1
 
         # ── Squeeze Window Tracking ───────────────────────────────────────────
-        # Tracks how many bars have passed since the last squeeze fire.
-        # Kept as a simple counter — incremented each closed bar, reset on fire.
-        self._bars_since_squeeze_fire: int = 999  # Start large (no recent squeeze)
+        # Computed statelessly during check_signals based on series history.
 
         # ── Persistence ───────────────────────────────────────────────────────
         self.load_state()
@@ -273,17 +272,22 @@ class BBBreakoutStrategy(BaseStrategy):
 
         # TTM Squeeze per-bar
         squeeze_s = (upper_s < kc_upper_s) & (lower_s > kc_lower_s)
-        was_squeeze = bool(squeeze_s.iloc[prev_idx])
-        cur_squeeze = bool(squeeze_s.iloc[closed_idx])
-        squeeze_fired_this_bar = was_squeeze and not cur_squeeze
-
-        # Update internal squeeze-window counter
-        if squeeze_fired_this_bar:
-            self._bars_since_squeeze_fire = 0
-        else:
-            self._bars_since_squeeze_fire += 1
-
-        recent_release = self._bars_since_squeeze_fire <= self.squeeze_window
+        
+        # Squeeze fire event: it WAS squeeze on previous bar, and is NOT squeeze on current bar
+        was_squeeze_s = squeeze_s.shift(1).fillna(False)
+        squeeze_fired_s = was_squeeze_s & ~squeeze_s
+        
+        # Emulate Pine Script ta.barssince()
+        bars_since = 999
+        for i in range(0, self.squeeze_window + 1):
+            valid_idx = closed_idx - i
+            if valid_idx >= 0 and squeeze_fired_s.iloc[valid_idx]:
+                bars_since = i
+                break
+                
+        # Update dashboard state
+        self._bars_since_squeeze_fire = bars_since
+        recent_release = bars_since <= self.squeeze_window
 
         # EMA
         ema_s = close_s.ewm(span=self.ema_length, adjust=False).mean()
