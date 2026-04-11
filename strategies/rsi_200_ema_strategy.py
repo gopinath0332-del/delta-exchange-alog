@@ -26,7 +26,7 @@ class RSI200EMAStrategy:
     - ATR Multiplier for Trailing SL: 2.5
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("rsi_200_ema", {})

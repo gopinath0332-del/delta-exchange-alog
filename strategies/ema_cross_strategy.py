@@ -30,7 +30,7 @@ class EMACrossStrategy:
     - Bearish Cross (10 EMA < 20 EMA): Short Entry / Long Exit
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
         # Load Configuration from settings.yaml
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("ema_cross", {})

@@ -24,7 +24,7 @@ class RSISupertrendStrategy:
     - Supertrend Multiplier: 2.0
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
         """Initialize the RSI-Supertrend strategy with configuration parameters."""
         # Load Config
         config = get_config()

@@ -21,7 +21,7 @@ class RSI50EMAStrategy:
     - RSI Entry Level: 40.0
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("rsi_50_ema", {})

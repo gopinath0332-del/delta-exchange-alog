@@ -24,7 +24,7 @@ class CCIEMAStrategy:
     - ATR Multiplier: 9.0 (Updated from Pine script for partial profit target)
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("cci_ema", {})

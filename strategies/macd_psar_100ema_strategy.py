@@ -17,7 +17,7 @@ class MACDPSAR100EMAStrategy:
     - Long Exit: Price < PSAR
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("macd_psar_100ema", {})

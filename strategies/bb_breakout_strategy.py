@@ -27,6 +27,7 @@ import pandas as pd
 import numpy as np
 from core.config import get_config
 from core.candle_utils import get_closed_candle_index
+from strategies.base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def _calc_atr(df: pd.DataFrame, length: int) -> pd.Series:
     return tr.ewm(span=length, adjust=False).mean()
 
 
-class BBBreakoutStrategy:
+class BBBreakoutStrategy(BaseStrategy):
     """
     Bollinger Band Breakout strategy with TTM Squeeze, RVOL, EMA & HTF filters.
 
@@ -48,6 +49,7 @@ class BBBreakoutStrategy:
     """
 
     def __init__(self, symbol: str = "ARCUSD"):
+        super().__init__(symbol, "bb_breakout")
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("bb_breakout", {})
 
@@ -91,16 +93,13 @@ class BBBreakoutStrategy:
         self.timeframe = "1h"
         self.leverage: int = 1
 
-        # ── Position State ────────────────────────────────────────────────────
-        self.current_position = 0       # 1=LONG, -1=SHORT, 0=FLAT
-        self.last_entry_price = 0.0
-        self.entry_price: Optional[float] = None
-        self.trailing_stop_level: Optional[float] = None
-
         # ── Squeeze Window Tracking ───────────────────────────────────────────
         # Tracks how many bars have passed since the last squeeze fire.
         # Kept as a simple counter — incremented each closed bar, reset on fire.
         self._bars_since_squeeze_fire: int = 999  # Start large (no recent squeeze)
+
+        # ── Persistence ───────────────────────────────────────────────────────
+        self.load_state()
 
         # ── Indicator Cache (dashboard) ───────────────────────────────────────
         self.last_upper = 0.0
@@ -318,6 +317,7 @@ class BBBreakoutStrategy:
                 new_stop = close_closed - atr_closed * self.atr_mult
                 if new_stop > self.trailing_stop_level:
                     self.trailing_stop_level = new_stop
+                    self.save_state()  # Persist ratcheted stop
                 if close_closed <= self.trailing_stop_level:
                     self.last_action_candle_ts = closed_candle_ts
                     return "EXIT_LONG", (
@@ -327,6 +327,7 @@ class BBBreakoutStrategy:
                 new_stop = close_closed + atr_closed * self.atr_mult
                 if new_stop < self.trailing_stop_level:
                     self.trailing_stop_level = new_stop
+                    self.save_state()  # Persist ratcheted stop
                 if close_closed >= self.trailing_stop_level:
                     self.last_action_candle_ts = closed_candle_ts
                     return "EXIT_SHORT", (
@@ -428,6 +429,7 @@ class BBBreakoutStrategy:
             }
             _tsl = f"{self.trailing_stop_level:.6f}" if self.trailing_stop_level is not None else "DISABLED"
             logger.info(f"State: ENTRY_LONG @ {price}, TSL={_tsl}")
+            self.save_state()
 
         elif action == "ENTRY_SHORT":
             self.current_position = -1
@@ -444,6 +446,7 @@ class BBBreakoutStrategy:
             }
             _tsl = f"{self.trailing_stop_level:.6f}" if self.trailing_stop_level is not None else "DISABLED"
             logger.info(f"State: ENTRY_SHORT @ {price}, TSL={_tsl}")
+            self.save_state()
 
         elif action == "EXIT_LONG":
             self.current_position = 0
@@ -459,6 +462,7 @@ class BBBreakoutStrategy:
                 self.trades.append(self.active_trade)
                 self.active_trade = None
             self._reset_trade_state()
+            self.clear_state()
 
         elif action == "EXIT_SHORT":
             self.current_position = 0
@@ -474,6 +478,7 @@ class BBBreakoutStrategy:
                 self.trades.append(self.active_trade)
                 self.active_trade = None
             self._reset_trade_state()
+            self.clear_state()
 
     def _reset_trade_state(self):
         """Clear per-trade state after a position is closed."""
@@ -533,6 +538,7 @@ class BBBreakoutStrategy:
                 self.trades.append(self.active_trade)
                 self.active_trade = None
                 self._reset_trade_state()
+                self.clear_state()
                 logger.info("Reconciled: position closed externally.")
 
     # ─────────────────────────────────────────────────────────────────────────

@@ -117,34 +117,34 @@ def run_strategy_terminal(
     # Ideally we'd use a strategy factory, but for now we hardcode BTCUSD Double Dip
     if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
         from strategies.double_dip_rsi import DoubleDipRSIStrategy
-        strategy = DoubleDipRSIStrategy()
+        strategy = DoubleDipRSIStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized DoubleDipRSIStrategy")
+        logger.info(f"Initialized DoubleDipRSIStrategy for {symbol}")
     elif strategy_name.lower() in ["cci-ema", "cciema"]:
         from strategies.cci_ema_strategy import CCIEMAStrategy
-        strategy = CCIEMAStrategy()
+        strategy = CCIEMAStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized CCIEMAStrategy")
+        logger.info(f"Initialized CCIEMAStrategy for {symbol}")
     elif strategy_name.lower() in ["rs-50-ema", "rsi-50-ema", "rsi50ema"]:
         from strategies.rsi_50_ema_strategy import RSI50EMAStrategy
-        strategy = RSI50EMAStrategy()
+        strategy = RSI50EMAStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized RSI50EMAStrategy")
+        logger.info(f"Initialized RSI50EMAStrategy for {symbol}")
     elif strategy_name.lower() in ["macd-psar-100ema", "macd_psar_100ema", "macdpsar"]:
         from strategies.macd_psar_100ema_strategy import MACDPSAR100EMAStrategy
-        strategy = MACDPSAR100EMAStrategy()
+        strategy = MACDPSAR100EMAStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized MACDPSAR100EMAStrategy")
+        logger.info(f"Initialized MACDPSAR100EMAStrategy for {symbol}")
     elif strategy_name.lower() in ["rsi-200-ema", "rsi_200_ema", "rsi200ema"]:
         from strategies.rsi_200_ema_strategy import RSI200EMAStrategy
-        strategy = RSI200EMAStrategy()
+        strategy = RSI200EMAStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized RSI200EMAStrategy")
+        logger.info(f"Initialized RSI200EMAStrategy for {symbol}")
     elif strategy_name.lower() in ["rsi-supertrend", "rsi_supertrend", "rsisupertrend"]:
         from strategies.rsi_supertrend_strategy import RSISupertrendStrategy
-        strategy = RSISupertrendStrategy()
+        strategy = RSISupertrendStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized RSISupertrendStrategy")
+        logger.info(f"Initialized RSISupertrendStrategy for {symbol}")
     elif strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
         from strategies.donchian_strategy import DonchianChannelStrategy
         strategy = DonchianChannelStrategy(symbol=symbol)
@@ -152,14 +152,17 @@ def run_strategy_terminal(
         logger.info(f"Initialized DonchianChannelStrategy for {symbol}")
     elif strategy_name.lower() in ["ema-cross", "ema_cross", "emacross"]:
         from strategies.ema_cross_strategy import EMACrossStrategy
-        strategy = EMACrossStrategy()
+        strategy = EMACrossStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized EMACrossStrategy")
+        logger.info(f"Initialized EMACrossStrategy for {symbol}")
     elif strategy_name.lower() in ["bb-breakout", "bb_breakout", "bbbreakout"]:
         from strategies.bb_breakout_strategy import BBBreakoutStrategy
         strategy = BBBreakoutStrategy(symbol=symbol)
         strategy.timeframe = timeframe
         logger.info(f"Initialized BBBreakoutStrategy for {symbol}")
+    else:
+        logger.error(f"Unknown strategy name: {strategy_name}")
+        return
 
     # Update strategy-specific parameters that depend on timeframe
     if hasattr(strategy, '_update_bars_per_day'):

@@ -1,19 +1,11 @@
-import logging
-import datetime
-from typing import Dict, Optional, Tuple, Any, List
-import pandas as pd
-import ta
-import numpy as np
-from core.config import get_config
-from core.candle_utils import get_closed_candle_index
-from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
+from strategies.base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
 def format_time(ts_ms): 
     return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
 
-class DonchianChannelStrategy:
+class DonchianChannelStrategy(BaseStrategy):
     """
     Donchian Channel Strategy (Gold Both directions)
     
@@ -27,12 +19,13 @@ class DonchianChannelStrategy:
     """
     
     def __init__(self, symbol: str = "ARCUSD"):
+        super().__init__(symbol, "donchian_channel")
+        
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("donchian_channel", {})
 
         # Parameters
-        self.symbol = symbol  # Passed from runner/config
         self.trade_mode = cfg.get("trade_mode", "Both") # "Long", "Short", "Both"
         self.enter_period = cfg.get("enter_period", 20)
         self.exit_period = cfg.get("exit_period", 10)
@@ -47,34 +40,24 @@ class DonchianChannelStrategy:
         self.enable_profit_milestones = cfg.get("enable_profit_milestones", False)
         self.profit_milestones = cfg.get("profit_milestones", [])
         
-        # Determine bars_per_day dynamically based on timeframe
-        # timeframe format e.g. "1h", "2h", "4h", "6h", "1d", "180m"
-        self.timeframe = "1h" # Default, will be set by runner
-        
         # Use provided bars_per_day as fallback, otherwise calculate
         default_bars = cfg.get("bars_per_day", 24)
         self.bars_per_day = default_bars
         self.min_long_days = cfg.get("min_long_days", 0)  # Changed default to 0
         self.min_long_bars = self.bars_per_day * self.min_long_days
+
         # NEW: EMA Filter
         self.ema_length = cfg.get("ema_length", 100)
         self.ema_source = cfg.get("ema_source", "close")  # close, open, high, low
+
         # Mode Flags
         self.allow_long = self.trade_mode in ["Long", "Both"]
         self.allow_short = self.trade_mode in ["Short", "Both"]
         
         self.indicator_label = "Donchian"
-        
-        # Leverage (set by runner from trade_config; used to convert price PnL% to margin PnL%)
-        self.leverage: int = 1
 
-        # State
-        self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat
-        self.last_entry_price = 0.0
-        self.entry_price = None
-        self.entry_bar_index = None
+        # Unique State (Persisted via extra_data)
         self.tp_level = None
-        self.trailing_stop_level = None
         self.partial_exit_done = False
         self.milestones_hit = [False] * len(self.profit_milestones)
         self.initial_sl_price = None  # Initial hard stop loss price
@@ -89,12 +72,8 @@ class DonchianChannelStrategy:
         self.last_atr = 0.0
         self.last_ema = 0.0  # NEW: EMA Cache
         
-        # Trade History
-        self.trades = []
-        self.active_trade = None
-        
-        # Action Tracking (One action per candle rule)
-        self.last_action_candle_ts = None
+        # Load persistent state
+        self._load_from_disk()
         
     def _update_bars_per_day(self, timeframe: str):
         """Update bars_per_day and min_long_bars based on timeframe."""
@@ -557,49 +536,36 @@ class DonchianChannelStrategy:
 
     def _save_to_disk(self):
         """Save current trade flags to disk for persistence across restarts."""
-        try:
-            if self.current_position == 0:
-                # Flat position -> delete the state file to stay clean.
-                clear_strategy_state(self.symbol, "donchian_channel")
-                return
+        if self.current_position == 0:
+            self.clear_state()
+            return
 
-            # Active position -> save the state.
-            state = {
-                "partial_exit_done": self.partial_exit_done,
-                "milestones_hit": self.milestones_hit,
-                "entry_price": self.entry_price,
-                "tp_level": self.tp_level,
-                "trailing_stop_level": self.trailing_stop_level,
-                "initial_sl_price": self.initial_sl_price,
-                "current_position": self.current_position
-            }
-            save_strategy_state(self.symbol, "donchian_channel", state)
-        except Exception as e:
-            logger.error(f"Error managing strategy state for {self.symbol}: {e}")
+        extra = {
+            "partial_exit_done": self.partial_exit_done,
+            "milestones_hit": self.milestones_hit,
+            "tp_level": self.tp_level,
+            "initial_sl_price": self.initial_sl_price
+        }
+        self.save_state(extra_data=extra)
 
     def _load_from_disk(self) -> bool:
         """
         Attempt to restore trade flags from disk.
         Returns True if state was successfully restored.
         """
-        try:
-            state = load_strategy_state(self.symbol, "donchian_channel")
-            if not state:
-                return False
-            
-            self.partial_exit_done = state.get("partial_exit_done", False)
-            self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
-            
-            # Restore levels if they aren't already set
-            if getattr(self, 'tp_level', None) is None: self.tp_level = state.get("tp_level")
-            if getattr(self, 'trailing_stop_level', None) is None: self.trailing_stop_level = state.get("trailing_stop_level")
-            if getattr(self, 'initial_sl_price', None) is None: self.initial_sl_price = state.get("initial_sl_price")
-            
-            logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}, Milestones={self.milestones_hit}")
-            return True
-        except Exception as e:
-            logger.warning(f"Error loading strategy state for {self.symbol}: {e}")
+        state = self.load_state()
+        if not state:
             return False
+            
+        self.partial_exit_done = state.get("partial_exit_done", False)
+        self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
+        
+        # Restore levels if they aren't already set
+        if self.tp_level is None: self.tp_level = state.get("tp_level")
+        if self.initial_sl_price is None: self.initial_sl_price = state.get("initial_sl_price")
+        
+        logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}, Milestones={self.milestones_hit}")
+        return True
 
     def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None):
         """Reconcile internal strategy state with Live Exchange position."""
