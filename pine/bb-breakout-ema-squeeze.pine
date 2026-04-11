@@ -23,9 +23,10 @@ useSL     = input.bool(true,  "Use Trailing Stop Loss")
 atrLength = input.int(14,     "ATR Length")
 atrMult   = input.float(2.0,  "ATR Multiplier")
 
-// Squeeze Filter
-useSqueeze = input.bool(true, "Use Squeeze Filter")
-squeezeThreshold = input.float(0.05, "BB Width Threshold")
+// Squeeze Filter (TTM Squeeze: BB inside Keltner Channels)
+useSqueeze    = input.bool(true, "Use Squeeze Filter")
+kcMult        = input.float(1.5, "KC Multiplier", minval=0.1, step=0.1, tooltip="Keltner Channel multiplier. Standard TTM Squeeze uses 1.5")
+squeezeWindow = input.int(5, "Squeeze Window (bars)", minval=1, maxval=20, tooltip="Allow entry within N bars after squeeze fires. Squeeze releases first, BB breakout follows a few bars later.")
 
 // Volume Filter
 useVolume = input.bool(true, "Use Volume Filter")
@@ -40,18 +41,22 @@ dev = bbMult * ta.stdev(src, bbLength)
 upper = basis + dev
 lower = basis - dev
 
-// BB Width & Squeeze Detection
-bbWidth      = (upper - lower) / basis
-isSqueeze    = bbWidth < squeezeThreshold
-wasInSqueeze = bbWidth[1] < squeezeThreshold
-// Squeeze Release: bands were narrow last bar, now expanding = breakout moment
+// ATR (must be defined before Keltner Channels)
+atr = ta.atr(atrLength)
+
+// TTM Squeeze: Squeeze is ON when BB is fully inside Keltner Channels
+kcUpper = basis + kcMult * atr
+kcLower = basis - kcMult * atr
+// Squeeze ON  → BB completely inside KC (low volatility, coiling)
+isSqueeze    = upper < kcUpper and lower > kcLower
+wasInSqueeze = upper[1] < kcUpper[1] and lower[1] > kcLower[1]
+// Squeeze Release: BB breaks outside KC on this exact bar
 squeezeRelease = wasInSqueeze and not isSqueeze
+// Recent Release: squeeze fired within the last N bars (breakout usually follows a few bars after)
+recentRelease = ta.barssince(squeezeRelease) <= squeezeWindow
 
 // EMA
 ema = ta.ema(close, emaLength)
-
-// ATR
-atr = ta.atr(atrLength)
 
 // Volume
 volMA = ta.sma(volume, volLength)
@@ -66,11 +71,11 @@ shortBreakout = ta.crossunder(close, lower)
 // Apply filters
 longEntry = longBreakout and
              (not useEMA or close > ema) and
-             (not useSqueeze or squeezeRelease) and
+             (not useSqueeze or recentRelease) and
              (not useVolume or highVolume)
 shortEntry = shortBreakout and
              (not useEMA or close < ema) and
-             (not useSqueeze or squeezeRelease) and
+             (not useSqueeze or recentRelease) and
              (not useVolume or highVolume)
 
 // ===== EXIT CONDITIONS ===== //
