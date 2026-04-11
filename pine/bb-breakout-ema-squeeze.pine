@@ -18,7 +18,7 @@ emaLength = input.int(100, "EMA Length")
 // HTF Trend Filter
 useHTF    = input.bool(true,  "Use HTF Trend Filter", tooltip="Only trade in the direction of a higher timeframe trend.")
 htfTF     = input.timeframe("240", "HTF Timeframe", tooltip="e.g. 60=1H, 240=4H, D=Daily. Use a TF higher than your chart.")
-htfLength = input.int(50, "HTF EMA Length", minval=1, tooltip="EMA length on the higher timeframe.")
+htfLength = input.int(100, "HTF EMA Length", minval=1, tooltip="EMA length on the higher timeframe.")
 
 // Trade Mode
 tradeMode = input.string("BOTH", "Trade Mode", options=["LONG", "SHORT", "BOTH"])

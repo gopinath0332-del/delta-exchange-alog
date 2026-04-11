@@ -137,6 +137,32 @@ strategies:
     slow_ema_length: 20 # Slow EMA period
     allow_flip: true # Allow same-bar close & reverse
 
+  # BB Breakout + TTM Squeeze + RVOL + EMA + HTF Strategy
+  bb_breakout:
+    trade_mode: "Both" # "Long", "Short", "Both"
+    bb_length: 20 # Bollinger Band period
+    bb_mult: 2.0 # Bollinger Band standard deviation multiplier
+    atr_length: 14 # ATR period (used for trailing SL and KC)
+    atr_mult: 2.0 # ATR multiplier for the trailing stop loss
+    use_atr_sl: false # Set to false to disable the ATR trailing stop loss entirely
+    # EMA Trend Filter (current timeframe)
+    use_ema: true
+    ema_length: 100 # EMA period on the chart timeframe
+    # TTM Squeeze Filter (BB inside Keltner Channels)
+    use_squeeze: true
+    kc_mult: 1.5 # Keltner Channel ATR multiplier (standard TTM = 1.5)
+    squeeze_window: 10 # Allow entry within N bars after squeeze fires
+    # RVOL Filter (Relative Volume)
+    use_volume: true
+    vol_length: 20 # Volume moving average lookback
+    rvol_min: 1.5 # Min Relative Volume (1.5 = 1.5x average)
+    # HTF Trend Filter (simulated: 1H EMA length = htf_ema_length * htf_multiplier)
+    use_htf: true
+    htf_multiplier: 4 # 4 = simulate 4H on 1H data (4 * 100 = EMA 400)
+    htf_ema_length: 100 # EMA length on the simulated HTF (matches Pine htfLength=100)
+    # Data
+    historical_days: 60 # Days of history to fetch for warmup/backtest
+
 # Multi-Coin Service Configuration
 # Defines symbol groups that can be run together in a single process via
 # `python run_terminal.py --multi-coin <strategy_name> --non-interactive`.

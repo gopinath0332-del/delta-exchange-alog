@@ -155,6 +155,11 @@ def run_strategy_terminal(
         strategy = EMACrossStrategy()
         strategy.timeframe = timeframe
         logger.info("Initialized EMACrossStrategy")
+    elif strategy_name.lower() in ["bb-breakout", "bb_breakout", "bbbreakout"]:
+        from strategies.bb_breakout_strategy import BBBreakoutStrategy
+        strategy = BBBreakoutStrategy(symbol=symbol)
+        strategy.timeframe = timeframe
+        logger.info(f"Initialized BBBreakoutStrategy for {symbol}")
 
     # Update strategy-specific parameters that depend on timeframe
     if hasattr(strategy, '_update_bars_per_day'):
@@ -666,6 +671,31 @@ def run_strategy_terminal(
                          dashboard_lines.append(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
                          dashboard_lines.append(f"     Fast EMA: ${strategy.last_closed_fast_ema:.{p_decimals}f}")
                          dashboard_lines.append(f"     Slow EMA: ${strategy.last_closed_slow_ema:.{p_decimals}f}")
+                elif strategy_name.lower() in ["bb-breakout", "bb_breakout", "bbbreakout"]: # BB Breakout Strategy
+                    price_now = closes.iloc[-1]
+                    dashboard_lines.append(f"   Price:      ${price_now:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   BB Upper:   ${getattr(strategy, 'last_upper', 0.0):,.{p_decimals}f}")
+                    dashboard_lines.append(f"   BB Basis:   ${getattr(strategy, 'last_basis', 0.0):,.{p_decimals}f}")
+                    dashboard_lines.append(f"   BB Lower:   ${getattr(strategy, 'last_lower', 0.0):,.{p_decimals}f}")
+                    dashboard_lines.append(f"   ATR ({getattr(strategy, 'atr_length', 14)}):     {getattr(strategy, 'last_atr', 0.0):.6f}")
+                    sq_str = "ON (coiling)" if getattr(strategy, 'last_squeeze', False) else "OFF"
+                    sq_bars = getattr(strategy, '_bars_since_squeeze_fire', 999)
+                    sq_bars_str = f"{sq_bars}" if sq_bars < 999 else "n/a"
+                    dashboard_lines.append(f"   Squeeze:    {sq_str} | Bars since fire: {sq_bars_str}")
+                    rvol_val = getattr(strategy, 'last_rvol', 0.0)
+                    rvol_min = getattr(strategy, 'rvol_min', 1.5)
+                    rvol_flag = "✓" if rvol_val >= rvol_min else "✗"
+                    dashboard_lines.append(f"   RVOL:       {rvol_val:.2f}x (min {rvol_min}x) {rvol_flag}")
+                    dashboard_lines.append(f"   EMA ({getattr(strategy, 'ema_length', 100)}):   ${getattr(strategy, 'last_ema', 0.0):,.{p_decimals}f}")
+                    htf_ema = getattr(strategy, 'last_htf_ema', 0.0)
+                    htf_bias = "BULLISH" if closes.iloc[-1] > htf_ema else "BEARISH"
+                    htf_mult = getattr(strategy, 'htf_multiplier', 4)
+                    htf_len = getattr(strategy, 'htf_ema_length', 50)
+                    dashboard_lines.append(f"   HTF EMA ({htf_mult}x{htf_len}): ${htf_ema:,.{p_decimals}f} [{htf_bias}]")
+                    if getattr(strategy, 'use_atr_sl', True) and getattr(strategy, 'trailing_stop_level', None):
+                        dashboard_lines.append(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
+                    elif not getattr(strategy, 'use_atr_sl', True):
+                        dashboard_lines.append(f"   Trail Stop: DISABLED")
                 
                 dashboard_lines.append("-" * 80)
                 

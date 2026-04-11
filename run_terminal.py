@@ -170,6 +170,15 @@ def main():
             "name": "Donchian Channel — Multi-Coin (BIOUSD, PIPPINUSD, ARCUSD)",
             "multi_coin_key": "donchian_channel",  # key under multi_coin in settings.yaml
             "desc": "Runs Donchian Channel for BIOUSD, PIPPINUSD, ARCUSD in parallel threads. API calls serialized via shared client."
+        },
+        {
+            "id": 15,
+            "name": "ARCUSD BB Breakout + EMA + TTM Squeeze + RVOL + HTF (1H Standard)",
+            "symbol": "ARCUSD",
+            "monitor": "bb-breakout",
+            "timeframe": "1h",
+            "candle_type": "standard",
+            "desc": "BB Breakout with TTM Squeeze, RVOL, current EMA & HTF trend filters. ATR ratcheting trailing SL."
         }
     ]
 
