@@ -28,10 +28,10 @@ useSqueeze    = input.bool(true, "Use Squeeze Filter")
 kcMult        = input.float(1.5, "KC Multiplier", minval=0.1, step=0.1, tooltip="Keltner Channel multiplier. Standard TTM Squeeze uses 1.5")
 squeezeWindow = input.int(5, "Squeeze Window (bars)", minval=1, maxval=20, tooltip="Allow entry within N bars after squeeze fires. Squeeze releases first, BB breakout follows a few bars later.")
 
-// Volume Filter
-useVolume = input.bool(true, "Use Volume Filter")
-volLength = input.int(20, "Volume MA Length")
-volMultiplier = input.float(1.5, "Volume Multiplier")
+// RVOL (Relative Volume) Filter
+useVolume = input.bool(true, "Use RVOL Filter", tooltip="Only enter when current bar volume is N× the average. Filters low-conviction breakouts.")
+volLength = input.int(20, "RVOL Lookback (bars)", minval=5, maxval=100)
+rvolMin   = input.float(1.5, "Min RVOL Threshold", minval=0.5, step=0.1, tooltip="1.5 = volume must be at least 1.5× the average. Raise to 2.0 for higher conviction only.")
 
 // ===== CALCULATIONS ===== //
 
@@ -58,9 +58,10 @@ recentRelease = ta.barssince(squeezeRelease) <= squeezeWindow
 // EMA
 ema = ta.ema(close, emaLength)
 
-// Volume
-volMA = ta.sma(volume, volLength)
-highVolume = volume > volMA * volMultiplier
+// RVOL: Relative Volume = current volume / average volume
+volMA  = ta.sma(volume, volLength)
+rvol   = volume / volMA                  // e.g. 2.3 means 2.3× average volume
+highVolume = rvol >= rvolMin             // true when conviction is above threshold
 
 // ===== ENTRY CONDITIONS ===== //
 
@@ -137,6 +138,18 @@ inLong  = strategy.position_size > 0
 inShort = strategy.position_size < 0
 bg = inLong ? color.new(color.green, 85) : inShort ? color.new(color.red, 85) : isSqueeze ? color.new(color.yellow, 85) : na
 bgcolor(bg)
+
+// Squeeze Release marker — small triangle when TTM squeeze fires
+plotshape(squeezeRelease, title="Squeeze Fire", location=location.belowbar,
+          style=shape.triangleup, color=color.fuchsia, size=size.tiny, text="SQ")
+
+// RVOL label on entry bars — shows the actual ratio so you can validate conviction
+if longEntry or shortEntry
+    rvolText  = "RVOL: " + str.tostring(math.round(rvol, 2)) + "×"
+    labelColor = rvol >= rvolMin ? color.new(color.teal, 20) : color.new(color.gray, 40)
+    label.new(bar_index, longEntry ? lower - atr : upper + atr,
+              text=rvolText, style=label.style_label_up,
+              color=labelColor, textcolor=color.white, size=size.small)
 
 // ===== ALERTS ===== //
 
