@@ -475,6 +475,10 @@ def run_strategy_terminal(
                           except TypeError:
                               action, reason = strategy.check_signals(df, current_time_ms)
 
+                          # Fallback: Check Global Profit Milestones if no primary action
+                          if not action and hasattr(strategy, 'check_profit_milestones'):
+                              action, reason = strategy.check_profit_milestones(price, live_pos_data)
+
                           # Extract latest indicator values for the dashboard
                           current_rsi = getattr(strategy, 'last_rsi', 0.0)
                           current_atr = getattr(strategy, 'last_atr', 0.0)
@@ -538,7 +542,10 @@ def run_strategy_terminal(
                              indicators = current_rsi
                          
                          # Execute Action (Update State) with CORRECT ARGUMENTS
-                         strategy.update_position_state(action, current_time_ms, indicators, exec_price, reason=reason)
+                         if action == "MILESTONE_EXIT" and hasattr(strategy, 'handle_milestone_state'):
+                             strategy.handle_milestone_state(reason, exec_price, current_time_ms)
+                         else:
+                             strategy.update_position_state(action, current_time_ms, indicators, exec_price, reason=reason)
                     else:
                         logger.error(f"Unexpected candle data format: {df.columns}")
                         time.sleep(10)

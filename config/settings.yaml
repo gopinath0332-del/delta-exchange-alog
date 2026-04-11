@@ -32,6 +32,14 @@ risk_management:
   position_sizing_type: "atr" # Default sizing method: "margin" or "atr"
   atr_margin_multiplier: 2.0 # Multiplier for ATR-based sizing
   atr_margin_cap_multiplier: 1 # 1x safety cap on actual margin usage
+  
+  # Global Profit Milestones (takes 30% at >=50% PnL, another 30% at >=100% PnL)
+  enable_profit_milestones: true
+  profit_milestones:
+    - pnl_pct: 50.0  # Trigger at 50% Unrealized Margin PnL
+      exit_pct: 0.30 # Exit 30% of the current active position size
+    - pnl_pct: 100.0 # Trigger at 100% Unrealized Margin PnL
+      exit_pct: 0.30 # Exit 30% of the remaining active position size
 
 # Notification Settings
 notifications:
