@@ -180,6 +180,10 @@ def run_backtest_for_file(
         return None
         
     trade_cfg = get_trade_config(symbol)
+    
+    # Sync leverage to strategy so internal PnL targets (Milestones, etc.) are correct
+    strategy.leverage = trade_cfg['leverage']
+    
     engine = BacktestEngine(strategy, symbol, timeframe, strategy_name, leverage=trade_cfg['leverage'])
     trades, equity_df = engine.run(df)
     
