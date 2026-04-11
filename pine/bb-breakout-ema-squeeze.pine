@@ -11,9 +11,14 @@ bbLength = input.int(20, "BB Length")
 bbMult = input.float(2.0, "BB Multiplier")
 src = input.source(close, "Source")
 
-// EMA Trend Filter
-useEMA = input.bool(true, "Use EMA Filter")
+// EMA Trend Filter (current timeframe)
+useEMA    = input.bool(true, "Use EMA Filter")
 emaLength = input.int(100, "EMA Length")
+
+// HTF Trend Filter
+useHTF    = input.bool(true,  "Use HTF Trend Filter", tooltip="Only trade in the direction of a higher timeframe trend.")
+htfTF     = input.timeframe("240", "HTF Timeframe", tooltip="e.g. 60=1H, 240=4H, D=Daily. Use a TF higher than your chart.")
+htfLength = input.int(50, "HTF EMA Length", minval=1, tooltip="EMA length on the higher timeframe.")
 
 // Trade Mode
 tradeMode = input.string("BOTH", "Trade Mode", options=["LONG", "SHORT", "BOTH"])
@@ -55,8 +60,14 @@ squeezeRelease = wasInSqueeze and not isSqueeze
 // Recent Release: squeeze fired within the last N bars (breakout usually follows a few bars after)
 recentRelease = ta.barssince(squeezeRelease) <= squeezeWindow
 
-// EMA
+// EMA (current timeframe)
 ema = ta.ema(close, emaLength)
+
+// HTF EMA — fetched from the higher timeframe, no look-ahead bias
+htfEma = request.security(syminfo.tickerid, htfTF, ta.ema(close, htfLength), lookahead=barmerge.lookahead_off)
+// Trend bias from HTF perspective
+htfBullish = close > htfEma   // HTF says uptrend  → only longs
+htfBearish = close < htfEma   // HTF says downtrend → only shorts
 
 // RVOL: Relative Volume = current volume / average volume
 volMA  = ta.sma(volume, volLength)
@@ -71,13 +82,15 @@ shortBreakout = ta.crossunder(close, lower)
 
 // Apply filters
 longEntry = longBreakout and
-             (not useEMA or close > ema) and
+             (not useEMA    or close > ema) and
              (not useSqueeze or recentRelease) and
-             (not useVolume or highVolume)
+             (not useVolume  or highVolume) and
+             (not useHTF     or htfBullish)
 shortEntry = shortBreakout and
-             (not useEMA or close < ema) and
+             (not useEMA    or close < ema) and
              (not useSqueeze or recentRelease) and
-             (not useVolume or highVolume)
+             (not useVolume  or highVolume) and
+             (not useHTF     or htfBearish)
 
 // ===== EXIT CONDITIONS ===== //
 
@@ -128,6 +141,10 @@ plot(basis, color=color.blue,   title="BB Basis")
 plot(upper, color=color.red,    title="BB Upper")
 plot(lower, color=color.green,  title="BB Lower")
 plot(ema,   color=color.orange, title="EMA")
+
+// HTF EMA — thick purple line, represents the higher timeframe trend direction
+htfEmaColor = htfBullish ? color.new(color.purple, 0) : color.new(color.maroon, 0)
+plot(useHTF ? htfEma : na, title="HTF EMA", color=htfEmaColor, linewidth=3, style=plot.style_line)
 
 // Trailing SL — orange line, only visible while in a trade
 activeTSL = strategy.position_size > 0 ? trailLongSL : strategy.position_size < 0 ? trailShortSL : na
