@@ -195,6 +195,12 @@ multi_coin:
         position_sizing_type: "atr" # Switch from "margin" to "atr"
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         log_file: logs/arc.log
+  bb_breakout:
+    symbols:
+      - symbol: "ARCUSD"
+        timeframe: "1h"
+        candle_type: "standard"
+        log_file: "logs/bb_arc.log"
 ####### EVERY TIME NEW COIN ADDED TO THE LIST, MAKE SURE ADD ENTRY IN .ENV FILE.########
 
 # Firestore Configuration (for trade journaling)

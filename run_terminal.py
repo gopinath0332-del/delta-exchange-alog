@@ -179,6 +179,12 @@ def main():
             "timeframe": "1h",
             "candle_type": "standard",
             "desc": "BB Breakout with TTM Squeeze, RVOL, current EMA & HTF trend filters. ATR ratcheting trailing SL."
+        },
+        {
+            "id": 16,
+            "name": "BB Breakout — Multi-Coin (ARCUSD, BTCUSD, ETHUSD)",
+            "multi_coin_key": "bb_breakout",
+            "desc": "Runs BB Breakout for ARCUSD, BTCUSD, ETHUSD in parallel threads. API calls serialized via shared client."
         }
     ]
 
