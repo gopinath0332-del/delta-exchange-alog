@@ -426,7 +426,8 @@ class BBBreakoutStrategy:
                 "status": "OPEN",
                 "logs": [],
             }
-            logger.info(f"State: ENTRY_LONG @ {price}, TSL={self.trailing_stop_level:.6f}")
+            _tsl = f"{self.trailing_stop_level:.6f}" if self.trailing_stop_level is not None else "DISABLED"
+            logger.info(f"State: ENTRY_LONG @ {price}, TSL={_tsl}")
 
         elif action == "ENTRY_SHORT":
             self.current_position = -1
@@ -441,7 +442,8 @@ class BBBreakoutStrategy:
                 "status": "OPEN",
                 "logs": [],
             }
-            logger.info(f"State: ENTRY_SHORT @ {price}, TSL={self.trailing_stop_level:.6f}")
+            _tsl = f"{self.trailing_stop_level:.6f}" if self.trailing_stop_level is not None else "DISABLED"
+            logger.info(f"State: ENTRY_SHORT @ {price}, TSL={_tsl}")
 
         elif action == "EXIT_LONG":
             self.current_position = 0
