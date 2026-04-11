@@ -435,7 +435,7 @@ class BBBreakoutStrategy(BaseStrategy):
                 "logs": [],
             }
             _tsl = f"{self.trailing_stop_level:.6f}" if self.trailing_stop_level is not None else "DISABLED"
-            logger.info(f"State: ENTRY_LONG @ {price}, TSL={_tsl}")
+            logger.debug(f"State: ENTRY_LONG @ {price}, TSL={_tsl}")
             self.save_state()
 
         elif action == "ENTRY_SHORT":
@@ -452,7 +452,7 @@ class BBBreakoutStrategy(BaseStrategy):
                 "logs": [],
             }
             _tsl = f"{self.trailing_stop_level:.6f}" if self.trailing_stop_level is not None else "DISABLED"
-            logger.info(f"State: ENTRY_SHORT @ {price}, TSL={_tsl}")
+            logger.debug(f"State: ENTRY_SHORT @ {price}, TSL={_tsl}")
             self.save_state()
 
         elif action == "EXIT_LONG":
