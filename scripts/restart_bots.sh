@@ -1,22 +1,16 @@
 #!/bin/bash
 
-# Restart Delta Bot Services
-#echo "Restarting Service..."
-#sudo systemctl restart delta-bot.service
+# Delta Exchange Trading Bot - Master Service Restart
+echo "-------------------------------------------------------"
+echo " Restarting Delta Bot Master Service..."
+echo "-------------------------------------------------------"
 
-#echo "Restarting ETH Service..."
-#sudo systemctl restart delta-bot-eth.service
+sudo systemctl restart delta-bot.service
 
-#echo "Restarting XRP Service..."
-#sudo systemctl restart delta-bot-xrp.service
-
-# Donchian Channel — BIOUSD, PIPPINUSD, ARCUSD
-# run in a single multi-threaded service. API calls are serialized via the
-# shared DeltaRestClient's threading.Lock — no startup rate-limit burst.
-echo "Restarting Donchian multi-coin service (BIOUSD, PIPPIN, ARCUSD)..."
-sudo systemctl restart delta-bot-donchian.service
-
-#echo "Restarting BTC EMA Service..."
-#sudo systemctl restart delta-bot-btc-ema.service
-
-echo "Services restarted."
+if [ $? -eq 0 ]; then
+  echo " Master service restarted successfully."
+  echo " Check logs: journalctl -u delta-bot -f"
+else
+  echo " Error: Failed to restart master service."
+fi
+echo "-------------------------------------------------------"

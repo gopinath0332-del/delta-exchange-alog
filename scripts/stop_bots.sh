@@ -1,20 +1,15 @@
 #!/bin/bash
 
-# Stop Delta Bot Services
-#echo "Stopping Service (BTC)..."
-#sudo systemctl stop delta-bot.service
+# Delta Exchange Trading Bot - Master Service Stop
+echo "-------------------------------------------------------"
+echo " Stopping Delta Bot Master Service..."
+echo "-------------------------------------------------------"
 
-#echo "Stopping ETH Service..."
-#sudo systemctl stop delta-bot-eth.service
+sudo systemctl stop delta-bot.service
 
-#echo "Stopping XRP Service..."
-#sudo systemctl stop delta-bot-xrp.service
-
-# Donchian Channel — all 5 coins run in a single multi-threaded service
-echo "Stopping Donchian multi-coin service (PI, PIPPIN, RIVER, BERA, PAXG)..."
-sudo systemctl stop delta-bot-donchian.service
-
-#echo "Stopping BTC EMA Service..."
-#sudo systemctl stop delta-bot-btc-ema.service
-
-echo "All services stopped."
+if [ $? -eq 0 ]; then
+  echo " Master service stopped successfully."
+else
+  echo " Error: Failed to stop master service."
+fi
+echo "-------------------------------------------------------"
