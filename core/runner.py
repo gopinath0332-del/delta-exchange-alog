@@ -1019,3 +1019,123 @@ def run_multi_symbol_terminal(
             t.join()
     except KeyboardInterrupt:
         logger.info("Multi-coin service interrupted — shutting down all symbol threads.")
+
+
+def run_master_terminal(
+    config: Config,
+    mode: str,
+) -> None:
+    """
+    Run ALL strategies and symbols configured in settings.yaml multi_coin section.
+
+    All strategy/symbol combinations share:
+      - A single DeltaRestClient (and its internal RateLimiter).
+      - A single threading.Lock (cycle_lock) for one-at-a-time API cycles.
+      - A single startup wallet balance fetch.
+
+    This ensures that when the Pi reboots, all configured assets start in
+    a strictly serialized sequence, preventing any rate-limit bursts.
+    """
+    multi_coin_cfg = config.settings.get("multi_coin", {})
+    if not multi_coin_cfg:
+        logger.error("run_master_terminal: 'multi_coin' section missing in settings.yaml")
+        return
+
+    shared_client = DeltaRestClient(config)
+    shared_notifier = NotificationManager(config)
+
+    logger.info("Starting Master Multi-Strategy service...")
+
+    # Fetch wallet balance ONCE for all strategies and coins
+    shared_wallet_balance_str = "N/A"
+    try:
+        logger.info("Master Service: Fetching shared wallet balance once for all threads...")
+        wallet_data = shared_client.get_wallet_balance()
+        collateral_currency = "USD"
+        balance_obj = {}
+        if isinstance(wallet_data, list):
+            balance_obj = next(
+                (b for b in wallet_data if b.get("asset_symbol") == collateral_currency), {}
+            )
+        elif isinstance(wallet_data, dict):
+            data_source = wallet_data.get("result", wallet_data)
+            if isinstance(data_source, list):
+                balance_obj = next(
+                    (b for b in data_source if b.get("asset_symbol") == collateral_currency), {}
+                )
+            elif isinstance(data_source, dict):
+                balance_obj = (
+                    data_source
+                    if data_source.get("asset_symbol") == collateral_currency
+                    else data_source.get(collateral_currency, {})
+                )
+        if balance_obj:
+            shared_wallet_balance_str = (
+                f"${float(balance_obj.get('available_balance', 0.0)):,.2f}"
+            )
+        else:
+            data_source = (
+                wallet_data.get("result", wallet_data)
+                if isinstance(wallet_data, dict)
+                else wallet_data
+            )
+            if isinstance(data_source, list) and data_source:
+                fb = data_source[0]
+                shared_wallet_balance_str = f"${float(fb.get('available_balance', 0.0)):,.2f} ({fb.get('asset_symbol', '?')})"
+        logger.info(f"Master Service: Shared wallet balance: {shared_wallet_balance_str}")
+    except Exception as e:
+        logger.warning(f"Master Service: Failed to fetch shared wallet balance: {e}")
+
+    # Shared global cycle lock across ALL strategies and ALL symbols
+    cycle_lock = threading.Lock()
+
+    threads: List[threading.Thread] = []
+
+    # Iterate through each strategy type (e.g., 'donchian_channel', 'bb_breakout')
+    for strat_key, strat_cfg in multi_coin_cfg.items():
+        if not isinstance(strat_cfg, dict):
+            continue
+
+        symbols_list = strat_cfg.get("symbols", [])
+        if not symbols_list:
+            continue
+
+        for sym_cfg in symbols_list:
+            symbol = sym_cfg["symbol"]
+            timeframe = sym_cfg.get("timeframe", "1h")
+            candle_type = sym_cfg.get("candle_type", "heikin-ashi")
+            log_file = sym_cfg.get("log_file")
+
+            t = threading.Thread(
+                target=run_strategy_terminal,
+                args=(config, strat_key, symbol, mode, candle_type, timeframe),
+                kwargs={
+                    "shared_client": shared_client,
+                    "shared_notifier": shared_notifier,
+                    "log_file": log_file,
+                    "prefetched_wallet_balance_str": shared_wallet_balance_str,
+                    "cycle_lock": cycle_lock,
+                    "symbol_settings": sym_cfg,
+                },
+                name=f"{strat_key}_{symbol}",
+                daemon=True,
+            )
+            threads.append(t)
+            logger.info(f"Master Service: Prepared thread for {symbol} ({strat_key})")
+
+    if not threads:
+        logger.error("Master Service: No threads were prepared. Check your multi_coin config.")
+        return
+
+    # Start all threads
+    for t in threads:
+        t.start()
+        logger.info(f"Master Service: Thread started: {t.name}")
+
+    # Block until interrupted
+    try:
+        for t in threads:
+            t.join()
+    except KeyboardInterrupt:
+        logger.info("Master Service interrupted — shutting down all threads.")
+

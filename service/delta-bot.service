@@ -1,20 +1,25 @@
 [Unit]
-Description=Delta Exchange Trading Bot
+Description=Delta Exchange Trading Bot - Master Service (All Strategies)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/Apps/delta-exchange-alog
-ExecStart=/home/pi/Apps/delta-exchange-alog/venv/bin/python3 -u /home/pi/Apps/delta-exchange-alog/run_terminal.py --strategy 3 --non-interactive
+WorkingDirectory=/home/pi/delta-exchange-alog
+# Runs ALL strategies and symbols configured in settings.yaml in a single process.
+# This ensures that API calls are strictly serialized across all threads,
+# preventing rate limit bursts on startup and ensuring efficient operation.
+ExecStart=/home/pi/delta-exchange-alog/venv/bin/python3 -u /home/pi/delta-exchange-alog/run_terminal.py --strategy 20 --non-interactive
 Restart=on-failure
 RestartSec=60
-EnvironmentFile=/home/pi/Apps/delta-exchange-alog/config/.env
+EnvironmentFile=/home/pi/delta-exchange-alog/config/.env
 
-# Logging
-StandardOutput=append:/home/pi/Apps/delta-exchange-alog/logs/btc.log
-StandardError=append:/home/pi/Apps/delta-exchange-alog/logs/btc.error.log
+# This captures Python-level crashes / uncaught exceptions.
+# Per-coin trade/signal logs are still written to their individual files
+# (e.g. logs/bio.log, logs/pippin.log, logs/bb_arc.log) as defined in settings.yaml.
+StandardOutput=append:/home/pi/delta-exchange-alog/logs/master-service.log
+StandardError=append:/home/pi/delta-exchange-alog/logs/master-service.error.log
 
 [Install]
 WantedBy=multi-user.target

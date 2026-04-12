@@ -185,6 +185,12 @@ def main():
             "name": "BB Breakout — Multi-Coin (ARCUSD, BTCUSD, ETHUSD)",
             "multi_coin_key": "bb_breakout",
             "desc": "Runs BB Breakout for ARCUSD, BTCUSD, ETHUSD in parallel threads. API calls serialized via shared client."
+        },
+        {
+            "id": 20,
+            "name": "Master Service — All Configured Strategies (Multiple Strategies + Multiple Coins)",
+            "master_mode": True,
+            "desc": "Runs ALL strategies and symbols defined in settings.yaml multi_coin section in a single synchronized process."
         }
     ]
 
@@ -265,6 +271,24 @@ def main():
             print(f"\nFatal Error: {e}")
             sys.exit(1)
         return  # multi-coin handled above
+
+    # -----------------------------------------------------------------------
+    # Master mode — triggered when the strategy entry has 'master_mode'
+    # -----------------------------------------------------------------------
+    if selected_strat.get("master_mode"):
+        from core.runner import run_master_terminal
+        
+        logger.info("Launching Master Multi-Strategy service...")
+        try:
+            run_master_terminal(config, mode)
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            sys.exit(0)
+        except Exception as e:
+            logger.exception("Fatal error in master terminal mode")
+            print(f"\nFatal Error: {e}")
+            sys.exit(1)
+        return
 
     # -----------------------------------------------------------------------
     # Single-coin mode: original strategy selection flow

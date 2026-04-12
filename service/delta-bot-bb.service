@@ -1,0 +1,27 @@
+[Unit]
+Description=Delta Exchange Trading Bot - BB Breakout (RIVERUSD)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/delta-exchange-alog
+# Runs configured BB Breakout coins in a single process using parallel threads.
+# Each coin's logs still go to its own per-symbol file (logs/bb_arc.log etc.)
+# because _add_per_symbol_log_handler() in runner.py attaches a thread-filtered
+# RotatingFileHandler per coin.  The shared DeltaRestClient serialises all API
+# calls via the in-process threading.Lock in RateLimiter — no rate limit issues.
+ExecStart=/home/pi/delta-exchange-alog/venv/bin/python3 -u /home/pi/delta-exchange-alog/run_terminal.py --strategy 16 --non-interactive
+Restart=on-failure
+RestartSec=60
+EnvironmentFile=/home/pi/delta-exchange-alog/config/.env
+
+# This captures Python-level crashes / uncaught exceptions from the main thread.
+# Per-coin trade/signal logs are written directly to their own files by the
+# thread-filtered log handlers (logs/bb_arc.log).
+StandardOutput=append:/home/pi/delta-exchange-alog/logs/bb-service.log
+StandardError=append:/home/pi/delta-exchange-alog/logs/bb-service.error.log
+
+[Install]
+WantedBy=multi-user.target
