@@ -215,7 +215,7 @@ multi_coin:
         target_margin: 50
         position_sizing_type: "atr" # Switch from "margin" to "atr"
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
-        log_file: "logs/sol.log"
+        log_file: "logs/river.log"
 ####### EVERY TIME A NEW COIN IS ADDED, ADD IT UNDER single_coin (and multi_coin if applicable) IN settings.yaml ########
 
 # Single-Coin Symbol Settings
