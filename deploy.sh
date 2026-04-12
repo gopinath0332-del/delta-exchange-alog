@@ -12,7 +12,7 @@ echo "-------------------------------------------------------"
 echo " Delta Exchange Bot - Master Service Deployment"
 echo "-------------------------------------------------------"
 
-if [ "$EUID" -ne 0 ]; then
+if [ "$(id -u)" -ne 0 ]; then
   echo "Please run as root (sudo ./deploy.sh)"
   exit 1
 fi
@@ -24,8 +24,8 @@ fi
 
 echo "1. Cleaning up old separate services (if any)..."
 # Stop and disable old single-strategy services to prevent conflicts
-SERVICES_TO_CLEAN=("delta-bot-donchian" "delta-bot-bb" "delta-bot-bio" "delta-bot-bera")
-for svc in "${SERVICES_TO_CLEAN[@]}"; do
+SERVICES_TO_CLEAN="delta-bot-donchian delta-bot-bb delta-bot-bio delta-bot-bera"
+for svc in $SERVICES_TO_CLEAN; do
   if systemctl is-active --quiet "$svc.service"; then
     echo "   Stopping $svc.service..."
     systemctl stop "$svc.service" || true
