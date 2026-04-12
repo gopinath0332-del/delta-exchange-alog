@@ -170,6 +170,27 @@ def main():
             "name": "Donchian Channel — Multi-Coin (BIOUSD, PIPPINUSD, ARCUSD)",
             "multi_coin_key": "donchian_channel",  # key under multi_coin in settings.yaml
             "desc": "Runs Donchian Channel for BIOUSD, PIPPINUSD, ARCUSD in parallel threads. API calls serialized via shared client."
+        },
+        {
+            "id": 15,
+            "name": "ARCUSD BB Breakout + EMA + TTM Squeeze + RVOL + HTF (1H Standard)",
+            "symbol": "ARCUSD",
+            "monitor": "bb-breakout",
+            "timeframe": "1h",
+            "candle_type": "standard",
+            "desc": "BB Breakout with TTM Squeeze, RVOL, current EMA & HTF trend filters. ATR ratcheting trailing SL."
+        },
+        {
+            "id": 16,
+            "name": "BB Breakout — Multi-Coin (ARCUSD, BTCUSD, ETHUSD)",
+            "multi_coin_key": "bb_breakout",
+            "desc": "Runs BB Breakout for ARCUSD, BTCUSD, ETHUSD in parallel threads. API calls serialized via shared client."
+        },
+        {
+            "id": 20,
+            "name": "Master Service — All Configured Strategies (Multiple Strategies + Multiple Coins)",
+            "master_mode": True,
+            "desc": "Runs ALL strategies and symbols defined in settings.yaml multi_coin section in a single synchronized process."
         }
     ]
 
@@ -250,6 +271,24 @@ def main():
             print(f"\nFatal Error: {e}")
             sys.exit(1)
         return  # multi-coin handled above
+
+    # -----------------------------------------------------------------------
+    # Master mode — triggered when the strategy entry has 'master_mode'
+    # -----------------------------------------------------------------------
+    if selected_strat.get("master_mode"):
+        from core.runner import run_master_terminal
+        
+        logger.info("Launching Master Multi-Strategy service...")
+        try:
+            run_master_terminal(config, mode)
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            sys.exit(0)
+        except Exception as e:
+            logger.exception("Fatal error in master terminal mode")
+            print(f"\nFatal Error: {e}")
+            sys.exit(1)
+        return
 
     # -----------------------------------------------------------------------
     # Single-coin mode: original strategy selection flow

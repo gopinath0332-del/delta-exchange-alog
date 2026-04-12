@@ -122,7 +122,8 @@ class EmailNotifier:
                         target_margin: Optional[float] = None,
                         timeframe: Optional[str] = None,
                         stop_loss_price: Optional[float] = None,
-                        atr: Optional[float] = None):
+                        atr: Optional[float] = None,
+                        mode: str = "live"):
         """
         Send a formatted trade alert email.
 
@@ -141,9 +142,12 @@ class EmailNotifier:
             market_price: Raw candle close price (if HA candle price differs)
             lot_size: Number of contracts placed
             target_margin: Configured target margin from .env (e.g. TARGET_MARGIN_PAXG=30)
+            mode: Trading mode (live or paper)
         """
         subject = f"Trading Alert: {side} {symbol}"
         
+        mode_color = "#28a745" if mode.lower() == "live" else "#17a2b8"
+        mode_line = f"<li><strong>Trading Mode:</strong> <span style='color: {mode_color}'>{mode.upper()}</span></li>"
         strategy_line = f"<li><strong>Strategy:</strong> {strategy_name}</li>" if strategy_name else ""
         lot_size_line = f"<li><strong>Lot Size:</strong> {lot_size} contracts</li>" if lot_size is not None else ""
         # Show the configured target margin so the recipient knows the capital allocation
@@ -163,6 +167,7 @@ class EmailNotifier:
           <body>
             <h2>Trading Signal Detected</h2>
             <ul>
+              {mode_line}
               {strategy_line}
               <li><strong>Symbol:</strong> {symbol}</li>
               <li><strong>Side:</strong> <span style="color: {'green' if side == 'LONG' else 'red'}">{side}</span></li>

@@ -163,12 +163,23 @@ def calculate_position_size(
 
 def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None):
     """
-    Get trade configuration for a symbol from environment variables and optional sizing_config.
-    
+    Get trade configuration for a symbol from settings.yaml and optional sizing_config.
+
+    Priority for leverage / target_margin:
+        1. sizing_config dict  (multi-coin YAML entry, passed by runner)  ← highest
+        2. settings.yaml → single_coin[base_asset]                        ← per-symbol YAML
+        3. risk_management defaults from settings.yaml                    ← global YAML fallback
+        4. Hardcoded defaults (leverage=5, target_margin=40)              ← last resort
+
+    enable_orders:
+        Controlled solely by the global ENABLE_ORDER_PLACEMENT env var.
+        If a symbol is listed in settings.yaml it will execute orders when
+        the global flag is true — no per-symbol flag needed.
+
     Args:
         symbol: Trading symbol (e.g., 'PIPPINUSD')
-        sizing_config: Optional dictionary of sizing flags (e.g. from multi_coin config)
-    
+        sizing_config: Optional dictionary of sizing overrides (e.g. from multi_coin config)
+
     Returns:
         dict: {
             "order_size": int,
@@ -181,34 +192,29 @@ def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None
             "atr_margin_cap_multiplier": float
         }
     """
-    # 1. Determine Base Asset
+    # 1. Determine Base Asset (e.g. PIPPINUSD → PIPPIN)
     base_asset = symbol.upper().replace("USD", "").replace("USDT", "").replace("-", "").replace("/", "").replace("_", "")
-    
-    # 2. Defaults
-    order_size = 1  
+
+    # 2. Hardcoded defaults (last resort)
+    order_size = 1
     leverage = 5
-    target_margin = 40.0  # Default target margin in USD
-    
-    # Position Sizing Type (margin or atr)
+    target_margin = 40.0
+
+    # 3. Position sizing type defaults from risk_management section
     from core.config import get_config
     config = get_config()
     sizing_type = config.risk_management.position_sizing_type if hasattr(config, 'risk_management') else "margin"
     atr_multiplier = config.risk_management.atr_margin_multiplier if hasattr(config, 'risk_management') else 2.0
     atr_margin_cap_multiplier = config.risk_management.atr_margin_cap_multiplier if hasattr(config, 'risk_management') else 1.5
 
-    # 3. Load overrides from Environment (Priority 2 / Fallback)
-    try:
-        leverage = int(os.getenv(f"LEVERAGE_{base_asset}", os.getenv("LEVERAGE", str(leverage))))
-        target_margin = float(os.getenv(f"TARGET_MARGIN_{base_asset}", str(target_margin)))
-        
-        # Legacy env support for sizing flags (Priority 3)
-        sizing_type = os.getenv(f"POSITION_SIZING_TYPE_{base_asset}", sizing_type).lower()
-        atr_multiplier = float(os.getenv(f"ATR_MARGIN_MULTIPLIER_{base_asset}", str(atr_multiplier)))
-        atr_margin_cap_multiplier = float(os.getenv(f"ATR_MARGIN_CAP_MULTIPLIER_{base_asset}", str(atr_margin_cap_multiplier)))
-    except ValueError:
-        logger.warning(f"Invalid environment configuration for {base_asset}, using current values.")
+    # 4. Load per-symbol defaults from settings.yaml single_coin section (Priority 2)
+    single_coin_cfg = config.settings.get("single_coin", {}).get(base_asset, {})
+    if single_coin_cfg:
+        leverage = int(single_coin_cfg.get("leverage", leverage))
+        target_margin = float(single_coin_cfg.get("target_margin", target_margin))
+        logger.debug(f"Loaded single_coin config for {base_asset}: leverage={leverage}, target_margin={target_margin}")
 
-    # 4. Load overrides from sizing_config (Priority 1)
+    # 5. Load overrides from sizing_config (Priority 1 — multi-coin YAML entry passed by runner)
     if sizing_config:
         if "position_sizing_type" in sizing_config:
             sizing_type = sizing_config["position_sizing_type"].lower()
@@ -220,22 +226,22 @@ def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None
             target_margin = float(sizing_config["target_margin"])
         if "atr_margin_cap_multiplier" in sizing_config:
             atr_margin_cap_multiplier = float(sizing_config["atr_margin_cap_multiplier"])
-        logger.debug(f"Loaded config overrides for {symbol.upper()} from multi-coin settings")
+        logger.debug(f"Loaded sizing_config overrides for {symbol.upper()} from multi-coin settings")
 
-    # 5. Check Enable Flag
-    env_var_key = f"ENABLE_ORDER_PLACEMENT_{base_asset}"
-    enable_orders = os.getenv(env_var_key, "false").lower() == "true"
-    
+    # 6. Global kill-switch — single source of truth for order execution
+    enable_orders = os.getenv("ENABLE_ORDER_PLACEMENT", "false").lower() == "true"
+
     return {
         "order_size": order_size,  # Deprecated: kept for backwards compatibility
         "leverage": leverage,
         "enabled": enable_orders,
         "base_asset": base_asset,
-        "target_margin": target_margin,  # New: configurable target margin
+        "target_margin": target_margin,
         "sizing_type": sizing_type,
         "atr_multiplier": atr_multiplier,
         "atr_margin_cap_multiplier": atr_margin_cap_multiplier
     }
+
 
 def execute_strategy_signal(
     client: DeltaRestClient, 
@@ -486,7 +492,7 @@ def execute_strategy_signal(
                 return
 
         if not enable_orders:
-            logger.warning(f"Order placement disabled for {symbol} (Checked ENABLE_ORDER_PLACEMENT_{base_asset}). Action: {action}")
+            logger.warning(f"Order placement disabled for {symbol} (ENABLE_ORDER_PLACEMENT=false in .env). Action: {action}")
             reason += " [DISABLED]"
 
         # 4. Set Leverage (Only on Entry)
@@ -756,7 +762,8 @@ def execute_strategy_signal(
                 target_margin=target_margin if is_entry else None,
                 timeframe=timeframe,
                 stop_loss_price=stop_loss_price,
-                atr=atr
+                atr=atr,
+                mode=mode
             )
         except Exception as e:
             logger.error(f"Failed to send trade alert: {e}")

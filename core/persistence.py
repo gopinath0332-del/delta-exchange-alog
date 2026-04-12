@@ -66,6 +66,6 @@ def clear_strategy_state(symbol: str, strategy_name: str):
         path = get_state_path(symbol, strategy_name)
         if path.exists():
             os.remove(path)
-            logger.info(f"Cleared state for {symbol} ({strategy_name})")
+            logger.debug(f"Cleared state for {symbol} ({strategy_name})")
     except Exception as e:
         logger.error(f"Failed to clear state for {symbol}: {e}")

@@ -1,19 +1,18 @@
 import logging
 import datetime
-from typing import Dict, Optional, Tuple, Any, List
+from typing import Dict, Optional, Tuple, Any
 import pandas as pd
-import ta
 import numpy as np
 from core.config import get_config
 from core.candle_utils import get_closed_candle_index
-from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
+from strategies.base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
 def format_time(ts_ms): 
     return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
 
-class DonchianChannelStrategy:
+class DonchianChannelStrategy(BaseStrategy):
     """
     Donchian Channel Strategy (Gold Both directions)
     
@@ -27,12 +26,13 @@ class DonchianChannelStrategy:
     """
     
     def __init__(self, symbol: str = "ARCUSD"):
+        super().__init__(symbol, "donchian_channel")
+        
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("donchian_channel", {})
 
         # Parameters
-        self.symbol = symbol  # Passed from runner/config
         self.trade_mode = cfg.get("trade_mode", "Both") # "Long", "Short", "Both"
         self.enter_period = cfg.get("enter_period", 20)
         self.exit_period = cfg.get("exit_period", 10)
@@ -43,40 +43,26 @@ class DonchianChannelStrategy:
         self.partial_pct = cfg.get("partial_pct", 0.5)
         self.stop_loss_pct = cfg.get("stop_loss_pct", None)  # Fixed stop loss % (e.g. 0.50 for 50%)
 
-        # Profit Milestone Exits (works alongside ATR partial TP)
-        self.enable_profit_milestones = cfg.get("enable_profit_milestones", False)
-        self.profit_milestones = cfg.get("profit_milestones", [])
-        
-        # Determine bars_per_day dynamically based on timeframe
-        # timeframe format e.g. "1h", "2h", "4h", "6h", "1d", "180m"
-        self.timeframe = "1h" # Default, will be set by runner
-        
+
         # Use provided bars_per_day as fallback, otherwise calculate
         default_bars = cfg.get("bars_per_day", 24)
         self.bars_per_day = default_bars
         self.min_long_days = cfg.get("min_long_days", 0)  # Changed default to 0
         self.min_long_bars = self.bars_per_day * self.min_long_days
+
         # NEW: EMA Filter
         self.ema_length = cfg.get("ema_length", 100)
         self.ema_source = cfg.get("ema_source", "close")  # close, open, high, low
+
         # Mode Flags
         self.allow_long = self.trade_mode in ["Long", "Both"]
         self.allow_short = self.trade_mode in ["Short", "Both"]
         
         self.indicator_label = "Donchian"
-        
-        # Leverage (set by runner from trade_config; used to convert price PnL% to margin PnL%)
-        self.leverage: int = 1
 
-        # State
-        self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat
-        self.last_entry_price = 0.0
-        self.entry_price = None
-        self.entry_bar_index = None
+        # Unique State (Persisted via extra_data)
         self.tp_level = None
-        self.trailing_stop_level = None
         self.partial_exit_done = False
-        self.milestones_hit = [False] * len(self.profit_milestones)
         self.initial_sl_price = None  # Initial hard stop loss price
 
         # Duration State
@@ -89,12 +75,8 @@ class DonchianChannelStrategy:
         self.last_atr = 0.0
         self.last_ema = 0.0  # NEW: EMA Cache
         
-        # Trade History
-        self.trades = []
-        self.active_trade = None
-        
-        # Action Tracking (One action per candle rule)
-        self.last_action_candle_ts = None
+        # Load persistent state
+        self._load_from_disk()
         
     def _update_bars_per_day(self, timeframe: str):
         """Update bars_per_day and min_long_bars based on timeframe."""
@@ -144,6 +126,9 @@ class DonchianChannelStrategy:
             low_close = np.abs(df['low'] - df['close'].shift())
             true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
             atr_series = true_range.ewm(span=self.atr_period, adjust=False).mean()
+            
+            # New: Standardized ATR for Global Risk-Based Sizing
+            self._calculate_atr(df, self.atr_period)
             
             # NEW: EMA Calculation
             ema_src = df[self.ema_source] if self.ema_source in df.columns else df['close']
@@ -278,43 +263,6 @@ class DonchianChannelStrategy:
             elif self.current_position == -1 and current_price <= self.tp_level:
                 return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} <= {self.tp_level:.4f}"
 
-        # 3b. Profit Milestone Exits (live price, independent of ATR partial TP)
-        if self.enable_profit_milestones and self.current_position != 0:
-            pnl_pct = 0.0
-            pnl_source = "Manual"
-            
-            # Use Exchange Unrealized Margin PnL if available (User Priority)
-            if live_pos_data:
-                unrealized_pnl = float(live_pos_data.get('unrealized_pnl', 0.0))
-                margin = float(live_pos_data.get('margin', 0.0))
-                if margin > 0:
-                    pnl_pct = (unrealized_pnl / margin) * 100.0
-                    pnl_source = "Exchange"
-                    # No need for manual calculation or leverage adjustment as margin PnL is absolute
-                else:
-                    # Fallback to manual if margin is zero (unexpected)
-                    if self.entry_price:
-                        if self.current_position == 1:
-                            pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
-                        else:
-                            pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
-            elif self.entry_price:
-                # Manual Fallback (Backtesting or API failure)
-                if self.current_position == 1:
-                    pnl_pct = ((current_price - self.entry_price) / self.entry_price) * 100 * self.leverage
-                else:
-                    pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
-
-            for idx, milestone in enumerate(self.profit_milestones):
-                if self.milestones_hit[idx]:
-                    continue
-                pnl_threshold = milestone["pnl_pct"]
-                exit_pct = milestone["exit_pct"]
-                if pnl_pct >= pnl_threshold:
-                    return "MILESTONE_EXIT", (
-                        f"Milestone {idx + 1}: {pnl_source} PnL {pnl_pct:.1f}% >= {pnl_threshold}%"
-                        f" | exit_pct={exit_pct}"
-                    )
 
         # 4. Entry/Exit Logic (Closed Candle)
         
@@ -465,29 +413,30 @@ class DonchianChannelStrategy:
                 self.active_trade["partial_exit"] = True
 
         elif action == "MILESTONE_EXIT":
-            # Parse milestone index from reason string
-            milestone_idx = 0
-            exit_pct = 0.0
-            if reason:
+            if self.active_trade:
+                # Extract milestone index and exit percentage from reason
                 import re
+                milestone_idx = 0
+                exit_pct = 0.0
                 match = re.search(r"Milestone (\d+):", reason)
                 if match:
                     milestone_idx = int(match.group(1)) - 1
-            
-            if 0 <= milestone_idx < len(self.profit_milestones):
-                self.milestones_hit[milestone_idx] = True
-                exit_pct = self.profit_milestones[milestone_idx].get("exit_pct", 0.0)
                 
-            if self.active_trade:
+                if 0 <= milestone_idx < len(self.profit_milestones):
+                    milestone = self.profit_milestones[milestone_idx]
+                    exit_pct = milestone.get("exit_pct", 0.0) if isinstance(milestone, dict) else getattr(milestone, "exit_pct", 0.0)
+                    self.milestones_hit[milestone_idx] = True
+
                 milestone_trade = self.active_trade.copy()
                 milestone_trade["exit_time"] = format_time(current_time_ms)
                 milestone_trade["exit_price"] = price
                 milestone_trade["status"] = f"MILESTONE_{milestone_idx + 1}"
-                milestone_trade["exit_pct"] = exit_pct  # Track exit percentage
-                entry = float(self.active_trade['entry_price'])
+                milestone_trade["exit_pct"] = exit_pct
+                entry = float(self.active_trade.get('entry_price', price))
                 milestone_trade["points"] = price - entry if self.current_position == 1 else entry - price
                 self.trades.append(milestone_trade)
                 self.active_trade["milestone_exit"] = True
+
 
         elif action == "EXIT_LONG":
             self.current_position = 0
@@ -524,7 +473,7 @@ class DonchianChannelStrategy:
             self.tp_level = None
             self.trailing_stop_level = None
             self.partial_exit_done = False
-            self.milestones_hit = [False] * len(self.profit_milestones)
+            self.reset_milestones()
             self.long_entry_bar = None
             self.initial_sl_price = None
 
@@ -545,7 +494,7 @@ class DonchianChannelStrategy:
             self.tp_level = None
             self.trailing_stop_level = None
             self.partial_exit_done = False
-            self.milestones_hit = [False] * len(self.profit_milestones)
+            self.reset_milestones()
             self.initial_sl_price = None
         
         # PERSIST TO DISK
@@ -557,49 +506,36 @@ class DonchianChannelStrategy:
 
     def _save_to_disk(self):
         """Save current trade flags to disk for persistence across restarts."""
-        try:
-            if self.current_position == 0:
-                # Flat position -> delete the state file to stay clean.
-                clear_strategy_state(self.symbol, "donchian_channel")
-                return
+        if self.current_position == 0:
+            self.clear_state()
+            return
 
-            # Active position -> save the state.
-            state = {
-                "partial_exit_done": self.partial_exit_done,
-                "milestones_hit": self.milestones_hit,
-                "entry_price": self.entry_price,
-                "tp_level": self.tp_level,
-                "trailing_stop_level": self.trailing_stop_level,
-                "initial_sl_price": self.initial_sl_price,
-                "current_position": self.current_position
-            }
-            save_strategy_state(self.symbol, "donchian_channel", state)
-        except Exception as e:
-            logger.error(f"Error managing strategy state for {self.symbol}: {e}")
+        extra = {
+            "partial_exit_done": self.partial_exit_done,
+            "milestones_hit": self.milestones_hit,
+            "tp_level": self.tp_level,
+            "initial_sl_price": self.initial_sl_price
+        }
+        self.save_state(extra_data=extra)
 
     def _load_from_disk(self) -> bool:
         """
         Attempt to restore trade flags from disk.
         Returns True if state was successfully restored.
         """
-        try:
-            state = load_strategy_state(self.symbol, "donchian_channel")
-            if not state:
-                return False
-            
-            self.partial_exit_done = state.get("partial_exit_done", False)
-            self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
-            
-            # Restore levels if they aren't already set
-            if getattr(self, 'tp_level', None) is None: self.tp_level = state.get("tp_level")
-            if getattr(self, 'trailing_stop_level', None) is None: self.trailing_stop_level = state.get("trailing_stop_level")
-            if getattr(self, 'initial_sl_price', None) is None: self.initial_sl_price = state.get("initial_sl_price")
-            
-            logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}, Milestones={self.milestones_hit}")
-            return True
-        except Exception as e:
-            logger.warning(f"Error loading strategy state for {self.symbol}: {e}")
+        state = self.load_state()
+        if not state:
             return False
+            
+        self.partial_exit_done = state.get("partial_exit_done", False)
+        self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
+        
+        # Restore levels if they aren't already set
+        if self.tp_level is None: self.tp_level = state.get("tp_level")
+        if self.initial_sl_price is None: self.initial_sl_price = state.get("initial_sl_price")
+        
+        logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}, Milestones={self.milestones_hit}")
+        return True
 
     def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None):
         """Reconcile internal strategy state with Live Exchange position."""
@@ -643,7 +579,7 @@ class DonchianChannelStrategy:
             
             if truly_new_position:
                 # Genuinely flipped direction -> reset all flags
-                self.milestones_hit = [False] * len(self.profit_milestones)
+                self.reset_milestones()
                 self.partial_exit_done = False
                 clear_strategy_state(self.symbol, "donchian_channel") # Clean slate
             
@@ -671,7 +607,7 @@ class DonchianChannelStrategy:
                 self.trailing_stop_level = None
                 self.initial_sl_price = None
                 self.partial_exit_done = False
-                self.milestones_hit = [False] * len(self.profit_milestones)
+                self.reset_milestones()
                 clear_strategy_state(self.symbol, "donchian_channel")
 
         # CATCH-UP LOGIC: We used to mark milestones as ALREADY HIT here if PnL exceeded threshold.
@@ -697,7 +633,7 @@ class DonchianChannelStrategy:
         self.trailing_stop_level = None
         self.last_long_duration_bars = 0
         self.long_entry_bar = None
-        self.milestones_hit = [False] * len(self.profit_milestones)
+        self.reset_milestones()
 
         if df.empty: return
         
@@ -795,7 +731,7 @@ class DonchianChannelStrategy:
                     self.trailing_stop_level = close - (atr * self.atr_mult_trail)
                     self.long_entry_bar = i
                     self.partial_exit_done = False
-                    self.milestones_hit = [False] * len(self.profit_milestones)
+                    self.reset_milestones()
 
                 # Short: Breakdown AND close < EMA
                 elif self.allow_short and close <= lower_prev and close < ema:
@@ -806,7 +742,7 @@ class DonchianChannelStrategy:
                         self.tp_level = close - (atr * self.atr_mult_tp)
                         self.trailing_stop_level = close + (atr * self.atr_mult_trail)
                         self.partial_exit_done = False
-                        self.milestones_hit = [False] * len(self.profit_milestones)
+                        self.reset_milestones()
             
             # Exits (Channel) by Signal
             elif self.current_position == 1:

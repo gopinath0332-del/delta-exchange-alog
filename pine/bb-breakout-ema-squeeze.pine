@@ -11,26 +11,32 @@ bbLength = input.int(20, "BB Length")
 bbMult = input.float(2.0, "BB Multiplier")
 src = input.source(close, "Source")
 
-// EMA Trend Filter
-useEMA = input.bool(true, "Use EMA Filter")
-emaLength = input.int(200, "EMA Length")
+// EMA Trend Filter (current timeframe)
+useEMA    = input.bool(true, "Use EMA Filter")
+emaLength = input.int(100, "EMA Length")
+
+// HTF Trend Filter
+useHTF    = input.bool(true,  "Use HTF Trend Filter", tooltip="Only trade in the direction of a higher timeframe trend.")
+htfTF     = input.timeframe("240", "HTF Timeframe", tooltip="e.g. 60=1H, 240=4H, D=Daily. Use a TF higher than your chart.")
+htfLength = input.int(100, "HTF EMA Length", minval=1, tooltip="EMA length on the higher timeframe.")
 
 // Trade Mode
 tradeMode = input.string("BOTH", "Trade Mode", options=["LONG", "SHORT", "BOTH"])
 
-// ATR Stop Loss
-useSL = input.bool(true, "Use ATR Stop Loss")
-atrLength = input.int(14, "ATR Length")
-atrMult = input.float(2.0, "ATR Multiplier")
+// ATR Trailing Stop Loss
+useSL     = input.bool(true,  "Use Trailing Stop Loss")
+atrLength = input.int(14,     "ATR Length")
+atrMult   = input.float(2.0,  "ATR Multiplier")
 
-// Squeeze Filter
-useSqueeze = input.bool(true, "Use Squeeze Filter")
-squeezeThreshold = input.float(0.05, "BB Width Threshold")
+// Squeeze Filter (TTM Squeeze: BB inside Keltner Channels)
+useSqueeze    = input.bool(true, "Use Squeeze Filter")
+kcMult        = input.float(1.5, "KC Multiplier", minval=0.1, step=0.1, tooltip="Keltner Channel multiplier. Standard TTM Squeeze uses 1.5")
+squeezeWindow = input.int(10, "Squeeze Window (bars)", minval=1, maxval=20, tooltip="Allow entry within N bars after squeeze fires. Squeeze releases first, BB breakout follows a few bars later.")
 
-// Volume Filter
-useVolume = input.bool(true, "Use Volume Filter")
-volLength = input.int(20, "Volume MA Length")
-volMultiplier = input.float(1.5, "Volume Multiplier")
+// RVOL (Relative Volume) Filter
+useVolume = input.bool(true, "Use RVOL Filter", tooltip="Only enter when current bar volume is N× the average. Filters low-conviction breakouts.")
+volLength = input.int(20, "RVOL Lookback (bars)", minval=5, maxval=100)
+rvolMin   = input.float(1.5, "Min RVOL Threshold", minval=0.5, step=0.1, tooltip="1.5 = volume must be at least 1.5× the average. Raise to 2.0 for higher conviction only.")
 
 // ===== CALCULATIONS ===== //
 
@@ -40,19 +46,33 @@ dev = bbMult * ta.stdev(src, bbLength)
 upper = basis + dev
 lower = basis - dev
 
-// BB Width
-bbWidth = (upper - lower) / basis
-isSqueeze = bbWidth < squeezeThreshold
-
-// EMA
-ema = ta.ema(close, emaLength)
-
-// ATR
+// ATR (must be defined before Keltner Channels)
 atr = ta.atr(atrLength)
 
-// Volume
-volMA = ta.sma(volume, volLength)
-highVolume = volume > volMA * volMultiplier
+// TTM Squeeze: Squeeze is ON when BB is fully inside Keltner Channels
+kcUpper = basis + kcMult * atr
+kcLower = basis - kcMult * atr
+// Squeeze ON  → BB completely inside KC (low volatility, coiling)
+isSqueeze    = upper < kcUpper and lower > kcLower
+wasInSqueeze = upper[1] < kcUpper[1] and lower[1] > kcLower[1]
+// Squeeze Release: BB breaks outside KC on this exact bar
+squeezeRelease = wasInSqueeze and not isSqueeze
+// Recent Release: squeeze fired within the last N bars (breakout usually follows a few bars after)
+recentRelease = ta.barssince(squeezeRelease) <= squeezeWindow
+
+// EMA (current timeframe)
+ema = ta.ema(close, emaLength)
+
+// HTF EMA — fetched from the higher timeframe, no look-ahead bias
+htfEma = request.security(syminfo.tickerid, htfTF, ta.ema(close, htfLength), lookahead=barmerge.lookahead_off)
+// Trend bias from HTF perspective
+htfBullish = close > htfEma   // HTF says uptrend  → only longs
+htfBearish = close < htfEma   // HTF says downtrend → only shorts
+
+// RVOL: Relative Volume = current volume / average volume
+volMA  = ta.sma(volume, volLength)
+rvol   = volume / volMA                  // e.g. 2.3 means 2.3× average volume
+highVolume = rvol >= rvolMin             // true when conviction is above threshold
 
 // ===== ENTRY CONDITIONS ===== //
 
@@ -61,11 +81,16 @@ longBreakout = ta.crossover(close, upper)
 shortBreakout = ta.crossunder(close, lower)
 
 // Apply filters
-longEntry = longBreakout and (not useEMA or close > ema) and (not useSqueeze or isSqueeze) and (not useVolume or highVolume)
-shortEntry = shortBreakout and 
-             (not useEMA or close < ema) and 
-             (not useSqueeze or isSqueeze) and 
-             (not useVolume or highVolume)
+longEntry = longBreakout and
+             (not useEMA    or close > ema) and
+             (not useSqueeze or recentRelease) and
+             (not useVolume  or highVolume) and
+             (not useHTF     or htfBullish)
+shortEntry = shortBreakout and
+             (not useEMA    or close < ema) and
+             (not useSqueeze or recentRelease) and
+             (not useVolume  or highVolume) and
+             (not useHTF     or htfBearish)
 
 // ===== EXIT CONDITIONS ===== //
 
@@ -91,31 +116,57 @@ if canTrade and (tradeMode == "SHORT" or tradeMode == "BOTH")
     if shortExit
         strategy.close("Short")
 
-// ===== STOP LOSS ===== //
+// ===== TRAILING STOP LOSS ===== //
+
+var float trailLongSL  = na
+var float trailShortSL = na
+
+if strategy.position_size > 0
+    // Ratchet SL upward as price rises — never pulls back down
+    trailLongSL  := math.max(nz(trailLongSL, low), close - atr * atrMult)
+else if strategy.position_size < 0
+    // Ratchet SL downward as price falls — never pulls back up
+    trailShortSL := math.min(nz(trailShortSL, high), close + atr * atrMult)
+else
+    trailLongSL  := na
+    trailShortSL := na
 
 if useSL
-    longSL = strategy.position_avg_price - atr * atrMult
-    shortSL = strategy.position_avg_price + atr * atrMult
-
-    strategy.exit("Long SL", from_entry="Long", stop=longSL)
-    strategy.exit("Short SL", from_entry="Short", stop=shortSL)
+    strategy.exit("Long TSL",  from_entry="Long",  stop=trailLongSL)
+    strategy.exit("Short TSL", from_entry="Short", stop=trailShortSL)
 
 // ===== VISUALS ===== //
 
-plot(basis, color=color.blue)
-plot(upper, color=color.red)
-plot(lower, color=color.green)
-plot(ema, color=color.orange)
+plot(basis, color=color.blue,   title="BB Basis")
+plot(upper, color=color.red,    title="BB Upper")
+plot(lower, color=color.green,  title="BB Lower")
+plot(ema,   color=color.orange, title="EMA")
 
-// Squeeze highlight
-bgcolor(isSqueeze ? color.new(color.yellow, 85) : na)
+// HTF EMA — thick purple line, represents the higher timeframe trend direction
+htfEmaColor = htfBullish ? color.new(color.purple, 0) : color.new(color.maroon, 0)
+plot(useHTF ? htfEma : na, title="HTF EMA", color=htfEmaColor, linewidth=3, style=plot.style_line)
 
-// Position background
-inLong = strategy.position_size > 0
+// Trailing SL — orange line, only visible while in a trade
+activeTSL = strategy.position_size > 0 ? trailLongSL : strategy.position_size < 0 ? trailShortSL : na
+plot(activeTSL, title="Trailing SL", color=color.new(color.orange, 0), style=plot.style_linebr, linewidth=2)
+
+// Background: position takes priority over squeeze highlight
+inLong  = strategy.position_size > 0
 inShort = strategy.position_size < 0
+bg = inLong ? color.new(color.green, 85) : inShort ? color.new(color.red, 85) : isSqueeze ? color.new(color.yellow, 85) : na
+bgcolor(bg)
 
-bgcolor(inLong ? color.new(color.green, 85) : na)
-bgcolor(inShort ? color.new(color.red, 85) : na)
+// Squeeze Release marker — small triangle when TTM squeeze fires
+plotshape(squeezeRelease, title="Squeeze Fire", location=location.belowbar,
+          style=shape.triangleup, color=color.fuchsia, size=size.tiny, text="SQ")
+
+// RVOL label on entry bars — shows the actual ratio so you can validate conviction
+if longEntry or shortEntry
+    rvolText  = "RVOL: " + str.tostring(math.round(rvol, 2)) + "×"
+    labelColor = rvol >= rvolMin ? color.new(color.teal, 20) : color.new(color.gray, 40)
+    label.new(bar_index, longEntry ? lower - atr : upper + atr,
+              text=rvolText, style=label.style_label_up,
+              color=labelColor, textcolor=color.white, size=size.small)
 
 // ===== ALERTS ===== //
 

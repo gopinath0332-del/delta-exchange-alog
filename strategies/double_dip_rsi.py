@@ -21,7 +21,7 @@ class DoubleDipRSIStrategy:
     - Partial Exit (50%): Entry +/- (ATR * Multiplier)
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("double_dip_rsi", {})

@@ -12,16 +12,19 @@ Strategy Logic (from btc-ema-cross.pine):
 """
 
 import logging
+import datetime
 from typing import Dict, Optional, Tuple, Any
 import pandas as pd
 import numpy as np
 from core.config import get_config
 from core.candle_utils import get_closed_candle_index
+from strategies.base_strategy import BaseStrategy
+from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
 
 logger = logging.getLogger(__name__)
 
 
-class EMACrossStrategy:
+class EMACrossStrategy(BaseStrategy):
     """
     EMA Crossover Strategy for BTCUSD (10/20 EMA)
     
@@ -30,7 +33,9 @@ class EMACrossStrategy:
     - Bearish Cross (10 EMA < 20 EMA): Short Entry / Long Exit
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
+        super().__init__(symbol, "ema_cross")
+        
         # Load Configuration from settings.yaml
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("ema_cross", {})
@@ -41,6 +46,9 @@ class EMACrossStrategy:
         self.slow_ema_length = cfg.get("slow_ema_length", 20)
         self.allow_flip = cfg.get("allow_flip", True)  # Allow same-bar close & reverse
         
+        # Persistence
+        self.load_state()
+
         # Mode Flags
         self.allow_long = self.trade_mode in ["Long", "Both"]
         self.allow_short = self.trade_mode in ["Short", "Both"]
@@ -48,11 +56,6 @@ class EMACrossStrategy:
         # Dashboard Label
         self.indicator_label = "EMA"
         self.timeframe = "4h"  # Default, can be overridden
-        
-        # Position State
-        self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat
-        self.last_entry_price = 0.0
-        self.entry_price = None
         
         # Indicator Cache (for dashboard display)
         self.last_fast_ema = 0.0
@@ -62,13 +65,6 @@ class EMACrossStrategy:
         self.last_closed_time_str = "-"
         self.last_closed_fast_ema = 0.0
         self.last_closed_slow_ema = 0.0
-        
-        # Trade History
-        self.trades = []
-        self.active_trade = None
-        
-        # Action Tracking
-        self.last_action_candle_ts = None
         
         logger.info(f"EMACrossStrategy initialized: Mode={self.trade_mode}, "
                    f"Fast EMA={self.fast_ema_length}, Slow EMA={self.slow_ema_length}, "
@@ -99,6 +95,9 @@ class EMACrossStrategy:
             fast_ema_series = close.ewm(span=self.fast_ema_length, adjust=False).mean()
             slow_ema_series = close.ewm(span=self.slow_ema_length, adjust=False).mean()
             
+            # Calculate ATR for risk-based sizing
+            self._calculate_atr(df, 14)
+
             current_fast_ema = fast_ema_series.iloc[-1]
             current_slow_ema = slow_ema_series.iloc[-1]
             

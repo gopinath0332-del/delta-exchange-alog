@@ -31,7 +31,15 @@ risk_management:
   max_leverage: 10 # Maximum leverage allowed
   position_sizing_type: "margin" # Default sizing method: "margin" or "atr"
   atr_margin_multiplier: 2.0 # Multiplier for ATR-based sizing
-  atr_margin_cap_multiplier: 1 # 1.5x safety cap on actual margin usage
+  atr_margin_cap_multiplier: 1 # 1x safety cap on actual margin usage
+
+  # Global Profit Milestones (takes 30% at >=50% PnL, another 30% at >=100% PnL)
+  enable_profit_milestones: true
+  profit_milestones:
+    - pnl_pct: 50.0 # Trigger at 50% Unrealized Margin PnL
+      exit_pct: 0.30 # Exit 30% of the current active position size
+    - pnl_pct: 100.0 # Trigger at 100% Unrealized Margin PnL
+      exit_pct: 0.30 # Exit 30% of the remaining active position size
 
 # Notification Settings
 notifications:
@@ -112,13 +120,6 @@ strategies:
     atr_mult_trail: 2.0 # ATR multiplier for trailing stop
     enable_partial_tp: true # Enable partial TP by default (updated from Pine)
     partial_pct: 0.5 # 50% partial exit when enabled
-    # Profit Milestone Exits (works alongside ATR partial TP)
-    enable_profit_milestones: true
-    profit_milestones:
-      - pnl_pct: 50 # When PnL >= 50%
-        exit_pct: 0.30 # Sell 30% of remaining position
-      - pnl_pct: 100 # When PnL >= 100%
-        exit_pct: 0.30 # Sell another 30% of remaining
     bars_per_day: 24 # For 1H timeframe
     min_long_days: 0 # Minimum long duration (set to 0 per Pine script)
     # NEW: EMA Trend Filter
@@ -137,6 +138,32 @@ strategies:
     slow_ema_length: 20 # Slow EMA period
     allow_flip: true # Allow same-bar close & reverse
 
+  # BB Breakout + TTM Squeeze + RVOL + EMA + HTF Strategy
+  bb_breakout:
+    trade_mode: "Both" # "Long", "Short", "Both"
+    bb_length: 20 # Bollinger Band period
+    bb_mult: 2.0 # Bollinger Band standard deviation multiplier
+    atr_length: 14 # ATR period (used for trailing SL and KC)
+    atr_mult: 2.0 # ATR multiplier for the trailing stop loss
+    use_atr_sl: false # Set to false to disable the ATR trailing stop loss entirely
+    # EMA Trend Filter (current timeframe)
+    use_ema: true
+    ema_length: 100 # EMA period on the chart timeframe
+    # TTM Squeeze Filter (BB inside Keltner Channels)
+    use_squeeze: true
+    kc_mult: 1.5 # Keltner Channel ATR multiplier (standard TTM = 1.5)
+    squeeze_window: 10 # Allow entry within N bars after squeeze fires
+    # RVOL Filter (Relative Volume)
+    use_volume: true
+    vol_length: 20 # Volume moving average lookback
+    rvol_min: 1.5 # Min Relative Volume (1.5 = 1.5x average)
+    # HTF Trend Filter (simulated: 1H EMA length = htf_ema_length * htf_multiplier)
+    use_htf: true
+    htf_multiplier: 4 # 4 = simulate 4H on 1H data (4 * 100 = EMA 400)
+    htf_ema_length: 100 # EMA length on the simulated HTF (matches Pine htfLength=100)
+    # Data
+    historical_days: 60 # Days of history to fetch for warmup/backtest
+
 # Multi-Coin Service Configuration
 # Defines symbol groups that can be run together in a single process via
 # `python run_terminal.py --multi-coin <strategy_name> --non-interactive`.
@@ -144,6 +171,7 @@ strategies:
 # in-process threading.Lock in RateLimiter naturally serializes all API calls.
 multi_coin:
   donchian_channel:
+    mode: live
     symbols:
       - symbol: BIOUSD
         timeframe: 4h
@@ -169,7 +197,59 @@ multi_coin:
         position_sizing_type: "atr" # Switch from "margin" to "atr"
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         log_file: logs/arc.log
-####### EVERY TIME NEW COIN ADDED TO THE LIST, MAKE SURE ADD ENTRY IN .ENV FILE.########
+  bb_breakout:
+    mode: paper
+    symbols:
+      - symbol: "SOLUSD"
+        timeframe: "2h"
+        candle_type: "heikin-ashi"
+        leverage: 5
+        target_margin: 50
+        position_sizing_type: "atr" # Switch from "margin" to "atr"
+        atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
+        log_file: "logs/sol.log"
+      - symbol: "RIVERUSD"
+        timeframe: "1h"
+        candle_type: "heikin-ashi"
+        leverage: 5
+        target_margin: 50
+        position_sizing_type: "atr" # Switch from "margin" to "atr"
+        atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
+        log_file: "logs/sol.log"
+####### EVERY TIME A NEW COIN IS ADDED, ADD IT UNDER single_coin (and multi_coin if applicable) IN settings.yaml ########
+
+# Single-Coin Symbol Settings
+# Used for strategies launched individually (e.g. python run_terminal.py --strategy 9).
+# Key = base asset name: symbol with USD stripped, uppercase (matches base_asset in get_trade_config).
+# The global ENABLE_ORDER_PLACEMENT in .env is the only kill-switch for order execution.
+single_coin:
+  PIPPIN:
+    leverage: 5
+    target_margin: 50
+  BIO:
+    leverage: 5
+    target_margin: 50
+  ARC:
+    leverage: 5
+    target_margin: 50
+  RIVER:
+    leverage: 5
+    target_margin: 50
+  BERA:
+    leverage: 5
+    target_margin: 50
+  PAXG:
+    leverage: 5
+    target_margin: 30
+  BTC:
+    leverage: 5
+    target_margin: 50
+  ETH:
+    leverage: 5
+    target_margin: 50
+  XRP:
+    leverage: 5
+    target_margin: 50
 
 # Firestore Configuration (for trade journaling)
 firestore:

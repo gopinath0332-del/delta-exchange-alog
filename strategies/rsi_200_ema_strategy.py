@@ -6,7 +6,12 @@ from core.config import get_config
 
 logger = logging.getLogger(__name__)
 
-class RSI200EMAStrategy:
+from strategies.base_strategy import BaseStrategy
+from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
+
+logger = logging.getLogger(__name__)
+
+class RSI200EMAStrategy(BaseStrategy):
     """
     RSI + 200 EMA Strategy for ETHUSD (3H) with Partial TP and ATR Trailing Stop.
     
@@ -26,7 +31,9 @@ class RSI200EMAStrategy:
     - ATR Multiplier for Trailing SL: 2.5
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
+        super().__init__(symbol, "rsi_200_ema")
+        
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("rsi_200_ema", {})
@@ -42,23 +49,23 @@ class RSI200EMAStrategy:
         self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Enable partial TP by default
         self.partial_pct = cfg.get("partial_pct", 0.5)
         
+        # Persistence
+        self.load_state()
+
         self.indicator_label = "RSI"
         
         # Timeframe (set by runner, defaults to 1h)
         self.timeframe = "1h"
         
         # State
-        self.current_position = 0  # 1 for Long, 0 for Flat
-        self.last_entry_price = 0.0
-        self.entry_price = None  # Entry price for current position
         self.tp_level = None  # Take profit level
-        self.trailing_stop_level = None  # Trailing stop level
         self.partial_exit_done = False  # Flag for partial exit
         
         # Indicator Cache (for dashboard)
         self.last_rsi = 0.0
         self.last_ema = 0.0
-        self.last_atr = 0.0
+        
+        logger.info(f"RSI200EMAStrategy initialized for {symbol}")
         
         # Trade History
         self.trades = []
@@ -89,17 +96,13 @@ class RSI200EMAStrategy:
             # RSI
             rsi_series = ta.momentum.rsi(df['close'], window=self.rsi_length)
             
-            # ATR
-            atr_series = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=self.atr_length)
-            
-            current_ema = ema_series.iloc[-1]
-            current_rsi = rsi_series.iloc[-1]
-            current_atr = atr_series.iloc[-1]
+            # ATR - Standardized via BaseStrategy
+            current_atr = self._calculate_atr(df, self.atr_length)
             
             # Cache for dashboard (Live)
             self.last_ema = current_ema
             self.last_rsi = current_rsi
-            self.last_atr = current_atr
+            # self.last_atr is updated inside _calculate_atr
             
             # Dynamic Closed Candle Logic (for 3-hour candles)
             last_candle_ts = df['time'].iloc[-1]

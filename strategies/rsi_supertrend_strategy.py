@@ -7,7 +7,12 @@ from core.config import get_config
 
 logger = logging.getLogger(__name__)
 
-class RSISupertrendStrategy:
+from strategies.base_strategy import BaseStrategy
+from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
+
+logger = logging.getLogger(__name__)
+
+class RSISupertrendStrategy(BaseStrategy):
     """
     RSI with Supertrend Strategy for RIVERUSD (1H Standard Candles).
     
@@ -24,8 +29,10 @@ class RSISupertrendStrategy:
     - Supertrend Multiplier: 2.0
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
         """Initialize the RSI-Supertrend strategy with configuration parameters."""
+        super().__init__(symbol, "rsi_supertrend")
+        
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("rsi_supertrend", {})
@@ -36,31 +43,22 @@ class RSISupertrendStrategy:
         
         # Supertrend Parameters
         self.atr_length = cfg.get("atr_length", 10)
-        self.atr_multiplier = cfg.get("atr_multiplier", 2.0)
+        self.atr_multiplier_st = cfg.get("atr_multiplier", 2.0)
         
+        # Persistence
+        self.load_state()
+
         self.indicator_label = "RSI"
         
         # Timeframe (set by runner, defaults to 1h)
         self.timeframe = "1h"
-        
-        # State
-        self.current_position = 0  # 1 for Long, 0 for Flat
-        self.last_entry_price = 0.0
         
         # Indicator Cache (for dashboard)
         self.last_rsi = 0.0
         self.last_supertrend = 0.0
         self.last_supertrend_dir = 0
         
-        # Closed candle cache
-        self.last_closed_time_str = "-"
-        self.last_closed_rsi = 0.0
-        self.last_closed_supertrend = 0.0
-        self.last_closed_supertrend_dir = 0
-        
-        # Trade History
-        self.trades = []
-        self.active_trade = None
+        logger.info(f"RSISupertrendStrategy initialized for {symbol}")
         
     def calculate_supertrend(self, df: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
         """
@@ -105,8 +103,8 @@ class RSISupertrendStrategy:
             hl2 = (high + low) / 2.0
             
             # Calculate basic upper and lower bands
-            basic_ub = hl2 + (self.atr_multiplier * atr)
-            basic_lb = hl2 - (self.atr_multiplier * atr)
+            basic_ub = hl2 + (self.atr_multiplier_st * atr)
+            basic_lb = hl2 - (self.atr_multiplier_st * atr)
             
             # Initialize final bands
             final_ub = np.zeros(n)
@@ -192,6 +190,9 @@ class RSISupertrendStrategy:
             # Calculate RSI
             rsi_series = ta.momentum.rsi(df['close'], window=self.rsi_length)
             
+            # ATR for Risk-Based Sizing
+            self._calculate_atr(df, 14)
+
             # Calculate Supertrend
             supertrend_series, direction_series = self.calculate_supertrend(df)
             

@@ -5,9 +5,12 @@ import ta
 from core.config import get_config
 from core.candle_utils import get_closed_candle_index
 
+from strategies.base_strategy import BaseStrategy
+from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
+
 logger = logging.getLogger(__name__)
 
-class RSI50EMAStrategy:
+class RSI50EMAStrategy(BaseStrategy):
     """
     RSI + 50 EMA Strategy for XRPUSD (1H).
     
@@ -21,7 +24,9 @@ class RSI50EMAStrategy:
     - RSI Entry Level: 40.0
     """
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTCUSD"):
+        super().__init__(symbol, "rsi_50_ema")
+        
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("rsi_50_ema", {})
@@ -31,25 +36,19 @@ class RSI50EMAStrategy:
         self.rsi_length = cfg.get("rsi_length", 14)
         self.rsi_entry_level = cfg.get("rsi_entry_level", 40.0)
         
+        # Persistence
+        self.load_state()
+
         self.indicator_label = "RSI"
         
         # Timeframe (set by runner, defaults to 1h)
         self.timeframe = "1h"
         
-        # State
-        self.current_position = 0  # 1 for Long, 0 for Flat
-        self.last_entry_price = 0.0
-        
         # Indicator Cache (for dashboard)
         self.last_rsi = 0.0
         self.last_ema = 0.0
         
-        # Trade History
-        self.trades = []
-        self.active_trade = None
-        
-        # Action Tracking
-        self.last_action_candle_ts = None
+        logger.info(f"RSI50EMAStrategy initialized for {symbol}")
         
     def calculate_indicators(self, df: pd.DataFrame, current_time: Optional[float] = None) -> Tuple[float, float]:
         """
@@ -70,6 +69,9 @@ class RSI50EMAStrategy:
             
             # RSI
             rsi_series = ta.momentum.rsi(df['close'], window=self.rsi_length)
+            
+            # ATR for Risk-Based Sizing
+            self._calculate_atr(df, 14)
             
             current_ema = ema_series.iloc[-1]
             current_rsi = rsi_series.iloc[-1]

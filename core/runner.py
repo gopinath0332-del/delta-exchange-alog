@@ -117,34 +117,34 @@ def run_strategy_terminal(
     # Ideally we'd use a strategy factory, but for now we hardcode BTCUSD Double Dip
     if strategy_name.lower() in ["btcusd", "double-dip", "doubledip"]:
         from strategies.double_dip_rsi import DoubleDipRSIStrategy
-        strategy = DoubleDipRSIStrategy()
+        strategy = DoubleDipRSIStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized DoubleDipRSIStrategy")
+        logger.info(f"Initialized DoubleDipRSIStrategy for {symbol}")
     elif strategy_name.lower() in ["cci-ema", "cciema"]:
         from strategies.cci_ema_strategy import CCIEMAStrategy
-        strategy = CCIEMAStrategy()
+        strategy = CCIEMAStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized CCIEMAStrategy")
+        logger.info(f"Initialized CCIEMAStrategy for {symbol}")
     elif strategy_name.lower() in ["rs-50-ema", "rsi-50-ema", "rsi50ema"]:
         from strategies.rsi_50_ema_strategy import RSI50EMAStrategy
-        strategy = RSI50EMAStrategy()
+        strategy = RSI50EMAStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized RSI50EMAStrategy")
+        logger.info(f"Initialized RSI50EMAStrategy for {symbol}")
     elif strategy_name.lower() in ["macd-psar-100ema", "macd_psar_100ema", "macdpsar"]:
         from strategies.macd_psar_100ema_strategy import MACDPSAR100EMAStrategy
-        strategy = MACDPSAR100EMAStrategy()
+        strategy = MACDPSAR100EMAStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized MACDPSAR100EMAStrategy")
+        logger.info(f"Initialized MACDPSAR100EMAStrategy for {symbol}")
     elif strategy_name.lower() in ["rsi-200-ema", "rsi_200_ema", "rsi200ema"]:
         from strategies.rsi_200_ema_strategy import RSI200EMAStrategy
-        strategy = RSI200EMAStrategy()
+        strategy = RSI200EMAStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized RSI200EMAStrategy")
+        logger.info(f"Initialized RSI200EMAStrategy for {symbol}")
     elif strategy_name.lower() in ["rsi-supertrend", "rsi_supertrend", "rsisupertrend"]:
         from strategies.rsi_supertrend_strategy import RSISupertrendStrategy
-        strategy = RSISupertrendStrategy()
+        strategy = RSISupertrendStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized RSISupertrendStrategy")
+        logger.info(f"Initialized RSISupertrendStrategy for {symbol}")
     elif strategy_name.lower() in ["donchian-channel", "donchian_channel", "donchianchannel"]:
         from strategies.donchian_strategy import DonchianChannelStrategy
         strategy = DonchianChannelStrategy(symbol=symbol)
@@ -152,9 +152,17 @@ def run_strategy_terminal(
         logger.info(f"Initialized DonchianChannelStrategy for {symbol}")
     elif strategy_name.lower() in ["ema-cross", "ema_cross", "emacross"]:
         from strategies.ema_cross_strategy import EMACrossStrategy
-        strategy = EMACrossStrategy()
+        strategy = EMACrossStrategy(symbol=symbol)
         strategy.timeframe = timeframe
-        logger.info("Initialized EMACrossStrategy")
+        logger.info(f"Initialized EMACrossStrategy for {symbol}")
+    elif strategy_name.lower() in ["bb-breakout", "bb_breakout", "bbbreakout"]:
+        from strategies.bb_breakout_strategy import BBBreakoutStrategy
+        strategy = BBBreakoutStrategy(symbol=symbol)
+        strategy.timeframe = timeframe
+        logger.info(f"Initialized BBBreakoutStrategy for {symbol}")
+    else:
+        logger.error(f"Unknown strategy name: {strategy_name}")
+        return
 
     # Update strategy-specific parameters that depend on timeframe
     if hasattr(strategy, '_update_bars_per_day'):
@@ -268,8 +276,10 @@ def run_strategy_terminal(
         except Exception as e:
             logger.warning(f"Failed to fetch wallet balance for startup: {e}")
     
+    mode_color = "1;32" if mode.lower() == "live" else "1;36"
     start_msg = (
         f"{symbol} {strategy_name} started on host: {hostname}\n"
+        f"Mode: \u001b[{mode_color}m{mode.upper()}\u001b[0m\n"
         f"Timeframe: {timeframe}\n"
         f"Candle Type: {candle_type}\n"
         f"Order Placement: {ansi_enabled_str}\n"
@@ -467,6 +477,10 @@ def run_strategy_terminal(
                           except TypeError:
                               action, reason = strategy.check_signals(df, current_time_ms)
 
+                          # Fallback: Check Global Profit Milestones if no primary action
+                          if not action and hasattr(strategy, 'check_profit_milestones'):
+                              action, reason = strategy.check_profit_milestones(price, live_pos_data)
+
                           # Extract latest indicator values for the dashboard
                           current_rsi = getattr(strategy, 'last_rsi', 0.0)
                           current_atr = getattr(strategy, 'last_atr', 0.0)
@@ -530,7 +544,10 @@ def run_strategy_terminal(
                              indicators = current_rsi
                          
                          # Execute Action (Update State) with CORRECT ARGUMENTS
-                         strategy.update_position_state(action, current_time_ms, indicators, exec_price, reason=reason)
+                         if action == "MILESTONE_EXIT" and hasattr(strategy, 'handle_milestone_state'):
+                             strategy.handle_milestone_state(reason, exec_price, current_time_ms)
+                         else:
+                             strategy.update_position_state(action, current_time_ms, indicators, exec_price, reason=reason)
                     else:
                         logger.error(f"Unexpected candle data format: {df.columns}")
                         time.sleep(10)
@@ -666,6 +683,31 @@ def run_strategy_terminal(
                          dashboard_lines.append(f"   Last Closed ({getattr(strategy, 'last_closed_time_str', '-')})")
                          dashboard_lines.append(f"     Fast EMA: ${strategy.last_closed_fast_ema:.{p_decimals}f}")
                          dashboard_lines.append(f"     Slow EMA: ${strategy.last_closed_slow_ema:.{p_decimals}f}")
+                elif strategy_name.lower() in ["bb-breakout", "bb_breakout", "bbbreakout"]: # BB Breakout Strategy
+                    price_now = closes.iloc[-1]
+                    dashboard_lines.append(f"   Price:      ${price_now:,.{p_decimals}f}")
+                    dashboard_lines.append(f"   BB Upper:   ${getattr(strategy, 'last_upper', 0.0):,.{p_decimals}f}")
+                    dashboard_lines.append(f"   BB Basis:   ${getattr(strategy, 'last_basis', 0.0):,.{p_decimals}f}")
+                    dashboard_lines.append(f"   BB Lower:   ${getattr(strategy, 'last_lower', 0.0):,.{p_decimals}f}")
+                    dashboard_lines.append(f"   ATR ({getattr(strategy, 'atr_length', 14)}):     {getattr(strategy, 'last_atr', 0.0):.6f}")
+                    sq_str = "ON (coiling)" if getattr(strategy, 'last_squeeze', False) else "OFF"
+                    sq_bars = getattr(strategy, '_bars_since_squeeze_fire', 999)
+                    sq_bars_str = f"{sq_bars}" if sq_bars < 999 else "n/a"
+                    dashboard_lines.append(f"   Squeeze:    {sq_str} | Bars since fire: {sq_bars_str}")
+                    rvol_val = getattr(strategy, 'last_rvol', 0.0)
+                    rvol_min = getattr(strategy, 'rvol_min', 1.5)
+                    rvol_flag = "✓" if rvol_val >= rvol_min else "✗"
+                    dashboard_lines.append(f"   RVOL:       {rvol_val:.2f}x (min {rvol_min}x) {rvol_flag}")
+                    dashboard_lines.append(f"   EMA ({getattr(strategy, 'ema_length', 100)}):   ${getattr(strategy, 'last_ema', 0.0):,.{p_decimals}f}")
+                    htf_ema = getattr(strategy, 'last_htf_ema', 0.0)
+                    htf_bias = "BULLISH" if closes.iloc[-1] > htf_ema else "BEARISH"
+                    htf_mult = getattr(strategy, 'htf_multiplier', 4)
+                    htf_len = getattr(strategy, 'htf_ema_length', 50)
+                    dashboard_lines.append(f"   HTF EMA ({htf_mult}x{htf_len}): ${htf_ema:,.{p_decimals}f} [{htf_bias}]")
+                    if getattr(strategy, 'use_atr_sl', True) and getattr(strategy, 'trailing_stop_level', None):
+                        dashboard_lines.append(f"   Trail Stop: ${strategy.trailing_stop_level:,.{p_decimals}f}")
+                    elif not getattr(strategy, 'use_atr_sl', True):
+                        dashboard_lines.append(f"   Trail Stop: DISABLED")
                 
                 dashboard_lines.append("-" * 80)
                 
@@ -979,3 +1021,129 @@ def run_multi_symbol_terminal(
             t.join()
     except KeyboardInterrupt:
         logger.info("Multi-coin service interrupted — shutting down all symbol threads.")
+
+
+def run_master_terminal(
+    config: Config,
+    mode: str,
+) -> None:
+    """
+    Run ALL strategies and symbols configured in settings.yaml multi_coin section.
+
+    All strategy/symbol combinations share:
+      - A single DeltaRestClient (and its internal RateLimiter).
+      - A single threading.Lock (cycle_lock) for one-at-a-time API cycles.
+      - A single startup wallet balance fetch.
+
+    This ensures that when the Pi reboots, all configured assets start in
+    a strictly serialized sequence, preventing any rate-limit bursts.
+    """
+    multi_coin_cfg = config.settings.get("multi_coin", {})
+    if not multi_coin_cfg:
+        logger.error("run_master_terminal: 'multi_coin' section missing in settings.yaml")
+        return
+
+    shared_client = DeltaRestClient(config)
+    shared_notifier = NotificationManager(config)
+
+    logger.info("Starting Master Multi-Strategy service...")
+
+    # Fetch wallet balance ONCE for all strategies and coins
+    shared_wallet_balance_str = "N/A"
+    try:
+        logger.info("Master Service: Fetching shared wallet balance once for all threads...")
+        wallet_data = shared_client.get_wallet_balance()
+        collateral_currency = "USD"
+        balance_obj = {}
+        if isinstance(wallet_data, list):
+            balance_obj = next(
+                (b for b in wallet_data if b.get("asset_symbol") == collateral_currency), {}
+            )
+        elif isinstance(wallet_data, dict):
+            data_source = wallet_data.get("result", wallet_data)
+            if isinstance(data_source, list):
+                balance_obj = next(
+                    (b for b in data_source if b.get("asset_symbol") == collateral_currency), {}
+                )
+            elif isinstance(data_source, dict):
+                balance_obj = (
+                    data_source
+                    if data_source.get("asset_symbol") == collateral_currency
+                    else data_source.get(collateral_currency, {})
+                )
+        if balance_obj:
+            shared_wallet_balance_str = (
+                f"${float(balance_obj.get('available_balance', 0.0)):,.2f}"
+            )
+        else:
+            data_source = (
+                wallet_data.get("result", wallet_data)
+                if isinstance(wallet_data, dict)
+                else wallet_data
+            )
+            if isinstance(data_source, list) and data_source:
+                fb = data_source[0]
+                shared_wallet_balance_str = f"${float(fb.get('available_balance', 0.0)):,.2f} ({fb.get('asset_symbol', '?')})"
+        logger.info(f"Master Service: Shared wallet balance: {shared_wallet_balance_str}")
+    except Exception as e:
+        logger.warning(f"Master Service: Failed to fetch shared wallet balance: {e}")
+
+    # Shared global cycle lock across ALL strategies and ALL symbols
+    cycle_lock = threading.Lock()
+
+    threads: List[threading.Thread] = []
+
+    # Iterate through each strategy type (e.g., 'donchian_channel', 'bb_breakout')
+    for strat_key, strat_cfg in multi_coin_cfg.items():
+        if not isinstance(strat_cfg, dict):
+            continue
+
+        # Strategy-level mode override (falls back to global mode)
+        strategy_mode = strat_cfg.get("mode", mode)
+
+        symbols_list = strat_cfg.get("symbols", [])
+        if not symbols_list:
+            continue
+
+        for sym_cfg in symbols_list:
+            symbol = sym_cfg["symbol"]
+            timeframe = sym_cfg.get("timeframe", "1h")
+            candle_type = sym_cfg.get("candle_type", "heikin-ashi")
+            log_file = sym_cfg.get("log_file")
+
+            # Symbol-level mode override (falls back to strategy-level, then global)
+            thread_mode = sym_cfg.get("mode", strategy_mode)
+
+            t = threading.Thread(
+                target=run_strategy_terminal,
+                args=(config, strat_key, symbol, thread_mode, candle_type, timeframe),
+                kwargs={
+                    "shared_client": shared_client,
+                    "shared_notifier": shared_notifier,
+                    "log_file": log_file,
+                    "prefetched_wallet_balance_str": shared_wallet_balance_str,
+                    "cycle_lock": cycle_lock,
+                    "symbol_settings": sym_cfg,
+                },
+                name=f"{strat_key}_{symbol}",
+                daemon=True,
+            )
+            threads.append(t)
+            logger.info(f"Master Service: Prepared thread for {symbol} ({strat_key})")
+
+    if not threads:
+        logger.error("Master Service: No threads were prepared. Check your multi_coin config.")
+        return
+
+    # Start all threads
+    for t in threads:
+        t.start()
+        logger.info(f"Master Service: Thread started: {t.name}")
+
+    # Block until interrupted
+    try:
+        for t in threads:
+            t.join()
+    except KeyboardInterrupt:
+        logger.info("Master Service interrupted — shutting down all threads.")
+
