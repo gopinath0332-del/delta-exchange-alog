@@ -171,6 +171,7 @@ strategies:
 # in-process threading.Lock in RateLimiter naturally serializes all API calls.
 multi_coin:
   donchian_channel:
+    mode: live
     symbols:
       - symbol: BIOUSD
         timeframe: 4h
@@ -197,6 +198,7 @@ multi_coin:
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         log_file: logs/arc.log
   bb_breakout:
+    mode: paper
     symbols:
       - symbol: "RIVERUSD"
         timeframe: "1h"

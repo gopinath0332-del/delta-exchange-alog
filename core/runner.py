@@ -276,8 +276,10 @@ def run_strategy_terminal(
         except Exception as e:
             logger.warning(f"Failed to fetch wallet balance for startup: {e}")
     
+    mode_color = "1;32" if mode.lower() == "live" else "1;36"
     start_msg = (
         f"{symbol} {strategy_name} started on host: {hostname}\n"
+        f"Mode: \u001b[{mode_color}m{mode.upper()}\u001b[0m\n"
         f"Timeframe: {timeframe}\n"
         f"Candle Type: {candle_type}\n"
         f"Order Placement: {ansi_enabled_str}\n"
@@ -1096,6 +1098,9 @@ def run_master_terminal(
         if not isinstance(strat_cfg, dict):
             continue
 
+        # Strategy-level mode override (falls back to global mode)
+        strategy_mode = strat_cfg.get("mode", mode)
+
         symbols_list = strat_cfg.get("symbols", [])
         if not symbols_list:
             continue
@@ -1106,9 +1111,12 @@ def run_master_terminal(
             candle_type = sym_cfg.get("candle_type", "heikin-ashi")
             log_file = sym_cfg.get("log_file")
 
+            # Symbol-level mode override (falls back to strategy-level, then global)
+            thread_mode = sym_cfg.get("mode", strategy_mode)
+
             t = threading.Thread(
                 target=run_strategy_terminal,
-                args=(config, strat_key, symbol, mode, candle_type, timeframe),
+                args=(config, strat_key, symbol, thread_mode, candle_type, timeframe),
                 kwargs={
                     "shared_client": shared_client,
                     "shared_notifier": shared_notifier,

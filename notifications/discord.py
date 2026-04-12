@@ -84,7 +84,8 @@ class DiscordNotifier:
                         target_margin: Optional[float] = None,
                         timeframe: Optional[str] = None,
                         stop_loss_price: Optional[float] = None,
-                        atr: Optional[float] = None):
+                        atr: Optional[float] = None,
+                        mode: str = "live"):
         """
         Send a formatted trade alert with ANSI color codes.
 
@@ -103,6 +104,7 @@ class DiscordNotifier:
             market_price: Actual market price (LTP) if different from order/signal price
             lot_size: Number of contracts/lots in the order
             target_margin: Configured target margin from .env (e.g. TARGET_MARGIN_PAXG=30)
+            mode: Trading mode (live or paper)
         """
         # Add timeframe to title if available
         title_suffix = f" ({timeframe})" if timeframe else ""
@@ -121,6 +123,10 @@ class DiscordNotifier:
         if strategy_name:
             message += f"Strategy: \u001b[1;37m{strategy_name}\u001b[0m\n"
         
+        # Trading Mode
+        mode_color = "1;32" if mode.lower() == "live" else "1;36"
+        message += f"Trading Mode: \u001b[{mode_color}m{mode.upper()}\u001b[0m\n"
+
         if timeframe:
             message += f"Timeframe: \u001b[1;37m{timeframe}\u001b[0m\n"
             
