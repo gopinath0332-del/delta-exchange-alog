@@ -1,10 +1,25 @@
 import os
 import json
 import logging
+import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+class StateEncoder(json.JSONEncoder):
+    """Custom JSON encoder for strategy state that handles NumPy types."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(StateEncoder, self).default(obj)
+
 
 # Base directory for state persistence
 # Using absolute path resolution relative to project root
@@ -37,7 +52,7 @@ def save_strategy_state(symbol: str, strategy_name: str, state_dict: Dict[str, A
         state_dict["strategy"] = strategy_name
 
         with open(path, "w") as f:
-            json.dump(state_dict, f, indent=4)
+            json.dump(state_dict, f, indent=4, cls=StateEncoder)
         
         # Only log periodically or on change to avoid log spam? 
         # For now, log briefly.
