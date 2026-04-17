@@ -72,8 +72,8 @@ data/trading.db
 data/state/
 
 # Scratch & Temporary
-results*.csv
-scratch/batch_backtests/results*.csv
+*results*.csv
+scratch/batch_backtests/*.csv
 
 # Reports
 reports/*.pdf

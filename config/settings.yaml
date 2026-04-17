@@ -156,13 +156,14 @@ strategies:
     # RVOL Filter (Relative Volume)
     use_volume: true
     vol_length: 20 # Volume moving average lookback
-    rvol_min: 1.5 # Min Relative Volume (1.5 = 1.5x average)
+    rvol_min: 2.0 # Min Relative Volume (1.5 = 1.5x average)
     # HTF Trend Filter (simulated: 1H EMA length = htf_ema_length * htf_multiplier)
     use_htf: true
     htf_multiplier: 4 # 4 = simulate 4H on 1H data (4 * 100 = EMA 400)
     htf_ema_length: 100 # EMA length on the simulated HTF (matches Pine htfLength=100)
     # Data
     historical_days: 60 # Days of history to fetch for warmup/backtest
+    stop_loss_pct: 0.20 # Cap max loss at 20% of margin per trade segment
 
 # Multi-Coin Service Configuration
 # Defines symbol groups that can be run together in a single process via
@@ -208,8 +209,8 @@ multi_coin:
         position_sizing_type: "atr" # Switch from "margin" to "atr"
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         log_file: "logs/sol.log"
-      - symbol: "RIVERUSD"
-        timeframe: "1h"
+      - symbol: "SUIUSD"
+        timeframe: "2h"
         candle_type: "heikin-ashi"
         leverage: 5
         target_margin: 50
