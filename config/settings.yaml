@@ -182,7 +182,7 @@ multi_coin:
         target_margin: 50
         log_file: logs/bio.log # Per-coin log file (same as the old dedicated service)
       - symbol: PIPPINUSD
-        timeframe: 2h
+        timeframe: 1h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr" # Switch from "margin" to "atr"
@@ -190,7 +190,7 @@ multi_coin:
         target_margin: 50
         log_file: logs/pippin.log
       - symbol: BEATUSD
-        timeframe: 1h
+        timeframe: 2h
         leverage: 5
         target_margin: 50
         candle_type: heikin-ashi
