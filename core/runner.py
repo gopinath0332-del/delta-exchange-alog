@@ -696,7 +696,7 @@ def run_strategy_terminal(
                     dashboard_lines.append(f"   Squeeze:    {sq_str} | Bars since fire: {sq_bars_str}")
                     rvol_val = getattr(strategy, 'last_rvol', 0.0)
                     rvol_min = getattr(strategy, 'rvol_min', 1.5)
-                    rvol_flag = "✓" if rvol_val >= rvol_min else "✗"
+                    rvol_flag = "[OK]" if rvol_val >= rvol_min else "[X]"
                     dashboard_lines.append(f"   RVOL:       {rvol_val:.2f}x (min {rvol_min}x) {rvol_flag}")
                     dashboard_lines.append(f"   EMA ({getattr(strategy, 'ema_length', 100)}):   ${getattr(strategy, 'last_ema', 0.0):,.{p_decimals}f}")
                     htf_ema = getattr(strategy, 'last_htf_ema', 0.0)

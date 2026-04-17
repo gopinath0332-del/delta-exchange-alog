@@ -29,7 +29,13 @@ class BacktestEngine:
         self.equity = self.initial_capital
         self.order_size_pct = self.bt_config.order_size_pct
         self.use_compounding = getattr(self.bt_config, 'use_compounding', False)
-        self.commission = self.bt_config.commission
+        
+        # Load symbol-specific metadata (fees, etc.)
+        from core.trading import get_product_metadata
+        self.metadata = get_product_metadata(self.symbol)
+        
+        # Use taker rate from metadata if available, otherwise fallback to config
+        self.commission = self.metadata.get("taker_commission_rate", self.bt_config.commission)
         
         self.processed_trades = []
         self.equity_curve = []
@@ -48,105 +54,13 @@ class BacktestEngine:
             except (ValueError, TypeError):
                 return None
 
-    def _build_candle_equity_curve(self, df: pd.DataFrame) -> list:
-        """Return a per-candle equity list with mark-to-market unrealised PnL."""
-        # Pre-parse all trade times once to avoid repeated try/except parsing per candle
-        parsed_trades = []
-        for t in self.processed_trades:
-            parsed_trades.append({
-                'entry_dt': self._parse_time(t['Entry Time']),
-                'exit_dt':  self._parse_time(t['Exit Time']),
-                'size':     t['Position Size'],
-                'ep':       t['Entry Price'],
-                'direction': t['Position Type'],
-                'pnl':      t['Profit/Loss'],
-            })
+    def _calculate_mae_mfe(self, df: pd.DataFrame, raw_trades: List[Dict[str, Any]]):
+        """Append MAE / MFE annotations to the raw trade dictionaries."""
+        if df.empty or not raw_trades:
+            return
 
-        candle_curve = []
-
-        # Sort df by time (should already be sorted, but ensure it)
-        times = df['time'].values
-        closes = df['close'].values
-
-        # Pointer into sorted parsed_trades by exit_dt for efficient closed_equity updates
-        # We'll update closed_equity incrementally as we advance through candles
-        # (trades are processed in chronological exit order after the main loop)
-
-        for i in range(len(df)):
-            ts = times[i]
-            if ts > 1e10:
-                ts /= 1000
-            
-            # Use local time structure uniformly to match format_time() in strategies.
-            # This prevents 5.5 hour offsets on Windows where os.environ['TZ']='UTC' does not work without tzset().
-            candle_dt = datetime.fromtimestamp(ts)
-            candle_close = closes[i]
-            candle_time_str = candle_dt.strftime('%d-%m-%y %H:%M')
-
-            # Accumulate closed PnL and compute unrealised in a single pass
-            equity = self.initial_capital
-            unrealised = 0.0
-            for pt in parsed_trades:
-                if pt['exit_dt'] is None or pt['entry_dt'] is None:
-                    continue
-                if pt['exit_dt'] <= candle_dt:
-                    equity += pt['pnl']
-                elif pt['entry_dt'] <= candle_dt:
-                    if pt['direction'] == 'LONG':
-                        unrealised += (candle_close - pt['ep']) * pt['size']
-                    else:
-                        unrealised += (pt['ep'] - candle_close) * pt['size']
-
-            candle_curve.append({
-                'time':   candle_time_str,
-                'equity': equity + unrealised,
-            })
-
-        return candle_curve
-
-    # ---------------------------------------------------------------------------
-    # MAE / MFE Calculation
-    # ---------------------------------------------------------------------------
-
-    def _calculate_mae_mfe(
-        self,
-        df: pd.DataFrame,
-        raw_trades: List[Dict[str, Any]]
-    ) -> None:
-        """
-        Annotate each raw trade dict (in-place) with Maximum Adverse Excursion
-        (MAE) and Maximum Favorable Excursion (MFE) values.
-
-        Definitions:
-          - MAE = the largest price move AGAINST the position during the trade
-                  (measures how much heat the trade took before resolving).
-          - MFE = the largest price move IN FAVOUR of the position during the
-                  trade (measures the best unrealised profit available).
-
-        Both values are returned in absolute price units and as a percentage
-        of the entry price.
-
-        The candle slice used is all bars whose timestamp falls between
-        entry_time and exit_time (inclusive), matched against df['time'].
-
-        Args:
-            df:          The full OHLCV DataFrame used for the backtest.
-            raw_trades:  List of raw trade dicts produced by strategy.run_backtest().
-        """
-        # ---------------------------------------------------------------------------
-        # Build a lookup: formatted-time-string → bar index.
-        #
-        # Strategies record trade timestamps via format_time() which calls:
-        #     datetime.datetime.fromtimestamp(ts_ms / 1000).strftime('%d-%m-%y %H:%M')
-        # i.e. the LOCAL timezone representation of each bar's unix timestamp.
-        #
-        # By building the same formatted strings from df['time'] here, we get
-        # an exact, timezone-agnostic mapping — no arithmetic, no offset mistakes.
-        # ---------------------------------------------------------------------------
-        # Normalise df['time'] to seconds (it may be ms or s depending on the data source)
-        time_vals = df['time'].values.copy().astype(float)
-        time_vals = np.where(time_vals >= 1e10, time_vals / 1000.0, time_vals)
-
+        time_vals = df['time'].values
+        # Create a lookup for candle times to indices for fast window indexing
         time_str_to_idx: Dict[str, int] = {}
         for _idx, _ts in enumerate(time_vals):
             try:
@@ -156,7 +70,6 @@ class BacktestEngine:
                     time_str_to_idx[_dt_str] = _idx
             except (ValueError, OSError, OverflowError):
                 pass
-
 
         for trade in raw_trades:
             # Default — will be overridden if we can locate the candle window
@@ -185,22 +98,17 @@ class BacktestEngine:
 
             if entry_idx is not None and exit_idx is not None:
                 # Scan the inclusive candle slice from entry bar to exit bar.
-                # We use min/max in case of data irregularities where exit < entry index.
                 i_start = min(entry_idx, exit_idx)
                 i_end   = max(entry_idx, exit_idx)
                 indices = np.arange(i_start, i_end + 1)
             elif entry_idx is not None:
-                # Has entry but no exit — scan from entry to last bar (edge case)
                 indices = np.arange(entry_idx, len(df))
             else:
-                # Cannot locate bars — skip (leave defaults at 0.0)
                 continue
 
             if len(indices) == 0:
                 continue
 
-
-            # Extract high / low arrays for the trade window
             highs = df['high'].values[indices].astype(float)
             lows  = df['low'].values[indices].astype(float)
 
@@ -211,17 +119,12 @@ class BacktestEngine:
             min_low  = float(np.nanmin(lows))
 
             if trade_type == 'LONG':
-                # Favourable move: price went UP from entry (best high reached)
                 mfe_price = max(max_high - entry_price, 0.0)
-                # Adverse move: price went DOWN from entry (worst low reached)
                 mae_price = max(entry_price - min_low, 0.0)
             else:  # SHORT
-                # Favourable move: price went DOWN from entry (lowest low reached)
                 mfe_price = max(entry_price - min_low, 0.0)
-                # Adverse move: price went UP from entry (highest high reached)
                 mae_price = max(max_high - entry_price, 0.0)
 
-            # Convert to percentage of entry price
             trade['mae_price'] = round(mae_price, 8)
             trade['mae_pct']   = round((mae_price / entry_price) * 100, 4)
             trade['mfe_price'] = round(mfe_price, 8)
@@ -234,19 +137,14 @@ class BacktestEngine:
         self.strategy.run_backtest(df)
         raw_trades = getattr(self.strategy, 'trades', [])
 
-        # Annotate every raw trade with MAE / MFE BEFORE the processing loop so
-        # that the values are available when building each processed_trade dict.
+        # Annotate every raw trade with MAE / MFE
         self._calculate_mae_mfe(df, raw_trades)
 
-        # Track the remaining fraction of each trade (1.0 = 100% of initial position remains)
-        remaining_pct_map = {}
-
-        # Pre-pass: assign stable numeric IDs ... (rest is unchanged but I'll replace the loop part)
+        # Pre-pass: assign stable numeric IDs for partial tracking
         _next_id = 0
-        _partial_pending: dict = {}  # "type_entry_time" -> id
+        _partial_pending: dict = {}
         for t in raw_trades:
             pair_key = f"{t.get('type', '')}_{t.get('entry_time', '')}"
-            # Treat both PARTIAL and MILESTONE as pending partial legs
             is_partial = t.get('status') == 'PARTIAL' or 'MILESTONE' in str(t.get('status', ''))
             
             if is_partial:
@@ -257,84 +155,116 @@ class BacktestEngine:
                 else:
                     t['_backtest_id'] = _partial_pending[pair_key]
             elif pair_key in _partial_pending:
-                # Final close leg — reuse the same ID and clear from pending
                 t['_backtest_id'] = _partial_pending.pop(pair_key)
             else:
                 t['_backtest_id'] = _next_id
                 _next_id += 1
 
+        # Process raw strategy trades into detailed PnL reports
+        self.process_trades(raw_trades)
+
+        # Build per-candle mark-to-market equity curve
+        self.equity_curve = self._build_candle_equity_curve(df)
+
+        equity_df = pd.DataFrame(self.equity_curve)
+        if len(equity_df) > 1:
+            try:
+                equity_df['time'] = pd.to_datetime(
+                    equity_df['time'].apply(lambda x: x.split(' (')[0] if isinstance(x, str) else x),
+                    format='%d-%m-%y %H:%M',
+                    errors='coerce'
+                )
+            except (ValueError, TypeError):
+                pass
+
+        logger.info(f"Backtest engine finished. Final equity: ${self.equity:.2f}")
+        return self.processed_trades, equity_df
+
+    def process_trades(self, raw_trades: List[Dict[str, Any]]):
+        """Process raw strategy trades into detailed PnL reports using risk settings."""
+        from core.trading import calculate_position_size, get_contract_value
+        
+        remaining_pct_map = {}
+        rm_config = self.config.risk_management
+        sizing_method = getattr(rm_config, 'sizing_method', 'fixed')
+        risk_pct = getattr(rm_config, 'risk_pct_per_trade', 0.01)
+        margin_cap = getattr(rm_config, 'fractional_margin_cap', 0.2)
+        atr_mult = getattr(rm_config, 'atr_margin_multiplier', 2.0)
+        atr_cap_mult = getattr(rm_config, 'atr_margin_cap_multiplier', 1.5)
+        
+        contract_val = get_contract_value(self.symbol)
+        
         for trade in raw_trades:
-            # Only process closed or partial closed trades
             if trade['status'] not in ['CLOSED', 'PARTIAL', 'TRAIL STOP', 'CHANNEL EXIT'] and not ('exit_price' in trade and trade['exit_price']) and not 'MILESTONE' in str(trade.get('status', '')):
                 continue 
                 
             entry_price = float(trade['entry_price'])
             exit_price = float(trade['exit_price']) if trade.get('exit_price') and trade['exit_price'] != '-' else entry_price
+            entry_atr = trade.get('entry_atr', 0.0)
             
             if exit_price == entry_price:
                 continue
-                
-            # Sizing (Compound Sizing based on current Equity to match TradingView)
-            base_capital = self.equity if self.use_compounding else self.initial_capital
-            trade_capital = base_capital * self.order_size_pct
             
             trade_key = trade['_backtest_id']
-            
-            # Initial total notional size if this were a single full trade
-            # trade_capital is the margin, leverage scales it to notional
-            total_initial_size = (trade_capital * self.leverage) / entry_price
-            
-            # Determine what fraction of the REMAINING position we are closing now
-            # exit_pct in trade is "fraction of remaining to close"
             current_remaining_pct = remaining_pct_map.get(trade_key, 1.0)
             
-            # Default exit behavior if exit_pct not specified:
-            # - PARTIAL: close 50% of current
-            # - CLOSED/TRAIL STOP/etc: close 100% of current
+            if sizing_method.lower() == "fractional" and entry_atr > 0:
+                size_for_full_trade, _ = calculate_position_size(
+                    target_margin=0.0,
+                    price=entry_price,
+                    leverage=self.leverage,
+                    contract_value=contract_val,
+                    enable_partial_tp=getattr(self.strategy, 'enable_partial_tp', False),
+                    sizing_method="fractional",
+                    equity=self.equity,
+                    risk_pct=risk_pct,
+                    atr=entry_atr,
+                    atr_multiplier=atr_mult,
+                    fractional_margin_cap=margin_cap,
+                    atr_margin_cap_multiplier=atr_cap_mult
+                )
+                total_initial_size = size_for_full_trade
+            else:
+                base_capital = self.equity if self.use_compounding else self.initial_capital
+                trade_capital = base_capital * self.order_size_pct
+                total_initial_size = (trade_capital * self.leverage) / (entry_price * contract_val)
+            
             if 'exit_pct' in trade:
                 exit_pct_of_remaining = float(trade['exit_pct'])
             elif trade['status'] == 'PARTIAL':
                 exit_pct_of_remaining = 0.5
             else:
-                exit_pct_of_remaining = 1.0 # Close all that's left
-                
-            # Actual size of this specific exit segment
+                exit_pct_of_remaining = 1.0
+
             position_size = total_initial_size * current_remaining_pct * exit_pct_of_remaining
             
-            # Update remaining percentage for this trade key
             new_remaining_pct = current_remaining_pct * (1.0 - exit_pct_of_remaining)
-            if new_remaining_pct <= 0.0001: # Effectively flat
+            if new_remaining_pct <= 0.0001:
                 if trade_key in remaining_pct_map:
                     del remaining_pct_map[trade_key]
             else:
                 remaining_pct_map[trade_key] = new_remaining_pct
             
-            # PnL
             if trade['type'] == 'LONG':
-                pnl = (exit_price - entry_price) * position_size
-            else: # SHORT
-                pnl = (entry_price - exit_price) * position_size
+                pnl = (exit_price - entry_price) * position_size * contract_val
+            else:
+                pnl = (entry_price - exit_price) * position_size * contract_val
                 
-            # Hard Stop Loss Check — caps loss at stop_loss_pct of margin for this segment
             if self.stop_loss_pct is not None:
-                segment_margin = (position_size * entry_price) / self.leverage
+                segment_margin = (position_size * entry_price * contract_val) / self.leverage
                 max_loss = segment_margin * self.stop_loss_pct
                 if pnl < -max_loss:
                     pnl = -max_loss
-                    price_diff = max_loss / position_size
+                    price_diff = max_loss / (position_size * contract_val)
                     exit_price = (entry_price - price_diff) if trade['type'] == 'LONG' else (entry_price + price_diff)
                     trade['status'] = 'EXCHANGE SL'
                 
-            # Commission
-            # Fee is based on the dollar volume of the portion of the position being exited/entered
-            trade_dollar_volume = entry_price * position_size
-            comm_cost = (trade_dollar_volume * self.commission) + ((exit_price * position_size) * self.commission)
-            pnl -= comm_cost
+            trade_dollar_volume = entry_price * position_size * contract_val
+            comm_cost = (trade_dollar_volume * self.commission) + ((exit_price * position_size * contract_val) * self.commission)
             
-            self.equity += pnl
-            return_pct = (pnl / trade_capital) * 100
+            net_pnl = pnl - comm_cost
+            self.equity += net_pnl
             
-            # Calculate duration if possible
             duration_str = "N/A"
             bars_held = 0
             dt_entry = self._parse_time(trade.get('entry_time', ''))
@@ -342,8 +272,6 @@ class BacktestEngine:
             if dt_entry and dt_exit:
                 diff = dt_exit - dt_entry
                 duration_str = str(diff)
-                
-                # Estimate bars held based on timeframe (e.g., '1h', '15m')
                 try:
                     import re
                     match = re.match(r'(\d+)([hmdw])', self.timeframe.lower())
@@ -358,7 +286,6 @@ class BacktestEngine:
                 except (ValueError, ZeroDivisionError):
                     pass
             
-            # Create a more descriptive status for the UI (Item #7)
             status_val = trade.get('status', 'CLOSED')
             if status_val == 'CLOSED':
                 display_type = trade['type']
@@ -370,6 +297,9 @@ class BacktestEngine:
             else:
                 display_type = f"{trade['type']} ({status_val.title().replace('_', ' ').replace('Sl', 'SL')})"
 
+            used_margin = (position_size * entry_price * contract_val) / self.leverage
+            return_pct = (net_pnl / used_margin * 100) if used_margin > 0 else 0.0
+
             processed_trade = {
                 'Symbol': self.symbol,
                 'Leverage': self.leverage,
@@ -378,18 +308,16 @@ class BacktestEngine:
                 'Position Type': trade['type'],
                 'Display Type': display_type,
                 'Exit Type': status_val,
-                'Position Size': position_size,
+                'Position Size': round(position_size, 4),
+                'Margin': round(used_margin, 2),
+                'Available Margin': round(self.equity, 2),
                 'Entry Price': entry_price,
                 'Exit Price': exit_price,
-                'Fee': comm_cost,
-                'Profit/Loss': pnl,
-                'Return %': return_pct,
+                'Fee': round(comm_cost, 4),
+                'Profit/Loss': round(net_pnl, 4),
+                'Return %': round(return_pct, 2),
                 'Duration': duration_str,
                 'Bars Held': bars_held,
-                # MAE / MFE fields — populated by _calculate_mae_mfe() above.
-                # These represent the worst drawdown and best unrealised profit
-                # experienced during the life of this trade, measured in price
-                # points and as a percentage of entry price.
                 'MAE Price': trade.get('mae_price', 0.0),
                 'MAE %':     trade.get('mae_pct',   0.0),
                 'MFE Price': trade.get('mfe_price', 0.0),
@@ -397,22 +325,54 @@ class BacktestEngine:
             }
             self.processed_trades.append(processed_trade)
 
-        logger.info(f"Backtest engine finished. Final equity: ${self.equity:.2f}")
+    def _build_candle_equity_curve(self, df: pd.DataFrame) -> list:
+        """Return a per-candle equity list with mark-to-market unrealised PnL."""
+        parsed_trades = []
+        for t in self.processed_trades:
+            parsed_trades.append({
+                'entry_dt': self._parse_time(t['Entry Time']),
+                'exit_dt':  self._parse_time(t['Exit Time']),
+                'size':     t['Position Size'],
+                'ep':       t['Entry Price'],
+                'direction': t['Position Type'],
+                'pnl':      t['Profit/Loss'],
+            })
 
-        # Build per-candle mark-to-market equity curve
-        self.equity_curve = self._build_candle_equity_curve(df)
+        candle_curve = []
+        times = df['time'].values
+        closes = df['close'].values
 
-        # Construct DataFrame for equity curve
-        equity_df = pd.DataFrame(self.equity_curve)
-        if len(equity_df) > 1:
-            # Try parsing time for proper plotting later
-            try:
-                equity_df['time'] = pd.to_datetime(
-                    equity_df['time'].apply(lambda x: x.split(' (')[0] if isinstance(x, str) else x),
-                    format='%d-%m-%y %H:%M',
-                    errors='coerce'
-                )
-            except (ValueError, TypeError):
-                pass
+        for i in range(len(df)):
+            ts = times[i]
+            if ts > 1e10:
+                ts /= 1000
+            
+            candle_dt = datetime.fromtimestamp(ts)
+            candle_close = closes[i]
+            candle_time_str = candle_dt.strftime('%d-%m-%y %H:%M')
 
-        return self.processed_trades, equity_df
+            equity = self.initial_capital
+            unrealised = 0.0
+            for pt in parsed_trades:
+                if pt['exit_dt'] is None or pt['entry_dt'] is None:
+                    continue
+                if pt['exit_dt'] <= candle_dt:
+                    equity += pt['pnl']
+                elif pt['entry_dt'] <= candle_dt:
+                    # Note: We should ideally use contract_val here too if we want perfect accuracy
+                    # but for unrealised estimation, points * size is enough if size is in base asset
+                    # Actually, process_trades returns size in contracts, so we need contract_val
+                    # Let's check get_contract_value again
+                    from core.trading import get_contract_value
+                    cv = get_contract_value(self.symbol)
+                    if pt['direction'] == 'LONG':
+                        unrealised += (candle_close - pt['ep']) * pt['size'] * cv
+                    else:
+                        unrealised += (pt['ep'] - candle_close) * pt['size'] * cv
+
+            candle_curve.append({
+                'time': candle_time_str,
+                'equity': round(equity + unrealised, 2)
+            })
+
+        return candle_curve

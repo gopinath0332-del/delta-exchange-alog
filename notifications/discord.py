@@ -208,6 +208,10 @@ class DiscordNotifier:
         if remaining_margin is not None:
             message += f"\nRemaining Wallet: \u001b[0;36m${self._f(remaining_margin)}\u001b[0m"
         
+        # Sizing Justification (New Field)
+        if justification:
+            message += f"\n\n\u001b[1;37mSizing Justification:\u001b[0m\n{justification}"
+        
         # Wrap in ANSI code block for Discord
         formatted_message = f"```ansi\n{message}\n```"
         

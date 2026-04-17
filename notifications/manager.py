@@ -64,6 +64,7 @@ class NotificationManager:
                         timeframe: Optional[str] = None,
                         stop_loss_price: Optional[float] = None,
                         atr: Optional[float] = None,
+                        justification: Optional[str] = None,
                         mode: str = "live"):
         """
         Send trade alert to all enabled channels.
@@ -86,15 +87,16 @@ class NotificationManager:
             timeframe: Candle timeframe (e.g. 1h, 4h)
             stop_loss_price: Optional hard stop loss price
             atr: ATR volatility value
+            justification: Human-readable explanation of position sizing
             mode: Trading mode (live or paper)
         """
         # Send to Discord
         if self.discord:
-            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price, atr, mode=mode)
+            self.discord.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price, atr, justification=justification, mode=mode)
             
         # Send to Email (if configured)
         if self.email:
-            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price, atr, mode=mode)
+            self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price, atr, justification=justification, mode=mode)
             
         logger.info(f"Alert sent: {side} {symbol} @ {price:,.8g} (RSI: {rsi:.2f})")
 
