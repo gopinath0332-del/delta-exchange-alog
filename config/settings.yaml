@@ -163,6 +163,7 @@ strategies:
     htf_ema_length: 100 # EMA length on the simulated HTF (matches Pine htfLength=100)
     # Data
     historical_days: 60 # Days of history to fetch for warmup/backtest
+    stop_loss_pct: 0.20 # Cap max loss at 20% of margin per trade segment
 
 # Multi-Coin Service Configuration
 # Defines symbol groups that can be run together in a single process via
