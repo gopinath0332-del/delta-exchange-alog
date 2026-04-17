@@ -309,6 +309,7 @@ class BacktestEngine:
                 'Display Type': display_type,
                 'Exit Type': status_val,
                 'Position Size': round(position_size, 4),
+                'Margin': round(used_margin, 2),
                 'Entry Price': entry_price,
                 'Exit Price': exit_price,
                 'Fee': round(comm_cost, 4),

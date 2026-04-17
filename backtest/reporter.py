@@ -106,6 +106,7 @@ class Reporter:
                     <th>Type</th>
                     <th>Exit Type</th>
                     <th>Size</th>
+                    <th>Margin</th>
                     <th>Entry Price</th>
                     <th>Exit Price</th>
                     <th>PnL</th>
@@ -120,6 +121,7 @@ class Reporter:
                     <td>{{ trade['Position Type'] }}</td>
                     <td>{{ trade['Exit Type'] }}</td>
                     <td>{{ "%.4f"|format(trade['Position Size']) }}</td>
+                    <td>{{ "%.2f"|format(trade.get('Margin', 0.0)) }}</td>
                     <td>{{ "%.4f"|format(trade['Entry Price']) }}</td>
                     <td>{{ "%.4f"|format(trade['Exit Price']) }}</td>
                     <td class="{{ 'success' if trade['Profit/Loss'] > 0 else 'danger' }}">{{ "%.2f"|format(trade['Profit/Loss']) }}</td>

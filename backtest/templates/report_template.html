@@ -296,6 +296,7 @@
             <th>Exit Time</th>
             <th>Type</th>
             <th>Size</th>
+            <th>Margin</th>
             <th>Entry Price</th>
             <th>Exit Price</th>
             <th>Fee</th>
@@ -312,6 +313,7 @@
             <td>{{ trade['Exit Time'] }}</td>
             <td>{{ trade['Display Type'] }}</td>
             <td>{{ "%.4f"|format(trade['Position Size']) }}</td>
+            <td>{{ "%.2f"|format(trade.get('Margin', 0.0)) }}</td>
             <td>{{ "%.4f"|format(trade['Entry Price']) }}</td>
             <td>{{ "%.4f"|format(trade['Exit Price']) }}</td>
             <td>{{ "%.2f"|format(trade['Fee']) }}</td>
