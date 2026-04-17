@@ -78,24 +78,28 @@ def calculate_position_size(
         fractional_margin_cap: Maximum fraction of equity to use as margin (e.g., 0.2 for 20%).
         
     Returns:
-        Calculated position size (integer number of contracts).
+        tuple: (position_size, justification_string)
     """
+    justification = "N/A"
     try:
         # 1. Determine Base Position Size
         if sizing_method.lower() == "fractional" and equity is not None and atr is not None and atr > 0:
             # Formula: (Equity * Risk%) / (ATR * Multiplier * ContractValue)
-            # This ensures only 'risk_pct' of equity is lost if price moves 'ATR * Multiplier'
             risk_amount = equity * risk_pct
             base_size = risk_amount / (atr * atr_multiplier * contract_value)
             calc_mode = f"FRACTIONAL (Equity=${equity:.2f}, Risk={risk_pct*100:.1f}%)"
+            justification = (
+                f"Equity=${equity:.2f}, Risk={risk_pct*100:.1f}% (${risk_amount:.2f}), "
+                f"StopDist=${atr*atr_multiplier:.2f} ({atr_multiplier}xATR) -> BaseSize={base_size:.2f}"
+            )
         elif sizing_type.lower() == "atr" and atr is not None and atr > 0:
-            # Old ATR-Margin Formula: Target Margin / (ATR * Multiplier * contract_value)
             base_size = target_margin / (atr * atr_multiplier * contract_value)
             calc_mode = f"ATR-FIXED (ATR={atr:.4f}, Mult={atr_multiplier})"
+            justification = f"TargetMargin=${target_margin:.2f}, StopDist=${atr*atr_multiplier:.2f} -> BaseSize={base_size:.2f}"
         else:
-            # Standard Fixed Margin Formula: (target_margin * leverage) / (price * contract_value)
             base_size = (target_margin * leverage) / (price * contract_value)
             calc_mode = "MARGIN-FIXED"
+            justification = f"TargetMargin=${target_margin:.2f}, Leverage={leverage}x, Price=${price:.2f}"
         
         # 2. Round to integer
         position_size = int(base_size)
@@ -106,15 +110,14 @@ def calculate_position_size(
                 position_size += 1 # Round UP to nearest even
             if position_size < 2:
                 position_size = 2
+            justification += f" [Rounding to EVEN={position_size}]"
         else:
             if position_size < 1:
                 position_size = 1
+            justification += f" [Rounding={position_size}]"
         
         # 4. Apply Safety Caps
-        # For Fractional or ATR mode, we still respect a margin cap to prevent extreme over-leverage
         actual_margin = (position_size * price * contract_value) / leverage
-        
-        # Use target_margin as a baseline "normal" margin if provided, otherwise use a safe fraction of equity
         limit_reference = target_margin if sizing_method == "fixed" else (equity * fractional_margin_cap)
         max_allowed_margin = limit_reference * (atr_margin_cap_multiplier or 1.5)
         
@@ -134,6 +137,7 @@ def calculate_position_size(
                 f"Margin ${actual_margin:.2f} > Cap ${max_allowed_margin:.2f}. "
                 f"Capping size {old_size} -> {position_size} (New Margin: ${new_margin:.2f})"
             )
+            justification += f" | SAFETY CAP: Reduced from {old_size} to {position_size} (Max Margin: ${max_allowed_margin:.2f})"
         
         actual_margin = (position_size * price * contract_value) / leverage
         
@@ -143,11 +147,11 @@ def calculate_position_size(
             f"-> Position Size={position_size} contracts (Actual Margin=${actual_margin:.2f})"
         )
         
-        return position_size
+        return position_size, justification
         
     except Exception as e:
         logger.error(f"Error calculating position size: {e}")
-        return 2 if enable_partial_tp else 1
+        return (2 if enable_partial_tp else 1), f"ERROR: {e}"
 
 def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None):
     """
@@ -302,6 +306,7 @@ def execute_strategy_signal(
         is_entry = False
         lot_size = None  # Will be set for notifications
         active_position = None  # Store position data for PnL/fees extraction
+        justification = None  # Explanation for sizing
         
         # Handle entry orders with dynamic position sizing
         if action.startswith("ENTRY"):
@@ -327,7 +332,7 @@ def execute_strategy_signal(
                         logger.warning(f"{settlement_asset} balance not found. Falling back to target_margin.")
                 
                 # Calculate dynamic position size
-                order_size = calculate_position_size(
+                order_size, justification = calculate_position_size(
                     target_margin=target_margin,
                     price=current_price,
                     leverage=leverage,
@@ -347,6 +352,7 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.error(f"Failed to calculate dynamic position size: {e}. Using default.")
                 order_size = 2 if enable_partial_tp else 1
+                justification = f"Error: {e}"
                 lot_size = order_size
         elif action == "EXIT_LONG" or action == "EXIT_SHORT":
             # For final exits, fetch actual position size from exchange
@@ -753,6 +759,7 @@ def execute_strategy_signal(
                 timeframe=timeframe,
                 stop_loss_price=stop_loss_price,
                 atr=atr,
+                justification=justification,
                 mode=mode
             )
         except Exception as e:

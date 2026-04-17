@@ -8,7 +8,7 @@ class TestPositionSizing(unittest.TestCase):
     def test_calculate_position_size_margin(self):
         """Test standard margin-based sizing."""
         # (40 * 5) / (50000 * 0.001) = 200 / 50 = 4
-        size = calculate_position_size(
+        size, _ = calculate_position_size(
             target_margin=40.0,
             price=50000.0,
             leverage=5,
@@ -21,7 +21,7 @@ class TestPositionSizing(unittest.TestCase):
         """Test ATR-based sizing."""
         # Target Margin / (ATR * Multiplier * Contract Value)
         # 40 / (100 * 2.0 * 0.001) = 40 / 0.2 = 200
-        size = calculate_position_size(
+        size, _ = calculate_position_size(
             target_margin=40.0,
             price=50000.0,
             leverage=5,
@@ -37,7 +37,7 @@ class TestPositionSizing(unittest.TestCase):
         """Test rounding to even number when partial TP is enabled."""
         # Margin: (40 * 5) / (60000 * 0.001) = 200 / 60 = 3.33 -> 3
         # Should round to 4 because 3 is odd and partial TP is enabled
-        size = calculate_position_size(
+        size, _ = calculate_position_size(
             target_margin=40.0,
             price=60000.0,
             leverage=5,
@@ -54,7 +54,7 @@ class TestPositionSizing(unittest.TestCase):
         # Actual Margin @ 5x: (20,000 * 50000 * 0.001) / 5 = 1,000,000 / 5 = 200,000 (WAY OVER)
         # 1.5x Cap: 40 * 1.5 = 60 USD Max Margin
         # Max Size = (60 * 5) / (50000 * 0.001) = 300 / 50 = 6 contracts
-        size = calculate_position_size(
+        size, _ = calculate_position_size(
             target_margin=40.0,
             price=50000.0,
             leverage=5,
@@ -107,7 +107,7 @@ class TestPositionSizing(unittest.TestCase):
         # Risk Amount = 270 * 0.01 = 2.70
         # Stop Distance = 2.0 * 2.0 * 0.1 = 0.4
         # Size = 2.70 / 0.4 = 6.75 -> 6 contracts
-        size = calculate_position_size(
+        size, justification = calculate_position_size(
             target_margin=50.0,
             price=100.0,
             leverage=10,
@@ -119,6 +119,8 @@ class TestPositionSizing(unittest.TestCase):
             atr_multiplier=2.0
         )
         self.assertEqual(size, 6)
+        self.assertIn("Equity=$270.00", justification)
+        self.assertIn("Risk=1.0%", justification)
 
     def test_calculate_position_size_fractional_margin_cap(self):
         """Test that fractional sizing still respects a safety margin cap."""
@@ -130,7 +132,7 @@ class TestPositionSizing(unittest.TestCase):
         # Actual Margin = (5000 * 100 * 0.1) / 10 = 5000 USD (WAY OVER 50% equity cap)
         # 20% Equity Cap = $200 margin. 1.5x Multiplier = $300 Max Margin.
         # Max Size = (300 * 10) / (100 * 0.1) = 3000 / 10 = 300 contracts
-        size = calculate_position_size(
+        size, justification = calculate_position_size(
             target_margin=50.0, # Ignored in fractional
             price=100.0,
             leverage=10,
@@ -142,8 +144,8 @@ class TestPositionSizing(unittest.TestCase):
             atr_multiplier=2.0,
             atr_margin_cap_multiplier=1.5
         )
-        self.assertTrue(size < 5000)
         self.assertEqual(size, 300)
+        self.assertIn("SAFETY CAP", justification)
 
 if __name__ == '__main__':
     unittest.main()
