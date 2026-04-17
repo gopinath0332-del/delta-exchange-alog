@@ -399,104 +399,104 @@ class Reporter:
     # IMPROVEMENT #11 — Richer HTML Report Charts
     # ===========================================================================
 
-    def _create_monthly_returns_heatmap(self, trades: List[Dict[str, Any]]) -> str:
+    def _create_monthly_returns_heatmap(self, equity_df: pd.DataFrame) -> str:
         """
-        Build a calendar heatmap of monthly returns.
-
-        Each cell = sum of PnL / (sum of trade_capital) * 100 for that month.
-        Colour scale: green = profitable, red = losing. Cells show the % return.
-
-        Returns empty string if fewer than 2 months of trades exist.
+        Build a calendar heatmap of monthly returns using the equity curve.
+        
+        Calculation: (Last Equity of Month - First Equity of Month) / First Equity of Month * 100
         """
-        if not trades:
+        if equity_df is None or equity_df.empty or len(equity_df) < 2:
             return ""
 
-        rows = []
-        for t in trades:
-            exit_time = t.get('Exit Time', '')
-            pnl       = t.get('Profit/Loss', 0.0)
-            pos_size  = t.get('Position Size', 0.0)
-            entry_price = t.get('Entry Price', 0.0)
-            leverage    = t.get('Leverage', 1)
+        try:
+            edf = equity_df.copy()
+            # Ensure 'time' is datetime
+            if not pd.api.types.is_datetime64_any_dtype(edf['time']):
+                edf['time'] = pd.to_datetime(edf['time'], errors='coerce')
+            edf = edf.dropna(subset=['time'])
+            edf = edf.set_index('time').sort_index()
 
-            if not exit_time or exit_time == 'N/A':
-                continue
-            try:
-                # Accept both 'dd-mm-yy HH:MM' and ISO formats from the engine
-                try:
-                    dt = pd.to_datetime(exit_time, format='%d-%m-%y %H:%M')
-                except Exception:
-                    dt = pd.to_datetime(exit_time)
-                # Approximate trade capital: notional / leverage
-                trade_capital = (pos_size * entry_price / max(leverage, 1)) if pos_size and entry_price else 1.0
-                rows.append({'year': dt.year, 'month': dt.month, 'pnl': pnl, 'capital': trade_capital})
-            except Exception:
-                continue
+            # Resample to monthly equity (take the last value of each month)
+            monthly_equity = edf['equity'].resample('ME').last()
+            
+            # Get the starting equity (the very first point in history)
+            first_equity = edf['equity'].iloc[0]
+            
+            # Calculate monthly returns correctly
+            # Prepend the first equity to calculate the return for the very first month
+            extended_equity = pd.concat([pd.Series([first_equity], index=[monthly_equity.index[0] - pd.DateOffset(months=1)]), monthly_equity])
+            monthly_returns = extended_equity.pct_change().dropna() * 100
 
-        if not rows:
+            if monthly_returns.empty:
+                return ""
+
+            # Prepare data row-by-row for the heatmap matrix
+            rows = []
+            for dt, ret in monthly_returns.items():
+                rows.append({'year': dt.year, 'month': dt.month, 'ret_pct': ret})
+
+            df = pd.DataFrame(rows)
+            years = sorted(df['year'].unique())
+            months = list(range(1, 13))
+            month_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+            # Build z-matrix (rows = years, cols = months) and annotation text
+            z_matrix    = []
+            text_matrix = []
+            for yr in years:
+                z_row   = []
+                txt_row = []
+                for mo in months:
+                    row = df[(df['year'] == yr) & (df['month'] == mo)]
+                    if row.empty:
+                        z_row.append(None)
+                        txt_row.append('')
+                    else:
+                        val = round(float(row['ret_pct'].iloc[0]), 2)
+                        z_row.append(val)
+                        txt_row.append(f"{val:+.1f}%")
+                z_matrix.append(z_row)
+                text_matrix.append(txt_row)
+
+            # Symmetric colour scale centred at zero
+            abs_max = max((abs(v) for row in z_matrix for v in row if v is not None), default=1)
+
+            fig = go.Figure(go.Heatmap(
+                z=z_matrix,
+                x=month_labels,
+                y=[str(yr) for yr in years],
+                text=text_matrix,
+                texttemplate='%{text}',
+                textfont=dict(size=12, color='white'),
+                colorscale=[
+                    [0.0,  '#c0392b'],   # deep red
+                    [0.45, '#e74c3c'],   # red
+                    [0.50, '#2c3e50'],   # neutral dark
+                    [0.55, '#27ae60'],   # green
+                    [1.0,  '#1a5c36'],   # deep green
+                ],
+                zmin=-abs_max,
+                zmax=abs_max,
+                hovertemplate='%{y} %{x}: %{text}<extra></extra>',
+                showscale=True,
+                colorbar=dict(title='Return %', thickness=12),
+            ))
+
+            fig.update_layout(
+                title_text='Monthly Returns Heatmap',
+                height=max(200, 80 * len(years) + 80),
+                plot_bgcolor='#1a1a2e',
+                paper_bgcolor='white',
+                margin=dict(l=60, r=60, t=50, b=40),
+                xaxis=dict(side='top'),
+            )
+
+            return fig.to_html(full_html=False, include_plotlyjs='cdn')
+            
+        except Exception as e:
+            logger.warning(f"Could not generate monthly returns heatmap: {e}")
             return ""
-
-        df = pd.DataFrame(rows)
-        grouped = df.groupby(['year', 'month']).agg(pnl=('pnl', 'sum'), capital=('capital', 'sum')).reset_index()
-        grouped['ret_pct'] = (grouped['pnl'] / grouped['capital'].clip(lower=1)) * 100
-
-        years  = sorted(grouped['year'].unique())
-        months = list(range(1, 13))
-        month_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-        # Build z-matrix (rows = years, cols = months) and annotation text
-        z_matrix    = []
-        text_matrix = []
-        for yr in years:
-            z_row   = []
-            txt_row = []
-            for mo in months:
-                row = grouped[(grouped['year'] == yr) & (grouped['month'] == mo)]
-                if row.empty:
-                    z_row.append(None)
-                    txt_row.append('')
-                else:
-                    val = round(float(row['ret_pct'].iloc[0]), 2)
-                    z_row.append(val)
-                    txt_row.append(f"{val:+.1f}%")
-            z_matrix.append(z_row)
-            text_matrix.append(txt_row)
-
-        # Symmetric colour scale centred at zero
-        abs_max = max((abs(v) for row in z_matrix for v in row if v is not None), default=1)
-
-        fig = go.Figure(go.Heatmap(
-            z=z_matrix,
-            x=month_labels,
-            y=[str(yr) for yr in years],
-            text=text_matrix,
-            texttemplate='%{text}',
-            textfont=dict(size=12, color='white'),
-            colorscale=[
-                [0.0,  '#c0392b'],   # deep red
-                [0.45, '#e74c3c'],   # red
-                [0.50, '#2c3e50'],   # neutral dark
-                [0.55, '#27ae60'],   # green
-                [1.0,  '#1a5c36'],   # deep green
-            ],
-            zmin=-abs_max,
-            zmax=abs_max,
-            hovertemplate='%{y} %{x}: %{text}<extra></extra>',
-            showscale=True,
-            colorbar=dict(title='Return %', thickness=12),
-        ))
-
-        fig.update_layout(
-            title_text='Monthly Returns Heatmap',
-            height=max(200, 80 * len(years) + 80),
-            plot_bgcolor='#1a1a2e',
-            paper_bgcolor='white',
-            margin=dict(l=60, r=60, t=50, b=40),
-            xaxis=dict(side='top'),
-        )
-
-        return fig.to_html(full_html=False, include_plotlyjs='cdn')
 
     def _create_candlestick_chart(
         self,
@@ -716,7 +716,7 @@ class Reporter:
         mae_mfe_chart_html   = self._create_mae_mfe_chart(trades)
 
         # Improvement #11 — three additional overview charts
-        monthly_heatmap_html  = self._create_monthly_returns_heatmap(trades)
+        monthly_heatmap_html  = self._create_monthly_returns_heatmap(equity_df)
         candlestick_html      = self._create_candlestick_chart(equity_df, trades)
         streak_chart_html     = self._create_streak_chart(trades)
 
