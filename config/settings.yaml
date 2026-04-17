@@ -32,6 +32,8 @@ risk_management:
   position_sizing_type: "margin" # Default sizing method: "margin" or "atr"
   atr_margin_multiplier: 2.0 # Multiplier for ATR-based sizing
   atr_margin_cap_multiplier: 1 # 1x safety cap on actual margin usage
+  sizing_method: "fractional" # Default to fractional risk sizing
+  risk_pct_per_trade: 0.01  # Risk exactly 1% of equity per trade
 
   # Global Profit Milestones (takes 30% at >=50% PnL, another 30% at >=100% PnL)
   enable_profit_milestones: true

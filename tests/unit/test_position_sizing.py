@@ -98,6 +98,52 @@ class TestPositionSizing(unittest.TestCase):
         self.assertEqual(config['sizing_type'], "atr")
         self.assertEqual(config['atr_multiplier'], 3.0)
         self.assertEqual(config['atr_margin_cap_multiplier'], 2.0)
+    
+    def test_calculate_position_size_fractional(self):
+        """Test Fractional (Equity-based) risk sizing."""
+        # Scenario: $270 account, 1% risk ($2.70), 2*ATR stop distance
+        # Equity = 270, Risk% = 0.01
+        # ATR = 2.0, ATR Mult = 2.0, Contract Value = 0.1 (Assume SOL)
+        # Risk Amount = 270 * 0.01 = 2.70
+        # Stop Distance = 2.0 * 2.0 * 0.1 = 0.4
+        # Size = 2.70 / 0.4 = 6.75 -> 6 contracts
+        size = calculate_position_size(
+            target_margin=50.0,
+            price=100.0,
+            leverage=10,
+            contract_value=0.1,
+            sizing_method="fractional",
+            equity=270.0,
+            risk_pct=0.01,
+            atr=2.0,
+            atr_multiplier=2.0
+        )
+        self.assertEqual(size, 6)
+
+    def test_calculate_position_size_fractional_margin_cap(self):
+        """Test that fractional sizing still respects a safety margin cap."""
+        # Scenario: $1000 account, 1% risk ($10), but extremely low ATR
+        # Low ATR = 0.01, Mult = 2.0, Contract Value = 0.1, Price = 100, Lev = 10
+        # Risk Amount = $10.0
+        # Stop Dist = 0.01 * 2.0 * 0.1 = 0.002
+        # Size = 10 / 0.002 = 5000 contracts
+        # Actual Margin = (5000 * 100 * 0.1) / 10 = 5000 USD (WAY OVER 50% equity cap)
+        # 50% Equity Cap = $500 margin. 1.5x Multiplier = $750 Max Margin.
+        # Max Size = (750 * 10) / (100 * 0.1) = 7500 / 10 = 750 contracts
+        size = calculate_position_size(
+            target_margin=50.0, # Ignored in fractional
+            price=100.0,
+            leverage=10,
+            contract_value=0.1,
+            sizing_method="fractional",
+            equity=1000.0,
+            risk_pct=0.01,
+            atr=0.01,
+            atr_multiplier=2.0,
+            atr_margin_cap_multiplier=1.5
+        )
+        self.assertTrue(size < 5000)
+        self.assertEqual(size, 750)
 
 if __name__ == '__main__':
     unittest.main()
