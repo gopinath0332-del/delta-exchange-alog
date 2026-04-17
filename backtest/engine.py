@@ -310,6 +310,7 @@ class BacktestEngine:
                 'Exit Type': status_val,
                 'Position Size': round(position_size, 4),
                 'Margin': round(used_margin, 2),
+                'Available Margin': round(self.equity, 2),
                 'Entry Price': entry_price,
                 'Exit Price': exit_price,
                 'Fee': round(comm_cost, 4),
