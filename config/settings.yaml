@@ -35,6 +35,7 @@ risk_management:
   sizing_method: "fractional" # Default to fractional risk sizing
   risk_pct_per_trade: 0.01  # Risk exactly 1% of equity per trade
   fractional_margin_cap: 0.2 # Max 20% of account as margin per trade
+  settlement_asset: "USD"    # Your wallet uses "USD" instead of "USDT"
 
   # Global Profit Milestones (takes 30% at >=50% PnL, another 30% at >=100% PnL)
   enable_profit_milestones: true

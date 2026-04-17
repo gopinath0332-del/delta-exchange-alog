@@ -35,6 +35,7 @@ class RiskManagementConfig(BaseModel):
     sizing_method: str = Field(default="fractional") # "fixed" (old) or "fractional" (new)
     risk_pct_per_trade: float = Field(default=0.01, gt=0, le=1) # 1%
     fractional_margin_cap: float = Field(default=0.2, gt=0, le=1) # 20%
+    settlement_asset: str = Field(default="USDT")
     atr_margin_multiplier: float = Field(default=2.0, gt=0)
     atr_margin_cap_multiplier: float = Field(default=1.5, gt=0)
     enable_profit_milestones: bool = Field(default=True)

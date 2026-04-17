@@ -238,6 +238,7 @@ def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None
         "sizing_method": sizing_method,
         "risk_pct": risk_pct,
         "fractional_margin_cap": fractional_margin_cap,
+        "settlement_asset": config.risk_management.settlement_asset if hasattr(config, 'risk_management') else "USDT",
         "atr_multiplier": atr_multiplier,
         "atr_margin_cap_multiplier": atr_margin_cap_multiplier
     }
@@ -293,6 +294,7 @@ def execute_strategy_signal(
         sizing_method = trade_config.get('sizing_method', 'fixed')
         risk_pct = trade_config.get('risk_pct', 0.01)
         fractional_margin_cap = trade_config.get('fractional_margin_cap', 0.2)
+        settlement_asset = trade_config.get('settlement_asset', 'USDT')
         atr_multiplier = trade_config.get('atr_multiplier', 2.0)
         atr_margin_cap_multiplier = trade_config.get('atr_margin_cap_multiplier', 1.5)
         
@@ -315,14 +317,14 @@ def execute_strategy_signal(
                 equity = None
                 if sizing_method == "fractional":
                     balances = client.get_wallet_balance()
-                    # Find USDT balance (most common settling asset)
-                    usdt_data = next((b for b in balances.get('result', []) if b.get('asset_symbol') == 'USDT'), None)
-                    if usdt_data:
+                    # Find specified settlement asset (e.g., USD or USDT)
+                    asset_data = next((b for b in balances.get('result', []) if b.get('asset_symbol') == settlement_asset), None)
+                    if asset_data:
                         # Use 'balance' (Total Equity) instead of 'available_balance'
-                        equity = float(usdt_data.get('balance', 0))
-                        logger.info(f"Fetched account equity for sizing: ${equity:.2f} USDT")
+                        equity = float(asset_data.get('balance', 0))
+                        logger.info(f"Fetched account equity ({settlement_asset}) for sizing: ${equity:.2f}")
                     else:
-                        logger.warning("USDT balance not found. Falling back to target_margin.")
+                        logger.warning(f"{settlement_asset} balance not found. Falling back to target_margin.")
                 
                 # Calculate dynamic position size
                 order_size = calculate_position_size(
