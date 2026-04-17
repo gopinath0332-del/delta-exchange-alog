@@ -4,7 +4,9 @@ from typing import Dict, Optional, Tuple, Any
 import pandas as pd
 import numpy as np
 from core.config import get_config
+from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
 from core.candle_utils import get_closed_candle_index
+from core.logger import get_logger
 from strategies.base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)

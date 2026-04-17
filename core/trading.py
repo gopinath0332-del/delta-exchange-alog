@@ -133,7 +133,7 @@ def calculate_position_size(
                 if position_size < 1: position_size = 1
             
             new_margin = (position_size * price * contract_value) / leverage
-            logger.warning(
+            logger.debug(
                 f"Safety Cap triggered for {calc_mode}: "
                 f"Margin ${actual_margin:.2f} > Cap ${max_allowed_margin:.2f}. "
                 f"Capping size {old_size} -> {position_size} (New Margin: ${new_margin:.2f})"
@@ -142,9 +142,9 @@ def calculate_position_size(
         
         actual_margin = (position_size * price * contract_value) / leverage
         
-        logger.info(
+        logger.debug(
             f"Position size calculation ({calc_mode}): "
-            f"Price=${price:.2f}, Leverage={leverage}x, ATR={atr if atr else 'N/A'} "
+            f"Price=${price:.4f}, Leverage={leverage}x, ATR={atr if atr else 'N/A'} "
             f"-> Position Size={position_size} contracts (Actual Margin=${actual_margin:.2f})"
         )
         
