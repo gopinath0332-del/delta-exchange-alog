@@ -76,7 +76,10 @@ class BacktestEngine:
             ts = times[i]
             if ts > 1e10:
                 ts /= 1000
-            candle_dt = datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
+            
+            # Use local time structure uniformly to match format_time() in strategies.
+            # This prevents 5.5 hour offsets on Windows where os.environ['TZ']='UTC' does not work without tzset().
+            candle_dt = datetime.fromtimestamp(ts)
             candle_close = closes[i]
             candle_time_str = candle_dt.strftime('%d-%m-%y %H:%M')
 

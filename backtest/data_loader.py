@@ -80,9 +80,10 @@ class DataLoader:
             except Exception as e:
                 df['time'] = pd.to_datetime(datetime_str, format='mixed', dayfirst=True)
             
-            # Convert timezone-aware/naive datetimes to Unix epoch seconds (float)
-            # We explicitly cast to 'datetime64[s]' to handle ns/us/ms resolutions robustly
-            df['time'] = df['time'].dt.floor('s').astype('int64') // 10**9
+            # Convert timezone-aware/naive datetimes to Unix epoch seconds (int)
+            # By subtracting the epoch and dividing by 1 second, we avoid platform-specific ns vs us resolution issues
+            epoch = pd.Timestamp('1970-01-01', tz='UTC') if df['time'].dt.tz is not None else pd.Timestamp('1970-01-01')
+            df['time'] = (df['time'].dt.floor('s') - epoch) // pd.Timedelta('1s')
             
             # Sort by time to ensure chronological order
             df = df.sort_values('time').reset_index(drop=True)

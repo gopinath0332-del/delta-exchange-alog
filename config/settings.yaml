@@ -129,7 +129,7 @@ strategies:
     # to match TradingView's HA values.  With only 30 days the HA smoothing is
     # insufficient and signals can fire on effectively-standard-candle values.
     historical_days: 90
-    stop_loss_pct: 0.50 # Cap max loss at 50% of margin per trade segment
+    stop_loss_pct: 0.20 # Cap max loss at 20% of margin per trade segment
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:
@@ -182,21 +182,21 @@ multi_coin:
         target_margin: 50
         log_file: logs/bio.log # Per-coin log file (same as the old dedicated service)
       - symbol: PIPPINUSD
-        timeframe: 2h
+        timeframe: 1h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr" # Switch from "margin" to "atr"
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         target_margin: 50
         log_file: logs/pippin.log
-      - symbol: ARCUSD
-        timeframe: 1h
+      - symbol: BEATUSD
+        timeframe: 2h
         leverage: 5
         target_margin: 50
         candle_type: heikin-ashi
-        position_sizing_type: "atr" # Switch from "margin" to "atr"
-        atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
-        log_file: logs/arc.log
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        log_file: logs/beat.log
   bb_breakout:
     mode: paper
     symbols:
@@ -248,6 +248,9 @@ single_coin:
     leverage: 5
     target_margin: 50
   XRP:
+    leverage: 5
+    target_margin: 50
+  BEAT:
     leverage: 5
     target_margin: 50
 
