@@ -128,8 +128,8 @@ class TestPositionSizing(unittest.TestCase):
         # Stop Dist = 0.01 * 2.0 * 0.1 = 0.002
         # Size = 10 / 0.002 = 5000 contracts
         # Actual Margin = (5000 * 100 * 0.1) / 10 = 5000 USD (WAY OVER 50% equity cap)
-        # 50% Equity Cap = $500 margin. 1.5x Multiplier = $750 Max Margin.
-        # Max Size = (750 * 10) / (100 * 0.1) = 7500 / 10 = 750 contracts
+        # 20% Equity Cap = $200 margin. 1.5x Multiplier = $300 Max Margin.
+        # Max Size = (300 * 10) / (100 * 0.1) = 3000 / 10 = 300 contracts
         size = calculate_position_size(
             target_margin=50.0, # Ignored in fractional
             price=100.0,
@@ -143,7 +143,7 @@ class TestPositionSizing(unittest.TestCase):
             atr_margin_cap_multiplier=1.5
         )
         self.assertTrue(size < 5000)
-        self.assertEqual(size, 750)
+        self.assertEqual(size, 300)
 
 if __name__ == '__main__':
     unittest.main()

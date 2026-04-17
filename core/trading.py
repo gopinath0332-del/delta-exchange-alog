@@ -56,7 +56,8 @@ def calculate_position_size(
     atr_margin_cap_multiplier: float = 1.5,
     sizing_method: str = "fixed",
     equity: Optional[float] = None,
-    risk_pct: float = 0.01
+    risk_pct: float = 0.01,
+    fractional_margin_cap: float = 0.2
 ) -> int:
     """
     Calculate position size dynamically based on target margin (Fixed) or Account Equity (Fractional).
@@ -74,6 +75,7 @@ def calculate_position_size(
         sizing_method: "fixed" (use target_margin) or "fractional" (use % of equity).
         equity: Total account equity (required for "fractional").
         risk_pct: Percentage of equity to risk (e.g., 0.01 for 1%).
+        fractional_margin_cap: Maximum fraction of equity to use as margin (e.g., 0.2 for 20%).
         
     Returns:
         Calculated position size (integer number of contracts).
@@ -113,7 +115,7 @@ def calculate_position_size(
         actual_margin = (position_size * price * contract_value) / leverage
         
         # Use target_margin as a baseline "normal" margin if provided, otherwise use a safe fraction of equity
-        limit_reference = target_margin if sizing_method == "fixed" else (equity * 0.5) # Max 50% margin cap for fractional
+        limit_reference = target_margin if sizing_method == "fixed" else (equity * fractional_margin_cap)
         max_allowed_margin = limit_reference * (atr_margin_cap_multiplier or 1.5)
         
         if actual_margin > max_allowed_margin:
@@ -192,6 +194,7 @@ def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None
     sizing_type = config.risk_management.position_sizing_type if hasattr(config, 'risk_management') else "margin"
     sizing_method = config.risk_management.sizing_method if hasattr(config, 'risk_management') else "fixed"
     risk_pct = config.risk_management.risk_pct_per_trade if hasattr(config, 'risk_management') else 0.01
+    fractional_margin_cap = config.risk_management.fractional_margin_cap if hasattr(config, 'risk_management') else 0.2
     atr_multiplier = config.risk_management.atr_margin_multiplier if hasattr(config, 'risk_management') else 2.0
     atr_margin_cap_multiplier = config.risk_management.atr_margin_cap_multiplier if hasattr(config, 'risk_management') else 1.5
 
@@ -210,6 +213,8 @@ def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None
             sizing_method = sizing_config["sizing_method"].lower()
         if "risk_pct" in sizing_config:
             risk_pct = float(sizing_config["risk_pct"])
+        if "fractional_margin_cap" in sizing_config:
+            fractional_margin_cap = float(sizing_config["fractional_margin_cap"])
         if "atr_margin_multiplier" in sizing_config:
             atr_multiplier = float(sizing_config["atr_margin_multiplier"])
         if "leverage" in sizing_config:
@@ -232,6 +237,7 @@ def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None
         "sizing_type": sizing_type,
         "sizing_method": sizing_method,
         "risk_pct": risk_pct,
+        "fractional_margin_cap": fractional_margin_cap,
         "atr_multiplier": atr_multiplier,
         "atr_margin_cap_multiplier": atr_margin_cap_multiplier
     }
@@ -286,6 +292,7 @@ def execute_strategy_signal(
         sizing_type = trade_config.get('sizing_type', 'margin')
         sizing_method = trade_config.get('sizing_method', 'fixed')
         risk_pct = trade_config.get('risk_pct', 0.01)
+        fractional_margin_cap = trade_config.get('fractional_margin_cap', 0.2)
         atr_multiplier = trade_config.get('atr_multiplier', 2.0)
         atr_margin_cap_multiplier = trade_config.get('atr_margin_cap_multiplier', 1.5)
         
@@ -330,7 +337,8 @@ def execute_strategy_signal(
                     atr_margin_cap_multiplier=atr_margin_cap_multiplier,
                     sizing_method=sizing_method,
                     equity=equity,
-                    risk_pct=risk_pct
+                    risk_pct=risk_pct,
+                    fractional_margin_cap=fractional_margin_cap
                 )
                 lot_size = order_size  # Store for notification
                 logger.info(f"Calculated size for {action}: {order_size} contracts (Method: {sizing_method})")
