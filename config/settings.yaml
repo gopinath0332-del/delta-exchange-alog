@@ -209,8 +209,8 @@ multi_coin:
         position_sizing_type: "atr" # Switch from "margin" to "atr"
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         log_file: "logs/sol.log"
-      - symbol: "RIVERUSD"
-        timeframe: "1h"
+      - symbol: "SUIUSD"
+        timeframe: "2h"
         candle_type: "heikin-ashi"
         leverage: 5
         target_margin: 50
