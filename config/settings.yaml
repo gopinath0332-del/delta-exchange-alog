@@ -156,7 +156,7 @@ strategies:
     # RVOL Filter (Relative Volume)
     use_volume: true
     vol_length: 20 # Volume moving average lookback
-    rvol_min: 1.5 # Min Relative Volume (1.5 = 1.5x average)
+    rvol_min: 2.0 # Min Relative Volume (1.5 = 1.5x average)
     # HTF Trend Filter (simulated: 1H EMA length = htf_ema_length * htf_multiplier)
     use_htf: true
     htf_multiplier: 4 # 4 = simulate 4H on 1H data (4 * 100 = EMA 400)
