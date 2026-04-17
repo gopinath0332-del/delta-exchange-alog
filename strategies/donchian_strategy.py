@@ -360,6 +360,13 @@ class DonchianChannelStrategy(BaseStrategy):
              # or handle it inside check_signals by marking it there.
              pass
         
+        # Extract ATR for risk management
+        atr_val = 0.0
+        if indicators and isinstance(indicators, dict):
+            atr_val = indicators.get("atr", self.last_atr or 0.0)
+        else:
+            atr_val = self.last_atr or 0.0
+
         if action == "ENTRY_LONG":
             self.current_position = 1
             self.last_entry_price = price
@@ -367,13 +374,12 @@ class DonchianChannelStrategy(BaseStrategy):
                 "type": "LONG",
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
+                "entry_atr": atr_val,
                 "status": "OPEN",
                 "logs": []
             }
             # Calculate Initial Stop Loss Price (if pct configured)
             if self.stop_loss_pct is not None:
-                # Formula: Price * (1 - SL% / Leverage)
-                # E.g. Price=50, SL=0.50 (50%), Leverage=5 -> 50 * (1 - 0.1) = 45
                 self.initial_sl_price = price * (1 - self.stop_loss_pct / self.leverage)
                 logger.debug(f"Calculated initial SL for LONG: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
             else:
@@ -382,18 +388,17 @@ class DonchianChannelStrategy(BaseStrategy):
         elif action == "ENTRY_SHORT":
             self.current_position = -1
             self.last_entry_price = price
-            self.last_long_duration_bars = 0 # Reset duration counter? Pine logic says: lastLongBars updated when Long -> Flat
+            self.last_long_duration_bars = 0 # Reset duration counter
             self.active_trade = {
                 "type": "SHORT",
                 "entry_time": format_time(current_time_ms),
                 "entry_price": price,
+                "entry_atr": atr_val,
                 "status": "OPEN",
                 "logs": []
             }
             # Calculate Initial Stop Loss Price (if pct configured)
             if self.stop_loss_pct is not None:
-                # Formula: Price * (1 + SL% / Leverage)
-                # E.g. Price=50, SL=0.50 (50%), Leverage=5 -> 50 * (1 + 0.1) = 55
                 self.initial_sl_price = price * (1 + self.stop_loss_pct / self.leverage)
                 logger.debug(f"Calculated initial SL for SHORT: {self.initial_sl_price:.4f} ({self.stop_loss_pct*100}% of margin)")
             else:

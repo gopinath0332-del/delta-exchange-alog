@@ -234,7 +234,27 @@ def main():
         help="Candle type to use: 'standard' (default) or 'heikin_ashi'"
     )
 
+    parser.add_argument("--refresh-metadata", action="store_true", help="Force refresh product metadata from Delta Exchange")
+
     args = parser.parse_args()
+    
+    # -----------------------------------------------------------------------
+    # Step 0: Ensure product metadata is available for accurate sizing
+    # -----------------------------------------------------------------------
+    from scripts.fetch_metadata import fetch_and_save_metadata
+    meta_path = Path("data/historical/product_metadata.json")
+    
+    if args.refresh_metadata or not meta_path.exists():
+        if args.refresh_metadata:
+            print("Force refreshing product metadata...")
+        else:
+            print("Product metadata missing. Auto-fetching for accurate backtesting...")
+        
+        success = fetch_and_save_metadata(str(meta_path))
+        if not success:
+            print("Warning: Failed to fetch metadata. Backtest will use hardcoded defaults.")
+        else:
+            print("Metadata refresh complete.")
     
     if not args.strategy:
         strategies = [

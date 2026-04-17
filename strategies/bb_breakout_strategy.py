@@ -420,39 +420,48 @@ class BBBreakoutStrategy(BaseStrategy):
         def fmt(ts_ms):
             return datetime.datetime.fromtimestamp(ts_ms / 1000).strftime("%d-%m-%y %H:%M")
 
+        # Extract ATR for risk management
+        atr_val = 0.0
+        if indicators and isinstance(indicators, dict):
+            atr_val = indicators.get("atr", self.last_atr or 0.0)
+        else:
+            atr_val = self.last_atr or 0.0
+
         if action == "ENTRY_LONG":
             self.current_position = 1
             self.last_entry_price = price
             self.entry_price = price
             # Set trailing SL from actual execution price
-            self.trailing_stop_level = price - self.last_atr * self.atr_mult if self.use_atr_sl else None
+            self.trailing_stop_level = price - atr_val * self.atr_mult if self.use_atr_sl else None
             self.active_trade = {
                 "type": "LONG",
                 "entry_time": fmt(current_time_ms),
                 "entry_price": price,
+                "entry_atr": atr_val,
                 "entry_bb": f"{self.last_upper:.4f}/{self.last_lower:.4f}",
                 "status": "OPEN",
                 "logs": [],
             }
             _tsl = f"{self.trailing_stop_level:.6f}" if self.trailing_stop_level is not None else "DISABLED"
-            logger.debug(f"State: ENTRY_LONG @ {price}, TSL={_tsl}")
+            logger.debug(f"State: ENTRY_LONG @ {price}, TSL={_tsl}, ATR={atr_val}")
             self.save_state()
 
         elif action == "ENTRY_SHORT":
             self.current_position = -1
             self.last_entry_price = price
             self.entry_price = price
-            self.trailing_stop_level = price + self.last_atr * self.atr_mult if self.use_atr_sl else None
+            self.trailing_stop_level = price + atr_val * self.atr_mult if self.use_atr_sl else None
             self.active_trade = {
                 "type": "SHORT",
                 "entry_time": fmt(current_time_ms),
                 "entry_price": price,
+                "entry_atr": atr_val,
                 "entry_bb": f"{self.last_upper:.4f}/{self.last_lower:.4f}",
                 "status": "OPEN",
                 "logs": [],
             }
             _tsl = f"{self.trailing_stop_level:.6f}" if self.trailing_stop_level is not None else "DISABLED"
-            logger.debug(f"State: ENTRY_SHORT @ {price}, TSL={_tsl}")
+            logger.debug(f"State: ENTRY_SHORT @ {price}, TSL={_tsl}, ATR={atr_val}")
             self.save_state()
 
         elif action == "MILESTONE_EXIT":
@@ -695,12 +704,12 @@ class BBBreakoutStrategy(BaseStrategy):
             if self.use_atr_sl and self.trailing_stop_level is not None:
                 if self.current_position == 1 and close <= self.trailing_stop_level:
                     self.update_position_state(
-                        "EXIT_LONG", current_time_ms, None, close, "Trailing SL Hit"
+                        "EXIT_LONG", current_time_ms, {"atr": atr}, close, "Trailing SL Hit"
                     )
                     continue
                 elif self.current_position == -1 and close >= self.trailing_stop_level:
                     self.update_position_state(
-                        "EXIT_SHORT", current_time_ms, None, close, "Trailing SL Hit"
+                        "EXIT_SHORT", current_time_ms, {"atr": atr}, close, "Trailing SL Hit"
                     )
                     continue
 
@@ -710,14 +719,14 @@ class BBBreakoutStrategy(BaseStrategy):
 
             if self.current_position == 1 and long_exit:
                 self.update_position_state(
-                    "EXIT_LONG", current_time_ms, None, close,
+                    "EXIT_LONG", current_time_ms, {"atr": atr}, close,
                     f"Crossed under Basis {basis:.6f}"
                 )
                 continue
 
             if self.current_position == -1 and short_exit:
                 self.update_position_state(
-                    "EXIT_SHORT", current_time_ms, None, close,
+                    "EXIT_SHORT", current_time_ms, {"atr": atr}, close,
                     f"Crossed over Basis {basis:.6f}"
                 )
                 continue
@@ -736,7 +745,7 @@ class BBBreakoutStrategy(BaseStrategy):
             if self.current_position == 0:
                 if self.allow_long and long_breakout and ema_long_ok and squeeze_ok and volume_ok and htf_long_ok:
                     self.update_position_state(
-                        "ENTRY_LONG", current_time_ms, None, close,
+                        "ENTRY_LONG", current_time_ms, {"atr": atr}, close,
                         f"BB Breakout Long + all filters"
                     )
                     self.entry_price = close
@@ -745,7 +754,7 @@ class BBBreakoutStrategy(BaseStrategy):
 
                 elif self.allow_short and short_breakout and ema_short_ok and squeeze_ok and volume_ok and htf_short_ok:
                     self.update_position_state(
-                        "ENTRY_SHORT", current_time_ms, None, close,
+                        "ENTRY_SHORT", current_time_ms, {"atr": atr}, close,
                         f"BB Breakdown Short + all filters"
                     )
                     self.entry_price = close

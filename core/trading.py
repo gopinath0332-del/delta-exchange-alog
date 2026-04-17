@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any
 import time
 import os
 import uuid
+import json
 from datetime import datetime
 from core.logger import get_logger
 from api.rest_client import DeltaRestClient
@@ -152,6 +153,64 @@ def calculate_position_size(
     except Exception as e:
         logger.error(f"Error calculating position size: {e}")
         return (2 if enable_partial_tp else 1), f"ERROR: {e}"
+
+
+_METADATA_CACHE = None
+
+def get_contract_value(symbol: str) -> float:
+    """
+    Get contract value for a symbol (offline helper for backtesting).
+    
+    1. Tries to load from product_metadata.json
+    2. Falls back to hardcoded common symbols
+    3. Defaults to 1.0
+    """
+    global _METADATA_CACHE
+    
+    # Try to load cache if not already loaded
+    if _METADATA_CACHE is None:
+        try:
+            meta_path = os.path.join("data", "historical", "product_metadata.json")
+            if os.path.exists(meta_path):
+                with open(meta_path, "r") as f:
+                    _METADATA_CACHE = json.load(f)
+            else:
+                _METADATA_CACHE = {} # Empty dict to avoid repeated failed loads
+        except Exception as e:
+            logger.warning(f"Could not load product_metadata.json: {e}")
+            _METADATA_CACHE = {}
+
+    # 1. Check Metadata Cache (Full Symbol match - e.g. BTCUSD or BTCUSDT)
+    if _METADATA_CACHE and symbol in _METADATA_CACHE:
+        return _METADATA_CACHE[symbol].get("contract_value", 1.0)
+    
+    # 2. Check Metadata Cache (Base Asset match - e.g. BTC)
+    symbol_clean = symbol.upper().replace(".P", "").replace("USD", "").replace("USDT", "")
+    if _METADATA_CACHE and symbol_clean in _METADATA_CACHE:
+        return _METADATA_CACHE[symbol_clean].get("contract_value", 1.0)
+
+    # 3. Fallback to hardcoded common symbols
+    mapping = {
+        "BTC": 0.001,
+        "ETH": 0.01,
+        "SOL": 0.1,
+        "SUI": 1.0,
+        "BNB": 0.01,
+        "XRP": 1.0,
+        "DOGE": 10.0,
+        "ADA": 10.0,
+        "LTC": 0.1,
+    }
+    
+    return mapping.get(symbol_clean, 1.0) 
+
+def get_product_metadata(symbol: str) -> Dict[str, Any]:
+    """Get all metadata for a symbol from cache."""
+    global _METADATA_CACHE
+    if _METADATA_CACHE is None:
+        get_contract_value(symbol) # Triggers load
+    
+    return _METADATA_CACHE.get(symbol, {}) if _METADATA_CACHE else {}
 
 def get_trade_config(symbol: str, sizing_config: Optional[Dict[str, Any]] = None):
     """
