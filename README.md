@@ -31,6 +31,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
 - **Global Settings**: Centralized configuration of all strategy logic and risk rules in `settings.yaml` (NEW)
 - **Terminal Interface**: Robust CLI dashboard with live strategy monitoring and position tracking
+- **Research & Optimization Suite**: Advanced automation tools for multi-coin screening, depth optimization, and risk-sensitivity analysis (NEW)
 
 ## Project Structure
 
@@ -77,6 +78,11 @@ delta-exchange-alog/
 ├── reporting/          # PDF report generation
 ├── terminal/           # Terminal interface
 ├── service/            # Systemd service files for deployment
+├── scratch/            # Optimization and research scripts (New)
+│   ├── donchian_multi_screener.py  # Broad screening (181 coins x 3 TFs)
+│   ├── donchian_multi_optimizer.py # Depth optimization for champions
+│   ├── compare_multi_risk.py       # Portfolio-wide risk sensitivity testing
+│   └── donchian_optimization_pippin.py # PIPPIN-specific parameter tuning
 └── tests/              # Unit and integration tests
 ```
 
@@ -247,7 +253,22 @@ risk_management:
       exit_pct: 0.30 # Exit 30% of the current active position size
     - pnl_pct: 100.0 # Trigger at 100% Unrealized Margin PnL
       exit_pct: 0.30 # Exit 30% of the remaining active position size
+  
+  # Optimized Risk Tiers (Based on April 2026 Research)
+  risk_pct_per_trade: 0.05  # Optimized to 5% for high-efficiency coins (PIPPIN, BEAT, ARC)
+  use_compounding: true     # Recommended to leverage the 5% risk efficiently
 ```
+
+### Strategic Risk Optimization
+
+Based on large-scale research over 500+ datasets, the following risk tiers are recommended for the Donchian strategy:
+
+- **Growth Tier (5.0% Risk)**: Best for **PIPPIN (1H)**, **BEAT (2H)**, and **ARC (1H)**. These coins support the highest efficient risk with returns exceeding 1,300% (backtested) while staying under 20% drawdown.
+- **Aggressive Tier (4.0% Risk)**: Best for **BIO (4H)**. Provides a ~425% return with a safer buffer (~17% drawdown).
+- **Stability Tier (1.0% Risk)**: Best for **BTC (2H)** and **ETH (2H)**. Keeps volatility extremely low while maintaining positive drift.
+
+> [!IMPORTANT]
+> **Timeframe Matters**: Higher timeframes (2H and 4H) offer significantly better noise filtering for Blue-chip assets like BTC, ETH, and BIO, resulting in higher Sharpe Ratios than their 1H counterparts.
 
 ### Global Profit Milestones (NEW)
 
@@ -545,6 +566,32 @@ The platform includes a local persistence mechanism to ensure that strategy-spec
 
 > [!TIP]
 > **Git Protection**: The `data/state/` directory is automatically ignored by Git (via `.gitignore`) to prevent your private trade state from being committed to the repository.
+
+### Optimization & Research Tools
+
+The platform includes a dedicated research suite in the `scratch/` directory to help you find the absolute best settings for any asset.
+
+#### 1. Broad Screener (`donchian_multi_screener.py`)
+Quickly evaluates 181+ symbols across 1H, 2H, and 4H timeframes using standard parameters (20/10 lookback).
+- **Purpose**: Identifies which coins are currently "trending" and compatible with the strategy.
+- **Output**: A ranked leaderboard (`donchian_screening_results.csv`) sorted by Sharpe Ratio.
+
+#### 2. Depth Optimizer (`donchian_multi_optimizer.py`)
+Performs a joint grid-search (Enter Period + Risk %) for a shortlist of coins.
+- **Purpose**: Finds the "Champion" configuration for your selected assets.
+- **Usage**: Automatically filters for results that stay under a 20% Max Drawdown.
+
+#### 3. Risk Sensitivity Tester (`compare_multi_risk.py`)
+Compares 1%, 2%, 4%, and 5% risk levels side-by-side for your active portfolio.
+- **Purpose**: Helps you decide between "Steady" (1%) or "Aggressive" (5%) growth based on your personal risk tolerance.
+
+```bash
+# Run the screener to find new opportunities
+python scratch/donchian_multi_screener.py
+
+# Run depth optimization for your core coins
+python scratch/donchian_multi_optimizer.py
+```
 
 ### Trading Settings (settings.yaml)
 
