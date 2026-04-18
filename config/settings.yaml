@@ -20,7 +20,7 @@ backtesting:
   # Delta Exchange fees unified (avg maker/taker + slippage)
   commission: 0.0006 # 0.06% combined fixed fee estimate
   order_size_pct: 1.0 # Use 100% of flat initial capital per trade
-  use_compounding: false # If true, use % of current equity instead of initial capital
+  use_compounding: true # If true, use % of current equity instead of initial capital
   #Setting use_compounding: false gives a conservative 232% return on PIPPINUSD that uses $1000 flat per trade. Setting use_compounding: true gives a dynamic 579% return on PIPPINUSD that mimics TradingView exponentially compounding your profits for position sizing.
 
 # Risk Management Rules
@@ -33,7 +33,7 @@ risk_management:
   atr_margin_multiplier: 2.0 # Multiplier for ATR-based sizing
   atr_margin_cap_multiplier: 1 # 1x safety cap on actual margin usage
   sizing_method: "fractional" # Default to fractional risk sizing
-  risk_pct_per_trade: 0.01  # Risk exactly 1% of equity per trade
+  risk_pct_per_trade: 0.05  # Risk exactly 5% of equity per trade Backtested values for risk% optimised order - [5%, 4.5%, 4%, 3.5%]
   fractional_margin_cap: 0.2 # Max 20% of account as margin per trade
   settlement_asset: "USD"    # Your wallet uses "USD" instead of "USDT"
 

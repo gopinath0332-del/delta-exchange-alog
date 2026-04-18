@@ -73,6 +73,7 @@ data/state/
 
 # Scratch & Temporary
 *results*.csv
+scratch/*.csv
 scratch/batch_backtests/*.csv
 
 # Reports
