@@ -123,6 +123,7 @@ class EmailNotifier:
                         timeframe: Optional[str] = None,
                         stop_loss_price: Optional[float] = None,
                         atr: Optional[float] = None,
+                        justification: Optional[str] = None,
                         mode: str = "live"):
         """
         Send a formatted trade alert email.
@@ -142,6 +143,7 @@ class EmailNotifier:
             market_price: Raw candle close price (if HA candle price differs)
             lot_size: Number of contracts placed
             target_margin: Configured target margin from .env (e.g. TARGET_MARGIN_PAXG=30)
+            justification: Information about how the position size was calculated
             mode: Trading mode (live or paper)
         """
         subject = f"Trading Alert: {side} {symbol}"
@@ -179,6 +181,7 @@ class EmailNotifier:
               {stop_loss_line}
               {vol_line}
               <li><strong>Reason:</strong> {reason}</li>
+              {f"<li><strong>Justification:</strong> {justification}</li>" if justification else ""}
             </ul>
             <p>Sent from Delta Exchange Trading Bot</p>
           </body>

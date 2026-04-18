@@ -85,6 +85,7 @@ class DiscordNotifier:
                         timeframe: Optional[str] = None,
                         stop_loss_price: Optional[float] = None,
                         atr: Optional[float] = None,
+                        justification: Optional[str] = None,
                         mode: str = "live"):
         """
         Send a formatted trade alert with ANSI color codes.
