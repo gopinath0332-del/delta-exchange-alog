@@ -231,7 +231,7 @@ class Config:
             "service_account_path", 
             "config/firestore-service-account.json"
         )
-        self.firestore_collection_name = firestore_settings.get("collection_name", "trades")
+        self.firestore_collection_name = firestore_settings.get("collection_name", "crypto")
         
         # Initialize Firestore client
         if self.firestore_enabled:

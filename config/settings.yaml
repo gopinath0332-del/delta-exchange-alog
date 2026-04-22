@@ -263,4 +263,4 @@ single_coin:
 firestore:
   enabled: true # Enable/disable trade journaling to Firestore
   service_account_path: "config/firestore-service-account.json" # Path to Admin SDK service account key
-  collection_name: "trades" # Firestore collection name for trade data
+  collection_name: "crypto" # Firestore collection name for trade data
