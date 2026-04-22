@@ -308,6 +308,7 @@ class EMACrossStrategy(BaseStrategy):
                 self.active_trade = None
             
             self.entry_price = None
+            self.trade_id = None
     
     def set_position(self, position: int):
         """Set the current position state."""

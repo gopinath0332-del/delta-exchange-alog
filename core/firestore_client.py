@@ -162,6 +162,21 @@ def journal_trade(
                 logger.warning("No trade_id provided for entry, skipping journal")
                 return None
             
+            # Full Lifecycle History (Array of events)
+            initial_event = {
+                "timestamp": datetime.utcnow(),
+                "action": action,
+                "side": side,
+                "price": execution_price or price,
+                "order_size": order_size,
+                "rsi": rsi,
+                "reason": reason,
+                "margin_used": margin_used,
+                "order_id": order_id
+            }
+            # Remove None values
+            initial_event = {k: v for k, v in initial_event.items() if v is not None}
+
             trade_doc = {
                 # Trade identification
                 "trade_id": trade_id,
@@ -188,11 +203,14 @@ def journal_trade(
                 
                 # Exchange data
                 "product_id": product_id,
+                # Exchange data
                 "entry_order_id": order_id,
+                
+                # Full Lifecycle History (Array of events)
+                "events": [initial_event],
                 
                 # Fields to be populated on exit
                 "exit_timestamp": None,
-                "exit_action": None,
                 "exit_side": None,
                 "exit_price": None,
                 "exit_execution_price": None,
@@ -278,6 +296,24 @@ def journal_trade(
                 "remaining_margin": remaining_margin,
                 "exit_order_id": order_id,
             }
+
+            # Add to events array
+            from firebase_admin import firestore
+            event = {
+                "timestamp": exit_timestamp,
+                "action": action,
+                "side": side,
+                "price": execution_price or price,
+                "order_size": order_size,
+                "rsi": rsi,
+                "reason": reason,
+                "pnl": pnl,
+                "order_id": order_id
+            }
+            # Remove None values from event
+            event = {k: v for k, v in event.items() if v is not None}
+            
+            update_data["events"] = firestore.ArrayUnion([event])
             
             # Add any additional fields from kwargs
             update_data.update(kwargs)

@@ -477,7 +477,7 @@ def run_strategy_terminal(
                                   action=recon_action,
                                   price=current_market_price,
                                   market_price=market_price,
-                                  rsi=getattr(strategy, 'last_rsi', 0.0) or getattr(strategy, 'last_cci', 0.0),
+                                  rsi=getattr(strategy, 'last_rsi', None) or getattr(strategy, 'last_cci', None),
                                   reason=recon_reason,
                                   mode=mode,
                                   strategy_name=strategy_name,
@@ -510,9 +510,9 @@ def run_strategy_terminal(
                               action, reason = strategy.check_profit_milestones(price, live_pos_data)
 
                           # Extract latest indicator values for the dashboard
-                          current_rsi = getattr(strategy, 'last_rsi', 0.0)
-                          current_atr = getattr(strategy, 'last_atr', 0.0)
-                          prev_rsi = 0.0 # Not explicitly tracked unless strategy does it
+                          current_rsi = getattr(strategy, 'last_rsi', None)
+                          current_atr = getattr(strategy, 'last_atr', None)
+                          prev_rsi = None # Not explicitly tracked unless strategy does it
                      else:
                           # Legacy Fallback
                           current_rsi, prev_rsi = strategy.calculate_rsi(closes)
@@ -533,7 +533,7 @@ def run_strategy_terminal(
                              action=action,
                              price=price, # Strategy/Signal Price (HA or Standard)
                              market_price=market_price, # Authentic Market Price
-                             rsi=current_rsi if current_rsi else getattr(strategy, 'last_cci', 0.0),
+                             rsi=current_rsi if current_rsi is not None else getattr(strategy, 'last_cci', None),
                              reason=reason,
                              mode=mode,
                              strategy_name=strategy_name,
