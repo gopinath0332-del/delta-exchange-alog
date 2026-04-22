@@ -483,6 +483,7 @@ class DonchianChannelStrategy(BaseStrategy):
             self.reset_milestones()
             self.long_entry_bar = None
             self.initial_sl_price = None
+            self.trade_id = None
 
         elif action == "EXIT_SHORT":
             self.current_position = 0
@@ -503,6 +504,7 @@ class DonchianChannelStrategy(BaseStrategy):
             self.partial_exit_done = False
             self.reset_milestones()
             self.initial_sl_price = None
+            self.trade_id = None
         
         # PERSIST TO DISK
         # Save after any position state update to ensure restarts pick up latest flags.
@@ -544,7 +546,7 @@ class DonchianChannelStrategy(BaseStrategy):
         logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}, Milestones={self.milestones_hit}")
         return True
 
-    def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None):
+    def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None) -> tuple[Optional[str], str]:
         """Reconcile internal strategy state with Live Exchange position."""
         import time, datetime
         def format_time(ts_ms): return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
@@ -557,6 +559,9 @@ class DonchianChannelStrategy(BaseStrategy):
         # We use a small epsilon for price comparison to avoid floating point noise
         price_changed = self.entry_price is not None and abs(self.entry_price - entry_price) > 0.0001
         new_pos_found = self.current_position == 0 and expected_pos != 0
+
+        action = None
+        reason = ""
 
         # Sync state if needed
         if self.current_position != expected_pos or price_changed:
@@ -580,6 +585,7 @@ class DonchianChannelStrategy(BaseStrategy):
                     logger.info("Cold Start: Re-synced with existing position. No persistent state found.")
                 
             truly_new_position = (self.current_position != 0 and self.current_position != expected_pos)
+            old_position = self.current_position
 
             self.current_position = expected_pos
             self.entry_price = entry_price
@@ -602,11 +608,14 @@ class DonchianChannelStrategy(BaseStrategy):
 
             elif expected_pos == 0:
                 if self.active_trade:
+                    action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                    reason = "External Exit (Stop-Loss or Manual)"
+                    
                     self.active_trade["exit_time"] = format_time(time.time()*1000) + " (Rec)"
                     self.active_trade["status"] = "CLOSED (SYNC)"
                     self.trades.append(self.active_trade)
                     self.active_trade = None
-                    logger.info("Closed active trade during reconciliation (Flat on exchange)")
+                    logger.info(f"Closed active trade during reconciliation: {reason}")
                 
                 # IMPORTANT: Clear stale state to prevent reuse in next trade
                 self.entry_price = None
@@ -615,6 +624,7 @@ class DonchianChannelStrategy(BaseStrategy):
                 self.initial_sl_price = None
                 self.partial_exit_done = False
                 self.reset_milestones()
+                self.trade_id = None
                 clear_strategy_state(self.symbol, "donchian_channel")
 
         # CATCH-UP LOGIC: We used to mark milestones as ALREADY HIT here if PnL exceeded threshold.

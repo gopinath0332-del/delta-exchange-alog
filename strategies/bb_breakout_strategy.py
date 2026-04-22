@@ -536,7 +536,7 @@ class BBBreakoutStrategy(BaseStrategy):
         entry_price: float,
         current_price: float = None,
         live_pos_data: Optional[Dict] = None,
-    ):
+    ) -> tuple[Optional[str], str]:
         """Reconcile internal state with the exchange live position."""
         import time, datetime
 
@@ -549,11 +549,15 @@ class BBBreakoutStrategy(BaseStrategy):
         elif size < 0:
             expected = -1
 
+        action = None
+        reason = ""
+
         if self.current_position != expected:
             logger.warning(
                 f"[{self.symbol}] Reconciling position: "
                 f"internal={self.current_position} → exchange={expected} (size={size})"
             )
+            old_position = self.current_position
             self.current_position = expected
 
             if expected != 0 and not self.active_trade:
@@ -574,13 +578,18 @@ class BBBreakoutStrategy(BaseStrategy):
                 logger.info(f"Reconciled active {side} trade @ {entry_price}, TSL={self.trailing_stop_level}")
 
             elif expected == 0 and self.active_trade:
+                action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                reason = "External Exit (Stop-Loss or Manual)"
+                
                 self.active_trade["exit_time"] = fmt(time.time() * 1000) + " (Rec)"
                 self.active_trade["status"] = "CLOSED (SYNC)"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
                 self._reset_trade_state()
                 self.clear_state()
-                logger.info("Reconciled: position closed externally.")
+                logger.info(f"Reconciled: position closed externally: {reason}")
+        
+        return action, reason
 
     # ─────────────────────────────────────────────────────────────────────────
     # Backtest Warmup

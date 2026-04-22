@@ -322,7 +322,10 @@ def execute_strategy_signal(
     timeframe: str = "1h",
     atr: Optional[float] = None,
     sizing_config: Optional[Dict[str, Any]] = None,
-    stop_loss_price: Optional[float] = None
+    stop_loss_price: Optional[float] = None,
+    is_reconciliation: bool = False,
+    trade_id: Optional[str] = None,
+    **kwargs
 ):
     """
     Execute a strategy signal by placing orders and sending notifications.
@@ -496,6 +499,10 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.error(f"Failed to fetch position for partial exit: {e}")
                 enable_orders = False
+            
+            # Fallback side for generic partial exit
+            if not side:
+                side = "sell"
         elif action == "MILESTONE_EXIT":
             # Profit milestone exit — dynamic exit percentage parsed from reason string
             import re
@@ -527,6 +534,10 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.error(f"Failed to fetch position for milestone exit: {e}")
                 enable_orders = False
+            
+            # Fallback side if position lookup failed or was missing
+            if not side:
+                side = "sell" # Default for safety in alert-only mode
 
         if not side:
             logger.warning(f"Unknown action: {action}")
@@ -546,9 +557,9 @@ def execute_strategy_signal(
                 logger.error(f"Failed to check existing positions for {symbol}: {e}")
                 return
 
-        if not enable_orders:
-            logger.warning(f"Order placement disabled for {symbol} (ENABLE_ORDER_PLACEMENT=false in .env). Action: {action}")
-            reason += " [DISABLED]"
+        if not enable_orders or is_reconciliation:
+            logger.warning(f"Order placement skipped for {symbol}. Reason: {'RECONCILIATION' if is_reconciliation else 'DISABLED'}. Action: {action}")
+            reason = (f"[SYNC] {reason}" if is_reconciliation else f"{reason} [DISABLED]")
 
         # 4. Set Leverage (Only on Entry)
         # Only set leverage if orders are enabled, or maybe we still want to set it?
@@ -576,8 +587,8 @@ def execute_strategy_signal(
             # Initialize execution_price for live mode
             execution_price = None
             
-            # 7. Execute Order if Enabled
-            if enable_orders:
+            # 7. Execute Order if Enabled (Skip if Reconciliation)
+            if enable_orders and not is_reconciliation:
                 logger.info(f"Placing {side.upper()} order for {order_size} contract(s) of {symbol}")
                 try:
                     order = client.place_order(
@@ -652,8 +663,8 @@ def execute_strategy_signal(
                         )
                         stop_loss_price = adjusted_sl
 
-                # --- EXCHANGE BRACKET STOP-LOSS ---
-                if is_entry and stop_loss_price and enable_orders:
+                # --- EXCHANGE BRACKET STOP-LOSS --- (Skip if Reconciliation)
+                if is_entry and stop_loss_price and enable_orders and not is_reconciliation:
                     try:
                         # Format price according to tick size precision
                         tick_size = float(product.get('tick_size', '0.01'))
@@ -842,32 +853,55 @@ def execute_strategy_signal(
         if order and not mode == "paper":
             actual_execution_price = float(order.get('avg_fill_price', 0)) if order.get('avg_fill_price') else None
         
-        # Generate or retrieve trade_id to link entry and exit
-        trade_id = None
+        # Resolve trade_id: 
+        # Priority: 1. Passed as argument (from strategy state)
+        #           2. Generate new if is_entry
+        #           3. Fallback to consistent ID for exits
+        if not trade_id:
+            if is_entry:
+                # Generate a unique trade_id for this new trade
+                timestamp_str = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+                # Use a cleaner ID format for easier reading
+                trade_id = f"{symbol}_{strategy_name or 'unknown'}_{timestamp_str}_{uuid.uuid4().hex[:6]}"
+                logger.info(f"Generated NEW trade_id for entry: {trade_id}")
+            else:
+                # For exits without a trade_id, try to get consistent ID from position metadata
+                if active_position and active_position.get('created_at'):
+                    entry_ts = active_position.get('created_at', '')
+                    trade_id = f"{symbol}_{strategy_name or 'unknown'}_{entry_ts}"
+                else:
+                    logger.warning(f"No trade_id provided for {action} and could not generate fallback.")
         
         if is_entry:
             # For entries, the execution price becomes the entry price
             entry_price_for_journal = actual_execution_price or price
-            # Generate a unique trade_id for this new trade
-            timestamp_str = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-            trade_id = f"{symbol}_{strategy_name or 'unknown'}_{timestamp_str}_{uuid.uuid4().hex[:8]}"
-            logger.info(f"Generated trade_id for entry: {trade_id}")
         else:
             # For exits, the execution price becomes the exit price
             exit_price_for_journal = actual_execution_price or price
             # Try to get entry price from active_position if available
             if active_position:
                 entry_price_for_journal = float(active_position.get('entry_price', 0.0)) or None
-            
-            # Try to get trade_id from order metadata or generate a fallback
-            # Note: Ideally this should be stored with the position in strategy state
-            # For now, we'll create a consistent ID based on symbol and entry price
-            if active_position and active_position.get('entry_price'):
-                # Create a consistent trade_id based on entry details
-                # This is a fallback; ideally strategies should store trade_id
-                entry_ts = active_position.get('created_at', '')  # If available
-                trade_id = f"{symbol}_{strategy_name or 'unknown'}_{entry_ts}" if entry_ts else None
         
+        # --- Premium Metrics Calculation ---
+        risk_amount_usd = None
+        r_multiple = None
+        slippage_usd = None
+        
+        # Calculate Slippage
+        if actual_execution_price and price:
+            slippage_usd = abs(actual_execution_price - price)
+            
+        # Calculate Risk and R-Multiple
+        if is_entry:
+            if stop_loss_price and entry_price_for_journal:
+                risk_per_contract = abs(entry_price_for_journal - stop_loss_price)
+                risk_amount_usd = risk_per_contract * order_size * contract_value
+        else:
+            # On exit, try to calculate R-Multiple if we have pnl and initial risk
+            # Note: We'd need to fetch initial_risk from the Firestore doc or pass it in.
+            # For now, we'll pass the raw excursion data to journal_trade and let it handle what it can.
+            pass
+
         try:
             journal_trade(
                 symbol=symbol,
@@ -892,7 +926,13 @@ def execute_strategy_signal(
                 margin_used=margin_used,
                 remaining_margin=remaining_margin,
                 product_id=product_id,
-                order_id=order.get('id') if order else None
+                order_id=order.get('id') if order else None,
+                # New Premium Metrics
+                slippage=slippage_usd,
+                initial_risk=risk_amount_usd,
+                atr=atr,
+                stop_loss_price=stop_loss_price,
+                **kwargs # Pass excursions (max_price_seen, min_price_seen)
             )
         except Exception as e:
             # Log error but don't fail the trade execution
@@ -900,7 +940,8 @@ def execute_strategy_signal(
         
         return {
             "success": True,
-            "execution_price": execution_price
+            "execution_price": actual_execution_price or price,
+            "trade_id": trade_id
         }
 
     except Exception as e:

@@ -20,6 +20,7 @@ class BaseStrategy:
         self.entry_price: Optional[float] = None
         self.trailing_stop_level: Optional[float] = None
         self.last_action_candle_ts: Optional[float] = None
+        self.trade_id: Optional[str] = None
         
         # Standard metadata (Cached/Live only)
         self.active_trade: Optional[Dict[str, Any]] = None
@@ -30,6 +31,11 @@ class BaseStrategy:
         
         # New: Shared Indicator State
         self.last_atr: Optional[float] = None
+
+        # New: MFE/MAE Tracking (Maximum Favorable/Adverse Excursion)
+        self.max_price_seen: Optional[float] = None
+        self.min_price_seen: Optional[float] = None
+        self.initial_sl_price: Optional[float] = None
 
         # Profit Milestones (Global Default or Strategy Override)
         config = get_config()
@@ -154,6 +160,19 @@ class BaseStrategy:
             
         self.save_state()
 
+    def update_excursions(self, current_price: float):
+        """Update Maximum Favorable/Adverse Excursion tracking."""
+        if self.current_position == 0:
+            self.max_price_seen = None
+            self.min_price_seen = None
+            return
+
+        if self.max_price_seen is None or current_price > self.max_price_seen:
+            self.max_price_seen = current_price
+        
+        if self.min_price_seen is None or current_price < self.min_price_seen:
+            self.min_price_seen = current_price
+
     def save_state(self, extra_data: Optional[Dict[str, Any]] = None):
         """
         Save the current strategy state to disk.
@@ -166,7 +185,11 @@ class BaseStrategy:
                 "entry_price": self.entry_price,
                 "trailing_stop_level": self.trailing_stop_level,
                 "last_action_candle_ts": self.last_action_candle_ts,
-                "milestones_hit": self.milestones_hit
+                "milestones_hit": self.milestones_hit,
+                "trade_id": self.trade_id,
+                "max_price_seen": self.max_price_seen,
+                "min_price_seen": self.min_price_seen,
+                "initial_sl_price": self.initial_sl_price
             }
             
             if extra_data:
@@ -193,6 +216,10 @@ class BaseStrategy:
             self.trailing_stop_level = state.get("trailing_stop_level")
             self.last_action_candle_ts = state.get("last_action_candle_ts")
             self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
+            self.trade_id = state.get("trade_id")
+            self.max_price_seen = state.get("max_price_seen")
+            self.min_price_seen = state.get("min_price_seen")
+            self.initial_sl_price = state.get("initial_sl_price")
             
             # Return full state so subclass can pull extra fields
             return state
@@ -210,6 +237,10 @@ class BaseStrategy:
         self.entry_price = None
         self.trailing_stop_level = None
         self.last_action_candle_ts = None
+        self.trade_id = None
+        self.max_price_seen = None
+        self.min_price_seen = None
+        self.initial_sl_price = None
         self.reset_milestones()
         clear_strategy_state(self.symbol, self.strategy_name)
 
@@ -229,5 +260,5 @@ class BaseStrategy:
     def run_backtest(self, df):
         raise NotImplementedError("Subclasses must implement run_backtest")
 
-    def reconcile_position(self, size, entry_price, current_price=None, live_pos_data=None):
+    def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None) -> tuple[Optional[str], str]:
         raise NotImplementedError("Subclasses must implement reconcile_position")
