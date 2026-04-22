@@ -485,9 +485,11 @@ def run_strategy_terminal(
                                   timeframe=timeframe,
                                   atr=getattr(strategy, 'last_atr', None),
                                   sizing_config=symbol_settings,
-                                  stop_loss_price=None, # Already closed
+                                  stop_loss_price=getattr(strategy, 'initial_sl_price', None),
                                   is_reconciliation=True,
-                                  trade_id=existing_trade_id
+                                  trade_id=existing_trade_id,
+                                  max_price_seen=getattr(strategy, 'max_price_seen', None),
+                                  min_price_seen=getattr(strategy, 'min_price_seen', None)
                               )
                      except Exception as e:
                          logger.warning(f"Failed to fetch position or reconcile: {e}")
@@ -502,8 +504,15 @@ def run_strategy_terminal(
                           # Attempt to pass live_pos_data if strategy supports it
                           try:
                               action, reason = strategy.check_signals(df, current_time_ms, live_pos_data=live_pos_data)
+                              
+                              # Update MFE/MAE excursions every cycle while in a trade
+                              if hasattr(strategy, 'update_excursions'):
+                                  # Use the authentic market price (closes.iloc[-1])
+                                  strategy.update_excursions(float(closes.iloc[-1]))
                           except TypeError:
                               action, reason = strategy.check_signals(df, current_time_ms)
+                              if hasattr(strategy, 'update_excursions'):
+                                  strategy.update_excursions(float(closes.iloc[-1]))
 
                           # Fallback: Check Global Profit Milestones if no primary action
                           if not action and hasattr(strategy, 'check_profit_milestones'):
@@ -542,7 +551,9 @@ def run_strategy_terminal(
                              atr=current_atr if current_atr else getattr(strategy, 'last_atr', None),
                              sizing_config=symbol_settings,
                              stop_loss_price=getattr(strategy, 'initial_sl_price', None),
-                             trade_id=existing_trade_id
+                             trade_id=existing_trade_id,
+                             max_price_seen=getattr(strategy, 'max_price_seen', None),
+                             min_price_seen=getattr(strategy, 'min_price_seen', None)
                          )
                          
                          # Capture and store the trade_id (on entry)

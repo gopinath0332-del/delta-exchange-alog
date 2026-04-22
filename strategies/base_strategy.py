@@ -32,6 +32,11 @@ class BaseStrategy:
         # New: Shared Indicator State
         self.last_atr: Optional[float] = None
 
+        # New: MFE/MAE Tracking (Maximum Favorable/Adverse Excursion)
+        self.max_price_seen: Optional[float] = None
+        self.min_price_seen: Optional[float] = None
+        self.initial_sl_price: Optional[float] = None
+
         # Profit Milestones (Global Default or Strategy Override)
         config = get_config()
         # Default global risk settings
@@ -155,6 +160,19 @@ class BaseStrategy:
             
         self.save_state()
 
+    def update_excursions(self, current_price: float):
+        """Update Maximum Favorable/Adverse Excursion tracking."""
+        if self.current_position == 0:
+            self.max_price_seen = None
+            self.min_price_seen = None
+            return
+
+        if self.max_price_seen is None or current_price > self.max_price_seen:
+            self.max_price_seen = current_price
+        
+        if self.min_price_seen is None or current_price < self.min_price_seen:
+            self.min_price_seen = current_price
+
     def save_state(self, extra_data: Optional[Dict[str, Any]] = None):
         """
         Save the current strategy state to disk.
@@ -168,7 +186,10 @@ class BaseStrategy:
                 "trailing_stop_level": self.trailing_stop_level,
                 "last_action_candle_ts": self.last_action_candle_ts,
                 "milestones_hit": self.milestones_hit,
-                "trade_id": self.trade_id
+                "trade_id": self.trade_id,
+                "max_price_seen": self.max_price_seen,
+                "min_price_seen": self.min_price_seen,
+                "initial_sl_price": self.initial_sl_price
             }
             
             if extra_data:
@@ -196,6 +217,9 @@ class BaseStrategy:
             self.last_action_candle_ts = state.get("last_action_candle_ts")
             self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
             self.trade_id = state.get("trade_id")
+            self.max_price_seen = state.get("max_price_seen")
+            self.min_price_seen = state.get("min_price_seen")
+            self.initial_sl_price = state.get("initial_sl_price")
             
             # Return full state so subclass can pull extra fields
             return state
@@ -214,6 +238,9 @@ class BaseStrategy:
         self.trailing_stop_level = None
         self.last_action_candle_ts = None
         self.trade_id = None
+        self.max_price_seen = None
+        self.min_price_seen = None
+        self.initial_sl_price = None
         self.reset_milestones()
         clear_strategy_state(self.symbol, self.strategy_name)
 

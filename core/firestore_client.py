@@ -248,6 +248,23 @@ def journal_trade(
             days_held = None
             pnl_percentage = None
             
+            # Prepare update data with basic fields
+            update_data = {
+                "status": status,  # PARTIAL_CLOSED or CLOSED
+                "exit_timestamp": exit_timestamp,
+                "exit_action": action,
+                "exit_side": side,
+                "exit_price": exit_price,
+                "exit_execution_price": execution_price or price,
+                "exit_rsi": rsi,
+                "exit_reason": reason,
+                "pnl": pnl,
+                "funding_charges": funding_charges,
+                "trading_fees": trading_fees,
+                "remaining_margin": remaining_margin,
+                "exit_order_id": order_id,
+            }
+
             try:
                 doc_ref = _firestore_client.collection(_firestore_collection).document(trade_id)
                 existing_doc = doc_ref.get()
@@ -272,30 +289,44 @@ def journal_trade(
                     # Formula: ((exit_price - entry_price) / entry_price) * 100 * leverage
                     if entry_price and exit_price:
                         price_change_pct = ((exit_price - entry_price) / entry_price) * 100
-                        # For leveraged positions, multiply by leverage
+                        # Adjust for side (SHORT = price drop is positive pnl)
+                        # We use entry_side from doc_data
+                        entry_side = doc_data.get('entry_side', 'buy')
+                        if entry_side == 'sell':
+                            price_change_pct = -price_change_pct
+                        
                         pnl_percentage = round(price_change_pct * leverage, 2)
+
+                    # Calculate MFE / MAE (Maximum Favorable/Adverse Excursion)
+                    max_price = kwargs.get('max_price_seen')
+                    min_price = kwargs.get('min_price_seen')
+                    initial_risk = doc_data.get('initial_risk') or kwargs.get('initial_risk')
                     
+                    if entry_price:
+                        entry_side = doc_data.get('entry_side', 'buy')
+                        
+                        if max_price:
+                            # Highest price seen
+                            if entry_side == 'buy':
+                                mfe_price_change = max_price - entry_price
+                                mae_price_change = min_price - entry_price if min_price else 0
+                            else:
+                                mfe_price_change = entry_price - min_price if min_price else 0
+                                mae_price_change = entry_price - max_price
+                            
+                            update_data["mfe_pct"] = round((mfe_price_change / entry_price) * 100 * leverage, 2)
+                            update_data["mae_pct"] = round((mae_price_change / entry_price) * 100 * leverage, 2)
+
+                    # Calculate R-Multiple (PnL / Initial Risk)
+                    if pnl is not None and initial_risk and initial_risk > 0:
+                        update_data["r_multiple"] = round(pnl / initial_risk, 2)
+
             except Exception as e:
                 logger.warning(f"Failed to calculate derived fields: {e}")
             
-            # Prepare update data
-            update_data = {
-                "status": status,  # PARTIAL_CLOSED or CLOSED
-                "exit_timestamp": exit_timestamp,
-                "exit_action": action,
-                "exit_side": side,
-                "exit_price": exit_price,
-                "exit_execution_price": execution_price or price,
-                "exit_rsi": rsi,
-                "exit_reason": reason,
-                "pnl": pnl,
-                "pnl_percentage": pnl_percentage,  # Calculated field
-                "days_held": days_held,  # Calculated field
-                "funding_charges": funding_charges,
-                "trading_fees": trading_fees,
-                "remaining_margin": remaining_margin,
-                "exit_order_id": order_id,
-            }
+            # Merge calculated fields into update_data
+            update_data["pnl_percentage"] = pnl_percentage
+            update_data["days_held"] = days_held
 
             # Add to events array
             from firebase_admin import firestore

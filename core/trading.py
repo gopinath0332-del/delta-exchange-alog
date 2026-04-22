@@ -324,7 +324,8 @@ def execute_strategy_signal(
     sizing_config: Optional[Dict[str, Any]] = None,
     stop_loss_price: Optional[float] = None,
     is_reconciliation: bool = False,
-    trade_id: Optional[str] = None
+    trade_id: Optional[str] = None,
+    **kwargs
 ):
     """
     Execute a strategy signal by placing orders and sending notifications.
@@ -881,6 +882,26 @@ def execute_strategy_signal(
             if active_position:
                 entry_price_for_journal = float(active_position.get('entry_price', 0.0)) or None
         
+        # --- Premium Metrics Calculation ---
+        risk_amount_usd = None
+        r_multiple = None
+        slippage_usd = None
+        
+        # Calculate Slippage
+        if actual_execution_price and price:
+            slippage_usd = abs(actual_execution_price - price)
+            
+        # Calculate Risk and R-Multiple
+        if is_entry:
+            if stop_loss_price and entry_price_for_journal:
+                risk_per_contract = abs(entry_price_for_journal - stop_loss_price)
+                risk_amount_usd = risk_per_contract * order_size * contract_value
+        else:
+            # On exit, try to calculate R-Multiple if we have pnl and initial risk
+            # Note: We'd need to fetch initial_risk from the Firestore doc or pass it in.
+            # For now, we'll pass the raw excursion data to journal_trade and let it handle what it can.
+            pass
+
         try:
             journal_trade(
                 symbol=symbol,
@@ -905,7 +926,13 @@ def execute_strategy_signal(
                 margin_used=margin_used,
                 remaining_margin=remaining_margin,
                 product_id=product_id,
-                order_id=order.get('id') if order else None
+                order_id=order.get('id') if order else None,
+                # New Premium Metrics
+                slippage=slippage_usd,
+                initial_risk=risk_amount_usd,
+                atr=atr,
+                stop_loss_price=stop_loss_price,
+                **kwargs # Pass excursions (max_price_seen, min_price_seen)
             )
         except Exception as e:
             # Log error but don't fail the trade execution
