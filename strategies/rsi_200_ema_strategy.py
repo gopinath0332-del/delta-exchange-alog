@@ -326,21 +326,36 @@ class RSI200EMAStrategy(BaseStrategy):
             self.tp_level = None
             self.trailing_stop_level = None
             self.partial_exit_done = False
+            self.trade_id = None
 
-    def reconcile_position(self, size: float, entry_price: float):
-        """Reconcile state with exchange."""
-        if size > 0:
-            if self.current_position != 1:
-                self.current_position = 1
-                self.last_entry_price = entry_price
+    def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None) -> tuple[Optional[str], str]:
+        """Reconcile internal state with live position."""
+        import time, datetime
+        formatted_time = datetime.datetime.now().strftime("%d-%m-%y %H:%M")
+        
+        expected_pos = 0
+        if size > 0: expected_pos = 1
+        elif size < 0: expected_pos = -1
+        
+        action = None
+        reason = ""
+
+        if self.current_position != expected_pos:
+            logger.warning(f"Reconciling Position: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
+            old_position = self.current_position
+            self.current_position = expected_pos
+            
+            if expected_pos != 0 and not self.active_trade:
+                side = "LONG" if expected_pos == 1 else "SHORT"
+                self.active_trade = {
+                    "type": side,
+                    "entry_time": f"{formatted_time} (Rec)",
+                    "entry_price": entry_price,
+                    "entry_rsi": 0.0,
+                    "status": "OPEN",
+                    "partial_exit_done": False
+                }
                 self.entry_price = entry_price
-                logger.info(f"Reconciled state to LONG (Size: {size})")
-        elif size == 0:
-            if self.current_position != 0:
-                self.current_position = 0
-                logger.info("Reconciled state to FLAT")
-                
-            # Ensure active_trade is closed if we are actually FLAT
                 logger.info(f"Re-synced with existing {side} position via Reconciliation")
                 
             elif expected_pos == 0 and self.active_trade:
@@ -349,11 +364,12 @@ class RSI200EMAStrategy(BaseStrategy):
                 
                 logger.info(f"Closing phantom active_trade via Reconciliation: {reason}")
                 self.active_trade["exit_time"] = f"{formatted_time} (Reconciled)"
-                self.active_trade["exit_price"] = current_price or 0.0 # Unknown or fetch if possible
+                self.active_trade["exit_price"] = current_price or 0.0
                 self.active_trade["exit_rsi"] = 0.0
                 self.active_trade["status"] = "CLOSED (SYNC)"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
+                self.trade_id = None
         
         return action, reason
 

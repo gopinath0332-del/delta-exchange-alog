@@ -453,6 +453,10 @@ def run_strategy_terminal(
                           # This ensures bot state recovers if exchange position changes externally.
                           current_market_price = float(closes.iloc[-1]) if not closes.empty else 0.0
                           recon_action, recon_reason = (None, "")
+                          
+                          # Capture existing trade_id BEFORE reconciliation might clear it
+                          existing_trade_id = getattr(strategy, 'trade_id', None)
+
                           try:
                               # Try matching Rule 3 signature first
                               recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
@@ -465,6 +469,7 @@ def run_strategy_terminal(
                           # If reconciliation triggered an exit (e.g. SL hit on exchange), journal it immediately
                           if recon_action:
                               logger.info(f"[{symbol}] Reconciliation action detected: {recon_action} - {recon_reason}")
+                              
                               execute_strategy_signal(
                                   client=client,
                                   notifier=notifier,
@@ -481,7 +486,8 @@ def run_strategy_terminal(
                                   atr=getattr(strategy, 'last_atr', None),
                                   sizing_config=symbol_settings,
                                   stop_loss_price=None, # Already closed
-                                  is_reconciliation=True
+                                  is_reconciliation=True,
+                                  trade_id=existing_trade_id
                               )
                      except Exception as e:
                          logger.warning(f"Failed to fetch position or reconcile: {e}")
@@ -519,6 +525,7 @@ def run_strategy_terminal(
                          logger.info(f"SIGNAL: {action} - {reason}")
                          
                          # Execute Signal (Order + Alert)
+                         existing_trade_id = getattr(strategy, 'trade_id', None)
                          result = execute_strategy_signal(
                              client=client,
                              notifier=notifier,
@@ -534,8 +541,14 @@ def run_strategy_terminal(
                              timeframe=timeframe,
                              atr=current_atr if current_atr else getattr(strategy, 'last_atr', None),
                              sizing_config=symbol_settings,
-                             stop_loss_price=getattr(strategy, 'initial_sl_price', None)
+                             stop_loss_price=getattr(strategy, 'initial_sl_price', None),
+                             trade_id=existing_trade_id
                          )
+                         
+                         # Capture and store the trade_id (on entry)
+                         if result and isinstance(result, dict) and result.get('trade_id'):
+                             strategy.trade_id = result.get('trade_id')
+                             logger.info(f"[{symbol}] Strategy trade_id updated: {strategy.trade_id}")
                          
                          # Check for successful execution and actual fill price
                          exec_price = price

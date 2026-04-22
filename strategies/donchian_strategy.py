@@ -483,6 +483,7 @@ class DonchianChannelStrategy(BaseStrategy):
             self.reset_milestones()
             self.long_entry_bar = None
             self.initial_sl_price = None
+            self.trade_id = None
 
         elif action == "EXIT_SHORT":
             self.current_position = 0
@@ -503,6 +504,7 @@ class DonchianChannelStrategy(BaseStrategy):
             self.partial_exit_done = False
             self.reset_milestones()
             self.initial_sl_price = None
+            self.trade_id = None
         
         # PERSIST TO DISK
         # Save after any position state update to ensure restarts pick up latest flags.
@@ -622,6 +624,7 @@ class DonchianChannelStrategy(BaseStrategy):
                 self.initial_sl_price = None
                 self.partial_exit_done = False
                 self.reset_milestones()
+                self.trade_id = None
                 clear_strategy_state(self.symbol, "donchian_channel")
 
         # CATCH-UP LOGIC: We used to mark milestones as ALREADY HIT here if PnL exceeded threshold.

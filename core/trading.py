@@ -323,7 +323,8 @@ def execute_strategy_signal(
     atr: Optional[float] = None,
     sizing_config: Optional[Dict[str, Any]] = None,
     stop_loss_price: Optional[float] = None,
-    is_reconciliation: bool = False
+    is_reconciliation: bool = False,
+    trade_id: Optional[str] = None
 ):
     """
     Execute a strategy signal by placing orders and sending notifications.
@@ -843,31 +844,34 @@ def execute_strategy_signal(
         if order and not mode == "paper":
             actual_execution_price = float(order.get('avg_fill_price', 0)) if order.get('avg_fill_price') else None
         
-        # Generate or retrieve trade_id to link entry and exit
-        trade_id = None
+        # Resolve trade_id: 
+        # Priority: 1. Passed as argument (from strategy state)
+        #           2. Generate new if is_entry
+        #           3. Fallback to consistent ID for exits
+        if not trade_id:
+            if is_entry:
+                # Generate a unique trade_id for this new trade
+                timestamp_str = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+                # Use a cleaner ID format for easier reading
+                trade_id = f"{symbol}_{strategy_name or 'unknown'}_{timestamp_str}_{uuid.uuid4().hex[:6]}"
+                logger.info(f"Generated NEW trade_id for entry: {trade_id}")
+            else:
+                # For exits without a trade_id, try to get consistent ID from position metadata
+                if active_position and active_position.get('created_at'):
+                    entry_ts = active_position.get('created_at', '')
+                    trade_id = f"{symbol}_{strategy_name or 'unknown'}_{entry_ts}"
+                else:
+                    logger.warning(f"No trade_id provided for {action} and could not generate fallback.")
         
         if is_entry:
             # For entries, the execution price becomes the entry price
             entry_price_for_journal = actual_execution_price or price
-            # Generate a unique trade_id for this new trade
-            timestamp_str = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-            trade_id = f"{symbol}_{strategy_name or 'unknown'}_{timestamp_str}_{uuid.uuid4().hex[:8]}"
-            logger.info(f"Generated trade_id for entry: {trade_id}")
         else:
             # For exits, the execution price becomes the exit price
             exit_price_for_journal = actual_execution_price or price
             # Try to get entry price from active_position if available
             if active_position:
                 entry_price_for_journal = float(active_position.get('entry_price', 0.0)) or None
-            
-            # Try to get trade_id from order metadata or generate a fallback
-            # Note: Ideally this should be stored with the position in strategy state
-            # For now, we'll create a consistent ID based on symbol and entry price
-            if active_position and active_position.get('entry_price'):
-                # Create a consistent trade_id based on entry details
-                # This is a fallback; ideally strategies should store trade_id
-                entry_ts = active_position.get('created_at', '')  # If available
-                trade_id = f"{symbol}_{strategy_name or 'unknown'}_{entry_ts}" if entry_ts else None
         
         try:
             journal_trade(
@@ -901,7 +905,8 @@ def execute_strategy_signal(
         
         return {
             "success": True,
-            "execution_price": execution_price
+            "execution_price": execution_price,
+            "trade_id": trade_id
         }
 
     except Exception as e:

@@ -294,6 +294,7 @@ class EMACrossStrategy(BaseStrategy):
                 self.active_trade = None
             
             self.entry_price = None
+            self.trade_id = None
         
         elif action == "EXIT_SHORT":
             self.current_position = 0
@@ -360,6 +361,7 @@ class EMACrossStrategy(BaseStrategy):
                 self.active_trade["status"] = "CLOSED (SYNC)"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
+                self.trade_id = None
                 logger.warning(f"Reconciled position - closed active trade record: {reason}")
         
         return action, reason

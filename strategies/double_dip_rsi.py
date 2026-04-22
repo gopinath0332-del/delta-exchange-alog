@@ -343,6 +343,7 @@ class DoubleDipRSIStrategy:
             self.last_long_entry_time = None
             self.trailing_stop_level = None
             self.next_partial_target = None
+            self.trade_id = None
             
             if self.active_trade:
                 self.active_trade["exit_time"] = format_time(current_time_ms)
@@ -372,6 +373,7 @@ class DoubleDipRSIStrategy:
             self.current_position = 0
             self.trailing_stop_level = None
             self.next_partial_target = None
+            self.trade_id = None
             
             if self.active_trade:
                 self.active_trade["exit_time"] = format_time(current_time_ms)
@@ -444,6 +446,7 @@ class DoubleDipRSIStrategy:
                 self.active_trade["status"] = "CLOSED"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
+                self.trade_id = None
         
         return action, reason
 

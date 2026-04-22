@@ -20,6 +20,7 @@ class BaseStrategy:
         self.entry_price: Optional[float] = None
         self.trailing_stop_level: Optional[float] = None
         self.last_action_candle_ts: Optional[float] = None
+        self.trade_id: Optional[str] = None
         
         # Standard metadata (Cached/Live only)
         self.active_trade: Optional[Dict[str, Any]] = None
@@ -166,7 +167,8 @@ class BaseStrategy:
                 "entry_price": self.entry_price,
                 "trailing_stop_level": self.trailing_stop_level,
                 "last_action_candle_ts": self.last_action_candle_ts,
-                "milestones_hit": self.milestones_hit
+                "milestones_hit": self.milestones_hit,
+                "trade_id": self.trade_id
             }
             
             if extra_data:
@@ -193,6 +195,7 @@ class BaseStrategy:
             self.trailing_stop_level = state.get("trailing_stop_level")
             self.last_action_candle_ts = state.get("last_action_candle_ts")
             self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
+            self.trade_id = state.get("trade_id")
             
             # Return full state so subclass can pull extra fields
             return state
@@ -210,6 +213,7 @@ class BaseStrategy:
         self.entry_price = None
         self.trailing_stop_level = None
         self.last_action_candle_ts = None
+        self.trade_id = None
         self.reset_milestones()
         clear_strategy_state(self.symbol, self.strategy_name)
 
