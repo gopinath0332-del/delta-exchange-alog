@@ -233,7 +233,7 @@ def journal_trade(
             doc_ref = _firestore_client.collection(_firestore_collection).document(trade_id)
             doc_ref.set(trade_doc)
             
-            logger.info(f"✓ Trade OPENED in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f}")
+            logger.info(f"[OK] Trade OPENED in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f}")
             
             return trade_id
             
@@ -331,7 +331,7 @@ def journal_trade(
             doc_ref = _firestore_client.collection(_firestore_collection).document(trade_id)
             doc_ref.set(update_data, merge=True)
             
-            logger.info(f"✓ Trade {status} in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f} | PnL: ${pnl:+,.2f}" if pnl else f"✓ Trade {status} in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f}")
+            logger.info(f"[OK] Trade {status} in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f} | PnL: ${pnl:+,.2f}" if pnl else f"[OK] Trade {status} in Firestore: {trade_id} | {symbol} {action} @ ${price:,.2f}")
             
             return trade_id
         

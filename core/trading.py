@@ -529,6 +529,10 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.error(f"Failed to fetch position for milestone exit: {e}")
                 enable_orders = False
+            
+            # Fallback side if position lookup failed or was missing
+            if not side:
+                side = "sell" # Default for safety in alert-only mode
 
         if not side:
             logger.warning(f"Unknown action: {action}")
@@ -905,7 +909,7 @@ def execute_strategy_signal(
         
         return {
             "success": True,
-            "execution_price": execution_price,
+            "execution_price": actual_execution_price or price,
             "trade_id": trade_id
         }
 
