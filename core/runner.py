@@ -449,48 +449,48 @@ def run_strategy_terminal(
                          else:
                              logger.info(f"Cycle Position: {symbol} FLAT")
 
-                          # Trigger Reconciliation EVERY cycle.
-                          # This ensures bot state recovers if exchange position changes externally.
-                          current_market_price = float(closes.iloc[-1]) if not closes.empty else 0.0
-                          recon_action, recon_reason = (None, "")
-                          
-                          # Capture existing trade_id BEFORE reconciliation might clear it
-                          existing_trade_id = getattr(strategy, 'trade_id', None)
+                         # Trigger Reconciliation EVERY cycle.
+                         # This ensures bot state recovers if exchange position changes externally.
+                         current_market_price = float(closes.iloc[-1]) if not closes.empty else 0.0
+                         recon_action, recon_reason = (None, "")
+                         
+                         # Capture existing trade_id BEFORE reconciliation might clear it
+                         existing_trade_id = getattr(strategy, 'trade_id', None)
 
-                          try:
-                              # Try matching Rule 3 signature first
-                              recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
-                          except TypeError:
-                              try:
-                                  recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price)
-                              except TypeError:
-                                  recon_action, recon_reason = strategy.reconcile_position(size, entry_price)
+                         try:
+                             # Try matching Rule 3 signature first
+                             recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
+                         except TypeError:
+                             try:
+                                 recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price)
+                             except TypeError:
+                                 recon_action, recon_reason = strategy.reconcile_position(size, entry_price)
 
-                          # If reconciliation triggered an exit (e.g. SL hit on exchange), journal it immediately
-                          if recon_action:
-                              logger.info(f"[{symbol}] Reconciliation action detected: {recon_action} - {recon_reason}")
-                              
-                              execute_strategy_signal(
-                                  client=client,
-                                  notifier=notifier,
-                                  symbol=symbol,
-                                  action=recon_action,
-                                  price=current_market_price,
-                                  market_price=market_price,
-                                  rsi=getattr(strategy, 'last_rsi', None) or getattr(strategy, 'last_cci', None),
-                                  reason=recon_reason,
-                                  mode=mode,
-                                  strategy_name=strategy_name,
-                                  enable_partial_tp=getattr(strategy, 'enable_partial_tp', False),
-                                  timeframe=timeframe,
-                                  atr=getattr(strategy, 'last_atr', None),
-                                  sizing_config=symbol_settings,
-                                  stop_loss_price=getattr(strategy, 'initial_sl_price', None),
-                                  is_reconciliation=True,
-                                  trade_id=existing_trade_id,
-                                  max_price_seen=getattr(strategy, 'max_price_seen', None),
-                                  min_price_seen=getattr(strategy, 'min_price_seen', None)
-                              )
+                         # If reconciliation triggered an exit (e.g. SL hit on exchange), journal it immediately
+                         if recon_action:
+                             logger.info(f"[{symbol}] Reconciliation action detected: {recon_action} - {recon_reason}")
+                             
+                             execute_strategy_signal(
+                                 client=client,
+                                 notifier=notifier,
+                                 symbol=symbol,
+                                 action=recon_action,
+                                 price=current_market_price,
+                                 market_price=market_price,
+                                 rsi=getattr(strategy, 'last_rsi', None) or getattr(strategy, 'last_cci', None),
+                                 reason=recon_reason,
+                                 mode=mode,
+                                 strategy_name=strategy_name,
+                                 enable_partial_tp=getattr(strategy, 'enable_partial_tp', False),
+                                 timeframe=timeframe,
+                                 atr=getattr(strategy, 'last_atr', None),
+                                 sizing_config=symbol_settings,
+                                 stop_loss_price=getattr(strategy, 'initial_sl_price', None),
+                                 is_reconciliation=True,
+                                 trade_id=existing_trade_id,
+                                 max_price_seen=getattr(strategy, 'max_price_seen', None),
+                                 min_price_seen=getattr(strategy, 'min_price_seen', None)
+                             )
                      except Exception as e:
                          logger.warning(f"Failed to fetch position or reconcile: {e}")
 
@@ -499,34 +499,34 @@ def run_strategy_terminal(
                      price = float(closes.iloc[-1])
 
                      if hasattr(strategy, 'calculate_indicators'):
-                          # Run signal check for the current candle.
-                          # Pass live_pos_data as keyword argument
-                          # Attempt to pass live_pos_data if strategy supports it
-                          try:
-                              action, reason = strategy.check_signals(df, current_time_ms, live_pos_data=live_pos_data)
+                         # Run signal check for the current candle.
+                         # Pass live_pos_data as keyword argument
+                         # Attempt to pass live_pos_data if strategy supports it
+                         try:
+                             action, reason = strategy.check_signals(df, current_time_ms, live_pos_data=live_pos_data)
                               
-                              # Update MFE/MAE excursions every cycle while in a trade
-                              if hasattr(strategy, 'update_excursions'):
+                             # Update MFE/MAE excursions every cycle while in a trade
+                             if hasattr(strategy, 'update_excursions'):
                                   # Use the authentic market price (closes.iloc[-1])
                                   strategy.update_excursions(float(closes.iloc[-1]))
-                          except TypeError:
-                              action, reason = strategy.check_signals(df, current_time_ms)
-                              if hasattr(strategy, 'update_excursions'):
+                         except TypeError:
+                             action, reason = strategy.check_signals(df, current_time_ms)
+                             if hasattr(strategy, 'update_excursions'):
                                   strategy.update_excursions(float(closes.iloc[-1]))
 
-                          # Fallback: Check Global Profit Milestones if no primary action
-                          if not action and hasattr(strategy, 'check_profit_milestones'):
-                              action, reason = strategy.check_profit_milestones(price, live_pos_data)
+                         # Fallback: Check Global Profit Milestones if no primary action
+                         if not action and hasattr(strategy, 'check_profit_milestones'):
+                             action, reason = strategy.check_profit_milestones(price, live_pos_data)
 
-                          # Extract latest indicator values for the dashboard
-                          current_rsi = getattr(strategy, 'last_rsi', None)
-                          current_atr = getattr(strategy, 'last_atr', None)
-                          prev_rsi = None # Not explicitly tracked unless strategy does it
+                         # Extract latest indicator values for the dashboard
+                         current_rsi = getattr(strategy, 'last_rsi', None)
+                         current_atr = getattr(strategy, 'last_atr', None)
+                         prev_rsi = None # Not explicitly tracked unless strategy does it
                      else:
-                          # Legacy Fallback
-                          current_rsi, prev_rsi = strategy.calculate_rsi(closes)
-                          action, reason = strategy.check_signals(current_rsi, current_time_ms)
-                          logger.info(f"Analysis: RSI={current_rsi:.2f} (Prev={prev_rsi:.2f}) | Action={action}")
+                         # Legacy Fallback
+                         current_rsi, prev_rsi = strategy.calculate_rsi(closes)
+                         action, reason = strategy.check_signals(current_rsi, current_time_ms)
+                         logger.info(f"Analysis: RSI={current_rsi:.2f} (Prev={prev_rsi:.2f}) | Action={action}")
 
 
                      
