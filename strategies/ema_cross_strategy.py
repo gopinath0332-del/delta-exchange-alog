@@ -312,7 +312,7 @@ class EMACrossStrategy(BaseStrategy):
         """Set the current position state."""
         self.current_position = position
     
-    def reconcile_position(self, size: float, entry_price: float):
+    def reconcile_position(self, size: float, entry_price: float) -> tuple[Optional[str], str]:
         """
         Reconcile internal state with exchange position.
         
@@ -332,8 +332,12 @@ class EMACrossStrategy(BaseStrategy):
         elif size < 0:
             expected_pos = -1
         
+        action = None
+        reason = ""
+
         if self.current_position != expected_pos:
             logger.warning(f"Reconciling: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
+            old_position = self.current_position
             self.current_position = expected_pos
             
             if expected_pos != 0 and not self.active_trade:
@@ -349,11 +353,16 @@ class EMACrossStrategy(BaseStrategy):
                 logger.warning("Reconciled position - created active trade record")
             
             elif expected_pos == 0 and self.active_trade:
+                action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                reason = "External Exit (Stop-Loss or Manual)"
+                
                 self.active_trade["exit_time"] = format_time(time.time() * 1000) + " (Rec)"
                 self.active_trade["status"] = "CLOSED (SYNC)"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
-                logger.warning("Reconciled position - closed active trade record")
+                logger.warning(f"Reconciled position - closed active trade record: {reason}")
+        
+        return action, reason
     
     def run_backtest(self, df: pd.DataFrame):
         """

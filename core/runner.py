@@ -449,18 +449,40 @@ def run_strategy_terminal(
                          else:
                              logger.info(f"Cycle Position: {symbol} FLAT")
 
-                         # Trigger Reconciliation EVERY cycle.
-                         # This ensures bot state recovers if exchange position changes externally.
-                         current_market_price = float(closes.iloc[-1]) if not closes.empty else 0.0
-                         try:
-                             # Try matching Rule 3 signature first
-                             strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
-                         except TypeError:
-                             try:
-                                 strategy.reconcile_position(size, entry_price, current_market_price)
-                             except TypeError:
-                                 strategy.reconcile_position(size, entry_price)
+                          # Trigger Reconciliation EVERY cycle.
+                          # This ensures bot state recovers if exchange position changes externally.
+                          current_market_price = float(closes.iloc[-1]) if not closes.empty else 0.0
+                          recon_action, recon_reason = (None, "")
+                          try:
+                              # Try matching Rule 3 signature first
+                              recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
+                          except TypeError:
+                              try:
+                                  recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price)
+                              except TypeError:
+                                  recon_action, recon_reason = strategy.reconcile_position(size, entry_price)
 
+                          # If reconciliation triggered an exit (e.g. SL hit on exchange), journal it immediately
+                          if recon_action:
+                              logger.info(f"[{symbol}] Reconciliation action detected: {recon_action} - {recon_reason}")
+                              execute_strategy_signal(
+                                  client=client,
+                                  notifier=notifier,
+                                  symbol=symbol,
+                                  action=recon_action,
+                                  price=current_market_price,
+                                  market_price=market_price,
+                                  rsi=getattr(strategy, 'last_rsi', 0.0) or getattr(strategy, 'last_cci', 0.0),
+                                  reason=recon_reason,
+                                  mode=mode,
+                                  strategy_name=strategy_name,
+                                  enable_partial_tp=getattr(strategy, 'enable_partial_tp', False),
+                                  timeframe=timeframe,
+                                  atr=getattr(strategy, 'last_atr', None),
+                                  sizing_config=symbol_settings,
+                                  stop_loss_price=None, # Already closed
+                                  is_reconciliation=True
+                              )
                      except Exception as e:
                          logger.warning(f"Failed to fetch position or reconcile: {e}")
 

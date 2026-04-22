@@ -341,19 +341,21 @@ class RSI200EMAStrategy(BaseStrategy):
                 logger.info("Reconciled state to FLAT")
                 
             # Ensure active_trade is closed if we are actually FLAT
-            if self.active_trade:
-                import time
-                current_timestamp = time.time() * 1000
-                import datetime
-                formatted_time = datetime.datetime.fromtimestamp(current_timestamp/1000).strftime('%d-%m-%y %H:%M')
+                logger.info(f"Re-synced with existing {side} position via Reconciliation")
                 
-                logger.info("Closing phantom active_trade via Reconciliation")
+            elif expected_pos == 0 and self.active_trade:
+                action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                reason = "External Exit (Stop-Loss or Manual)"
+                
+                logger.info(f"Closing phantom active_trade via Reconciliation: {reason}")
                 self.active_trade["exit_time"] = f"{formatted_time} (Reconciled)"
-                self.active_trade["exit_price"] = 0.0 # Unknown or fetch if possible, but 0 tells us it's special
+                self.active_trade["exit_price"] = current_price or 0.0 # Unknown or fetch if possible
                 self.active_trade["exit_rsi"] = 0.0
                 self.active_trade["status"] = "CLOSED (SYNC)"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
+        
+        return action, reason
 
     def run_backtest(self, df: pd.DataFrame):
         """Simple backtest loop."""

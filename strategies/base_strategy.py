@@ -229,5 +229,5 @@ class BaseStrategy:
     def run_backtest(self, df):
         raise NotImplementedError("Subclasses must implement run_backtest")
 
-    def reconcile_position(self, size, entry_price, current_price=None, live_pos_data=None):
+    def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None) -> tuple[Optional[str], str]:
         raise NotImplementedError("Subclasses must implement reconcile_position")

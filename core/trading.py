@@ -322,7 +322,8 @@ def execute_strategy_signal(
     timeframe: str = "1h",
     atr: Optional[float] = None,
     sizing_config: Optional[Dict[str, Any]] = None,
-    stop_loss_price: Optional[float] = None
+    stop_loss_price: Optional[float] = None,
+    is_reconciliation: bool = False
 ):
     """
     Execute a strategy signal by placing orders and sending notifications.
@@ -546,9 +547,9 @@ def execute_strategy_signal(
                 logger.error(f"Failed to check existing positions for {symbol}: {e}")
                 return
 
-        if not enable_orders:
-            logger.warning(f"Order placement disabled for {symbol} (ENABLE_ORDER_PLACEMENT=false in .env). Action: {action}")
-            reason += " [DISABLED]"
+        if not enable_orders or is_reconciliation:
+            logger.warning(f"Order placement skipped for {symbol}. Reason: {'RECONCILIATION' if is_reconciliation else 'DISABLED'}. Action: {action}")
+            reason = (f"[SYNC] {reason}" if is_reconciliation else f"{reason} [DISABLED]")
 
         # 4. Set Leverage (Only on Entry)
         # Only set leverage if orders are enabled, or maybe we still want to set it?
@@ -576,8 +577,8 @@ def execute_strategy_signal(
             # Initialize execution_price for live mode
             execution_price = None
             
-            # 7. Execute Order if Enabled
-            if enable_orders:
+            # 7. Execute Order if Enabled (Skip if Reconciliation)
+            if enable_orders and not is_reconciliation:
                 logger.info(f"Placing {side.upper()} order for {order_size} contract(s) of {symbol}")
                 try:
                     order = client.place_order(
@@ -652,8 +653,8 @@ def execute_strategy_signal(
                         )
                         stop_loss_price = adjusted_sl
 
-                # --- EXCHANGE BRACKET STOP-LOSS ---
-                if is_entry and stop_loss_price and enable_orders:
+                # --- EXCHANGE BRACKET STOP-LOSS --- (Skip if Reconciliation)
+                if is_entry and stop_loss_price and enable_orders and not is_reconciliation:
                     try:
                         # Format price according to tick size precision
                         tick_size = float(product.get('tick_size', '0.01'))

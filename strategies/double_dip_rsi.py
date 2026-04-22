@@ -398,7 +398,7 @@ class DoubleDipRSIStrategy:
         """Manually set position state."""
         self.current_position = position
 
-    def reconcile_position(self, size: float, entry_price: float):
+    def reconcile_position(self, size: float, entry_price: float) -> tuple[Optional[str], str]:
         """Reconcile internal state with actual exchange position."""
         import time
         import datetime
@@ -413,8 +413,12 @@ class DoubleDipRSIStrategy:
         if size > 0: expected_pos = 1
         if size < 0: expected_pos = -1
         
+        action = None
+        reason = ""
+
         if self.current_position != expected_pos:
             logger.warning(f"Reconciling: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
+            old_position = self.current_position
             self.current_position = expected_pos
             
             # Recover Trade Object if needed
@@ -432,11 +436,16 @@ class DoubleDipRSIStrategy:
                     "partial_exit_done": False # Assumption
                 }
             elif expected_pos == 0 and self.active_trade:
+                action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                reason = "External Exit (Stop-Loss or Manual)"
+                
                 # Close mismatch
                 self.active_trade["exit_time"] = format_time(current_ts) + " (Rec)"
                 self.active_trade["status"] = "CLOSED"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
+        
+        return action, reason
 
     def run_backtest(self, df: pd.DataFrame):
         """Run backtest on historical data."""
