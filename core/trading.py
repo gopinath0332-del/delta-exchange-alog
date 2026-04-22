@@ -498,6 +498,10 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.error(f"Failed to fetch position for partial exit: {e}")
                 enable_orders = False
+            
+            # Fallback side for generic partial exit
+            if not side:
+                side = "sell"
         elif action == "MILESTONE_EXIT":
             # Profit milestone exit — dynamic exit percentage parsed from reason string
             import re

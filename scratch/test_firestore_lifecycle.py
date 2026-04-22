@@ -11,7 +11,7 @@ from core.trading import execute_strategy_signal
 from core.firestore_client import initialize_firestore
 
 def test_lifecycle():
-    print("Starting Firestore Lifecycle Test...")
+    print("Starting Extended Firestore Lifecycle Test...")
     
     # 1. Initialize Configuration
     config = get_config()
@@ -49,8 +49,8 @@ def test_lifecycle():
         notifier=mock_notifier,
         symbol=symbol,
         action="ENTRY_LONG",
-        price=100.0,
-        market_price=100.0,
+        price=65000.0,
+        market_price=65000.0,
         rsi=None,
         reason="Test Entry Condition",
         mode="paper",
@@ -61,22 +61,21 @@ def test_lifecycle():
     
     if trade_id:
         print(f"Entry Successful! Trade ID: {trade_id}")
-        print("Check Firestore: A new document should exist in the 'crypto' collection.")
     else:
         print("Entry Failed!")
         return
 
     time.sleep(1)
 
-    # --- PHASE 2: MILESTONE ---
-    print("\n--- PHASE 2: MILESTONE ---")
+    # --- PHASE 2: MILESTONE EXIT ---
+    print("\n--- PHASE 2: MILESTONE EXIT ---")
     execute_strategy_signal(
         client=mock_client,
         notifier=mock_notifier,
         symbol=symbol,
         action="MILESTONE_EXIT",
-        price=110.0,
-        market_price=110.0,
+        price=66000.0,
+        market_price=66000.0,
         rsi=None,
         reason="Test Milestone 1 (30% exit)",
         mode="paper",
@@ -84,28 +83,48 @@ def test_lifecycle():
         trade_id=trade_id
     )
     print(f"Milestone Logged to {trade_id}")
-    print("Check Firestore: The 'events' array should now have 2 items (Entry + Milestone).")
 
     time.sleep(1)
 
-    # --- PHASE 3: FINAL EXIT ---
-    print("\n--- PHASE 3: FINAL EXIT ---")
+    # --- PHASE 3: PARTIAL EXIT ---
+    print("\n--- PHASE 3: PARTIAL EXIT ---")
+    execute_strategy_signal(
+        client=mock_client,
+        notifier=mock_notifier,
+        symbol=symbol,
+        action="PARTIAL_EXIT",
+        price=67000.0,
+        market_price=67000.0,
+        rsi=None,
+        reason="Manual/Strategy Partial Exit (25% more)",
+        mode="paper",
+        strategy_name="LifecycleTest",
+        trade_id=trade_id
+    )
+    print(f"Partial Exit Logged to {trade_id}")
+
+    time.sleep(1)
+
+    # --- PHASE 4: STOP-LOSS SYNC (EXTERNAL EXIT) ---
+    print("\n--- PHASE 4: STOP-LOSS SYNC (RECONCILIATION) ---")
+    # Simulation of SL being hit on exchange
     execute_strategy_signal(
         client=mock_client,
         notifier=mock_notifier,
         symbol=symbol,
         action="EXIT_LONG",
-        price=120.0,
-        market_price=120.0,
+        price=64000.0, # Price dropped to SL
+        market_price=64000.0,
         rsi=None,
-        reason="Test Final Take Profit",
+        reason="[SYNC] Bracket Order: Stop Loss Hit on Exchange",
         mode="paper",
         strategy_name="LifecycleTest",
-        trade_id=trade_id
+        trade_id=trade_id,
+        is_reconciliation=True # This is the key flag for SL hits
     )
-    print(f"Final Exit Logged to {trade_id}")
-    print("Check Firestore: The document should now be 'CLOSED' with 3 events in history.")
-    print("Lifecycle Test Complete!")
+    print(f"Stop-Loss Sync Logged to {trade_id}")
+    print("\nLifecycle Test Complete!")
+    print("Check Firestore: Document should be 'CLOSED' with 4 events in history.")
 
 if __name__ == "__main__":
     test_lifecycle()
