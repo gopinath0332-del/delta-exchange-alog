@@ -98,7 +98,9 @@ class NotificationManager:
         if self.email:
             self.email.send_trade_alert(symbol, side, price, rsi, reason, margin_used, remaining_margin, strategy_name, pnl, funding_charges, trading_fees, market_price, lot_size, target_margin, timeframe, stop_loss_price, atr, justification=justification, mode=mode)
             
-        logger.info(f"Alert sent: {side} {symbol} @ {price:,.8g} (RSI: {rsi:.2f})")
+        price_str = f"{price:,.8g}" if price is not None else "N/A"
+        rsi_str = f"{rsi:.2f}" if rsi is not None else "N/A"
+        logger.info(f"Alert sent: {side} {symbol} @ {price_str} (RSI: {rsi_str})")
 
     def send_fee_breakdown(
         self,

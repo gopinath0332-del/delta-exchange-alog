@@ -166,8 +166,9 @@ class DiscordNotifier:
             if pct_diff > 0.01: # Show if diff > 0.01%
                 message += f"Market Price: \u001b[0;36m${self._f(market_price)}\u001b[0m\n"
 
+        rsi_str = f"{rsi:.2f}" if rsi is not None else "N/A"
         message += (
-            f"RSI: \u001b[0;33m{rsi:.2f}\u001b[0m\n"
+            f"RSI: \u001b[0;33m{rsi_str}\u001b[0m\n"
         )
         
         # Show Stop Loss if available

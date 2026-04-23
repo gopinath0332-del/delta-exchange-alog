@@ -177,7 +177,7 @@ class EmailNotifier:
               {lot_size_line}
               {target_margin_line}
               {timeframe_line}
-              <li><strong>RSI:</strong> {rsi:.2f}</li>
+              <li><strong>RSI:</strong> {f"{rsi:.2f}" if rsi is not None else "N/A"}</li>
               {stop_loss_line}
               {vol_line}
               <li><strong>Reason:</strong> {reason}</li>
