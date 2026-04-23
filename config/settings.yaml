@@ -182,8 +182,8 @@ multi_coin:
         timeframe: 1h
         candle_type: heikin-ashi
         leverage: 5
-        position_sizing_type: "atr" # Switch from "margin" to "atr"
-        atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
         target_margin: 50
         log_file: logs/pippin.log
       - symbol: PIUSD
@@ -194,14 +194,6 @@ multi_coin:
         atr_margin_multiplier: 2.0
         target_margin: 50
         log_file: logs/pi.log
-      - symbol: BIOUSD
-        timeframe: 4h
-        candle_type: standard
-        leverage: 5
-        position_sizing_type: "atr" # Switch from "margin" to "atr"
-        atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
-        target_margin: 50
-        log_file: logs/bio.log # Per-coin log file (same as the old dedicated service)
       - symbol: JTOUSD
         timeframe: 2h
         candle_type: heikin-ashi
@@ -217,7 +209,23 @@ multi_coin:
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         target_margin: 50
-        log_file: logs/river.log
+        log_file: logs/river_2h.log
+      - symbol: TAOUSD
+        timeframe: 4h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 50
+        log_file: logs/tao.log
+      - symbol: HYPEUSD
+        timeframe: 4h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 50
+        log_file: logs/hype.log
   bb_breakout:
     mode: paper
     symbols:
@@ -275,6 +283,12 @@ single_coin:
     leverage: 5
     target_margin: 50
   BEAT:
+    leverage: 5
+    target_margin: 50
+  TAO:
+    leverage: 5
+    target_margin: 50
+  HYPE:
     leverage: 5
     target_margin: 50
   JTO:
