@@ -33,8 +33,8 @@ risk_management:
   atr_margin_multiplier: 2.0 # Multiplier for ATR-based sizing
   atr_margin_cap_multiplier: 1 # 1x safety cap on actual margin usage
   sizing_method: "fractional" # Default to fractional risk sizing
-  risk_pct_per_trade: 0.05  # Risk exactly 5% of equity per trade Backtested values for risk% optimised order - [5%, 4.5%, 4%, 3.5%]
-  fractional_margin_cap: 0.2 # Max 20% of account as margin per trade
+  risk_pct_per_trade: 0.02  # Risk exactly 2% of equity per trade Backtested values for risk% optimised order - [5%, 4.5%, 4%, 3.5%]
+  fractional_margin_cap: 0.1 # Max 10% of account as margin per trade (Safe for 6-coin portfolio)
   settlement_asset: "USD"    # Your wallet uses "USD" instead of "USDT"
 
   # Global Profit Milestones (takes 30% at >=50% PnL, another 30% at >=100% PnL)
@@ -50,7 +50,7 @@ notifications:
   discord_enabled: true
   email_enabled: true
   alert_on_trade: true
-  alert_on_error: true
+  alert_on_error: true # Smart throttling re-enabled
   alert_on_position_open: true
   alert_on_position_close: true
 
@@ -178,30 +178,54 @@ multi_coin:
   donchian_channel:
     mode: live
     symbols:
-      - symbol: BIOUSD
-        timeframe: 4h
-        candle_type: standard
-        leverage: 5
-        position_sizing_type: "atr" # Switch from "margin" to "atr"
-        atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
-        target_margin: 50
-        log_file: logs/bio.log # Per-coin log file (same as the old dedicated service)
       - symbol: PIPPINUSD
         timeframe: 1h
         candle_type: heikin-ashi
         leverage: 5
-        position_sizing_type: "atr" # Switch from "margin" to "atr"
-        atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
-        target_margin: 50
-        log_file: logs/pippin.log
-      - symbol: BEATUSD
-        timeframe: 2h
-        leverage: 5
-        target_margin: 50
-        candle_type: heikin-ashi
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        log_file: logs/beat.log
+        target_margin: 50
+        log_file: logs/pippin.log
+      - symbol: PIUSD
+        timeframe: 1h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 50
+        log_file: logs/pi.log
+      - symbol: JTOUSD
+        timeframe: 2h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 50
+        log_file: logs/jto.log
+      - symbol: RIVERUSD
+        timeframe: 2h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 50
+        log_file: logs/river_2h.log
+      - symbol: TAOUSD
+        timeframe: 4h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 50
+        log_file: logs/tao.log
+      - symbol: HYPEUSD
+        timeframe: 4h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 50
+        log_file: logs/hype.log
   bb_breakout:
     mode: paper
     symbols:
@@ -231,6 +255,9 @@ single_coin:
   PIPPIN:
     leverage: 5
     target_margin: 50
+  PI:
+    leverage: 5
+    target_margin: 50
   BIO:
     leverage: 5
     target_margin: 50
@@ -256,6 +283,18 @@ single_coin:
     leverage: 5
     target_margin: 50
   BEAT:
+    leverage: 5
+    target_margin: 50
+  TAO:
+    leverage: 5
+    target_margin: 50
+  HYPE:
+    leverage: 5
+    target_margin: 50
+  JTO:
+    leverage: 5
+    target_margin: 50
+  RIVER:
     leverage: 5
     target_margin: 50
 

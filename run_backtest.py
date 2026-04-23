@@ -226,15 +226,10 @@ def main():
     parser.add_argument("--symbol", type=str, help="Specific symbol to test (e.g. BTCUSDT)")
     parser.add_argument("--timeframe", type=str, help="Specific timeframe to test (e.g. 1h)")
     parser.add_argument("--file", type=str, help="Specific CSV file to test")
-    parser.add_argument(
-        "--candle-type",
-        type=str,
-        choices=["standard", "heikin_ashi"],
-        default=None,  # None means we will ask interactively if not provided
-        help="Candle type to use: 'standard' (default) or 'heikin_ashi'"
-    )
-
-    parser.add_argument("--refresh-metadata", action="store_true", help="Force refresh product metadata from Delta Exchange")
+    parser.add_argument("--candle-type", type=str, choices=["standard", "heikin_ashi"], default=None, help="Candle type to use")
+    parser.add_argument("--risk", type=float, help="Override risk_pct_per_trade (e.g. 0.02 for 2 percent)")
+    parser.add_argument("--data-folder", type=str, help="Override data folder path")
+    parser.add_argument("--refresh-metadata", action="store_true", help="Force refresh product metadata")
 
     args = parser.parse_args()
     
@@ -303,7 +298,13 @@ def main():
     logger.info(f"Candle type selected: {args.candle_type}")
     
     config = get_config()
-    data_folder = config.backtesting.data_folder
+    
+    # Override risk if provided
+    if args.risk is not None:
+        config.risk_management.risk_pct_per_trade = args.risk
+        logger.info(f"Overriding risk_pct_per_trade to {args.risk*100}%")
+
+    data_folder = args.data_folder if args.data_folder else config.backtesting.data_folder
     
     loader = DataLoader(data_folder)
     reporter = Reporter()

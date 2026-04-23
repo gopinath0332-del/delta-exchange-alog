@@ -1,7 +1,6 @@
 """Error alerting handler for critical log messages."""
 
-import logging
-import os
+import re
 import sys
 from datetime import datetime
 from typing import Dict, Optional
@@ -74,8 +73,21 @@ class ErrorAlertHandler(logging.Handler):
         Returns:
             True if alert should be throttled
         """
-        # Create a key based on logger name and message
-        alert_key = f"{record.name}:{record.levelname}:{record.getMessage()[:100]}"
+        # Clean the message to remove timestamps, IDs, and other changing values 
+        # that break throttling.
+        clean_msg = record.getMessage()
+        
+        # 1. Strip timestamps like [2026-04-23 18:43:53] or 2026-04-23T18:43:53Z
+        clean_msg = re.sub(r'\[?\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\.\dZ]*\]?', '', clean_msg)
+        
+        # 2. Strip common URL-like patterns and hex IDs
+        clean_msg = re.sub(r'0x[a-fA-F0-9]+', 'ID', clean_msg)
+        
+        # 3. Strip extra whitespace
+        clean_msg = ' '.join(clean_msg.split())
+        
+        # Create a key based on logger name and the stable parts of the message
+        alert_key = f"{record.name}:{record.levelname}:{clean_msg[:100]}"
         
         last_alert_time = self._last_alert_times.get(alert_key)
         if last_alert_time is None:
@@ -92,7 +104,11 @@ class ErrorAlertHandler(logging.Handler):
         Args:
             record: Log record
         """
-        alert_key = f"{record.name}:{record.levelname}:{record.getMessage()[:100]}"
+        clean_msg = record.getMessage()
+        clean_msg = re.sub(r'\[?\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\.\dZ]*\]?', '', clean_msg)
+        clean_msg = ' '.join(clean_msg.split())
+        
+        alert_key = f"{record.name}:{record.levelname}:{clean_msg[:100]}"
         self._last_alert_times[alert_key] = datetime.now()
 
     def _send_discord_alert(self, record: logging.LogRecord) -> None:
