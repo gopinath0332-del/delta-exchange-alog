@@ -14,6 +14,7 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 - **Multiple Timeframes**: 5m, 15m, 1h, 3h, 4h, 1d (configurable)
 - **Strategy State Persistence**: Local JSON-based state storage to preserve trade flags (milestones, partial exits) across restarts
 - **Notifications**: Discord webhooks and Email alerts with color-coded status messages
+- **Smart Error Throttling**: Automatic noise reduction for Discord alerts; strips timestamps and throttles duplicate errors to 1 alert per 5 minutes (prevents 429 Rate Limiting) (NEW)
 - **PDF Reports**: Professional trading reports with charts
 - **Premium Strategies**: Multiple strategies with ATR-based trailing stops and partial exits
   - Double-Dip RSI (BTCUSD) - Long/Short with RSI levels
@@ -22,10 +23,10 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
   - MACD-PSAR-100EMA (XRPUSD) - MACD histogram with PSAR filter
   - RSI-200-EMA (ETHUSD) - RSI crossover with 200 EMA trend filter
   - RSI-Supertrend (RIVERUSD) - RSI crossover with Supertrend exit
-  - Donchian Channel (RIVERUSD, PIPPINUSD) - Breakout strategy with 100 EMA trend filter and ATR trailing stop
-  - **Donchian Channel (BIOUSD)** - 4H Standard, 5x leverage, $50 target margin
-  - **Donchian Channel (BERAUSD)** - 1H Heikin Ashi, 5x leverage, $50 target margin
-  - **Donchian Channel (PAXGUSD)** - 1H Heikin Ashi, 5x leverage, $30 target margin (NEW)
+  - Donchian Channel (Multi-Coin Portfolio) - Breakout strategy with 100 EMA filter and ATR trailing stop
+  - **1H Portfolio**: PIPPINUSD, PIUSD (Heikin Ashi, 2% Risk)
+  - **2H Portfolio**: JTOUSD, RIVERUSD (Heikin Ashi, 2% Risk)
+  - **4H Portfolio**: TAOUSD, HYPEUSD (Heikin Ashi, 2% Risk)
   - **EMA Cross (BTCUSD)** - 10/20 EMA crossover with position flipping
   - **BB Breakout (RIVERUSD, ARCUSD)** - Bollinger Band breakout with TTM Squeeze, RVOL, and HTF EMA filters
 - **Dynamic Configuration**: Asset-specific order sizing and leverage via env vars
@@ -261,14 +262,14 @@ risk_management:
 
 ### Strategic Risk Optimization
 
-Based on large-scale research over 500+ datasets, the following risk tiers are recommended for the Donchian strategy:
+Based on portfolio-wide research across 181+ symbols, the following "Barbell" configuration is optimized for a $300 - $1,000 account:
 
-- **Growth Tier (5.0% Risk)**: Best for **PIPPIN (1H)**, **BEAT (2H)**, and **ARC (1H)**. These coins support the highest efficient risk with returns exceeding 1,300% (backtested) while staying under 20% drawdown.
-- **Aggressive Tier (4.0% Risk)**: Best for **BIO (4H)**. Provides a ~425% return with a safer buffer (~17% drawdown).
-- **Stability Tier (1.0% Risk)**: Best for **BTC (2H)** and **ETH (2H)**. Keeps volatility extremely low while maintaining positive drift.
+- **Portfolio Risk (2.0% Risk)**: Standardized 2% risk-per-trade across all 6 coins (PIPPIN, PI, JTO, RIVER, TAO, HYPE) to maximize compounding while maintaining safety.
+- **Margin Safety Cap (10% Cap)**: Each trade is capped at **10% of total equity** as margin. This ensures that even if all 6 coins enter trades simultaneously, total account exposure stays at 60%, providing a 40% safety buffer for market volatility.
+- **Candle Type (Heikin Ashi)**: All coins utilize Heikin Ashi candles across 1H, 2H, and 4H timeframes to filter noise and improve the Profit Factor of Donchian breakouts.
 
 > [!IMPORTANT]
-> **Timeframe Matters**: Higher timeframes (2H and 4H) offer significantly better noise filtering for Blue-chip assets like BTC, ETH, and BIO, resulting in higher Sharpe Ratios than their 1H counterparts.
+> **Diversification Strategy**: Spreading trades across 1H, 2H, and 4H timeframes reduces the risk of a single "stop-hunt" wick wiping out multiple positions at once.
 
 ### Global Profit Milestones (NEW)
 
