@@ -202,14 +202,22 @@ multi_coin:
         atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
         target_margin: 50
         log_file: logs/bio.log # Per-coin log file (same as the old dedicated service)
-      - symbol: BEATUSD
+      - symbol: JTOUSD
         timeframe: 2h
-        leverage: 5
-        target_margin: 50
         candle_type: heikin-ashi
+        leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        log_file: logs/beat.log
+        target_margin: 50
+        log_file: logs/jto.log
+      - symbol: RIVERUSD
+        timeframe: 2h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 50
+        log_file: logs/river.log
   bb_breakout:
     mode: paper
     symbols:
@@ -267,6 +275,12 @@ single_coin:
     leverage: 5
     target_margin: 50
   BEAT:
+    leverage: 5
+    target_margin: 50
+  JTO:
+    leverage: 5
+    target_margin: 50
+  RIVER:
     leverage: 5
     target_margin: 50
 
