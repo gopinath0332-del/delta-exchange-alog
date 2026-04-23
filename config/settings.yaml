@@ -50,7 +50,7 @@ notifications:
   discord_enabled: true
   email_enabled: true
   alert_on_trade: true
-  alert_on_error: true
+  alert_on_error: true # Smart throttling re-enabled
   alert_on_position_open: true
   alert_on_position_close: true
 
