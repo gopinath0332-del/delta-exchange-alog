@@ -696,16 +696,26 @@ class DonchianChannelStrategy(BaseStrategy):
                     if new_stop < self.trailing_stop_level: self.trailing_stop_level = new_stop
             
             # 2. Check Signals manually (Backtest Loop)
-            # Trailing Stop Hit
-            if self.trailing_stop_level is not None:
-                if self.current_position == 1 and close <= self.trailing_stop_level:
-                    self.update_position_state("EXIT_LONG", current_time_ms, indicators, close, "Trailing SL Hit")
-                    # Update Duration Tracking
+            # Fixed Stop Loss Hit (Intra-candle)
+            if self.initial_sl_price is not None:
+                if self.current_position == 1 and low <= self.initial_sl_price:
+                    self.update_position_state("EXIT_LONG", current_time_ms, indicators, self.initial_sl_price, "Fixed SL Hit")
                     if self.long_entry_bar is not None:
                          self.last_long_duration_bars = i - self.long_entry_bar
                     continue
-                elif self.current_position == -1 and close >= self.trailing_stop_level:
-                    self.update_position_state("EXIT_SHORT", current_time_ms, indicators, close, "Trailing SL Hit")
+                elif self.current_position == -1 and high >= self.initial_sl_price:
+                    self.update_position_state("EXIT_SHORT", current_time_ms, indicators, self.initial_sl_price, "Fixed SL Hit")
+                    continue
+
+            # Trailing Stop Hit (Intra-candle)
+            if self.trailing_stop_level is not None:
+                if self.current_position == 1 and low <= self.trailing_stop_level:
+                    self.update_position_state("EXIT_LONG", current_time_ms, indicators, self.trailing_stop_level, "Trailing SL Hit")
+                    if self.long_entry_bar is not None:
+                         self.last_long_duration_bars = i - self.long_entry_bar
+                    continue
+                elif self.current_position == -1 and high >= self.trailing_stop_level:
+                    self.update_position_state("EXIT_SHORT", current_time_ms, indicators, self.trailing_stop_level, "Trailing SL Hit")
                     continue
             
             # Partial TP Check (if enabled and not already done)

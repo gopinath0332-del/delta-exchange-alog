@@ -433,6 +433,16 @@ class BBBreakoutStrategy(BaseStrategy):
             self.entry_price = price
             # Set trailing SL from actual execution price
             self.trailing_stop_level = price - atr_val * self.atr_mult if self.use_atr_sl else None
+            # Calculate Initial Stop Loss Price (if pct configured)
+            from core.config import get_config
+            config = get_config()
+            sl_pct = config.settings.get("strategies", {}).get(self.strategy_name, {}).get("stop_loss_pct")
+            if sl_pct is not None:
+                self.initial_sl_price = price * (1 - sl_pct / self.leverage)
+                logger.debug(f"Calculated initial SL for LONG: {self.initial_sl_price:.4f} ({sl_pct*100}% of margin)")
+            else:
+                self.initial_sl_price = None
+
             self.active_trade = {
                 "type": "LONG",
                 "entry_time": fmt(current_time_ms),
@@ -451,6 +461,16 @@ class BBBreakoutStrategy(BaseStrategy):
             self.last_entry_price = price
             self.entry_price = price
             self.trailing_stop_level = price + atr_val * self.atr_mult if self.use_atr_sl else None
+            # Calculate Initial Stop Loss Price (if pct configured)
+            from core.config import get_config
+            config = get_config()
+            sl_pct = config.settings.get("strategies", {}).get(self.strategy_name, {}).get("stop_loss_pct")
+            if sl_pct is not None:
+                self.initial_sl_price = price * (1 + sl_pct / self.leverage)
+                logger.debug(f"Calculated initial SL for SHORT: {self.initial_sl_price:.4f} ({sl_pct*100}% of margin)")
+            else:
+                self.initial_sl_price = None
+
             self.active_trade = {
                 "type": "SHORT",
                 "entry_time": fmt(current_time_ms),
@@ -709,16 +729,26 @@ class BBBreakoutStrategy(BaseStrategy):
                     if new_stop < self.trailing_stop_level:
                         self.trailing_stop_level = new_stop
 
-            # ── Trailing Stop Exit ─────────────────────────────────────────
+            # ── Stop Loss Exit (Intra-candle) ───────────────────────────────
+            # Fixed SL
+            if self.initial_sl_price is not None:
+                if self.current_position == 1 and low <= self.initial_sl_price:
+                    self.update_position_state("EXIT_LONG", current_time_ms, {"atr": atr}, self.initial_sl_price, "Fixed SL Hit")
+                    continue
+                elif self.current_position == -1 and high >= self.initial_sl_price:
+                    self.update_position_state("EXIT_SHORT", current_time_ms, {"atr": atr}, self.initial_sl_price, "Fixed SL Hit")
+                    continue
+
+            # Trailing Stop Hit (Intra-candle)
             if self.use_atr_sl and self.trailing_stop_level is not None:
-                if self.current_position == 1 and close <= self.trailing_stop_level:
+                if self.current_position == 1 and low <= self.trailing_stop_level:
                     self.update_position_state(
-                        "EXIT_LONG", current_time_ms, {"atr": atr}, close, "Trailing SL Hit"
+                        "EXIT_LONG", current_time_ms, {"atr": atr}, self.trailing_stop_level, "Trailing SL Hit"
                     )
                     continue
-                elif self.current_position == -1 and close >= self.trailing_stop_level:
+                elif self.current_position == -1 and high >= self.trailing_stop_level:
                     self.update_position_state(
-                        "EXIT_SHORT", current_time_ms, {"atr": atr}, close, "Trailing SL Hit"
+                        "EXIT_SHORT", current_time_ms, {"atr": atr}, self.trailing_stop_level, "Trailing SL Hit"
                     )
                     continue
 
