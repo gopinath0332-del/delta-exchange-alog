@@ -637,7 +637,8 @@ class DonchianChannelStrategy(BaseStrategy):
         if self.current_position != 0:
             self._save_to_disk()
         
-        pass
+        return action, reason
+
 
     def run_backtest(self, df: pd.DataFrame):
         """Run backtest."""

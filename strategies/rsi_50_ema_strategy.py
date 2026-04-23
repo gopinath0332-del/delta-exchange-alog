@@ -225,32 +225,47 @@ class RSI50EMAStrategy(BaseStrategy):
                 self.trades.append(self.active_trade)
                 self.active_trade = None
 
-    def reconcile_position(self, size: float, entry_price: float):
+    def reconcile_position(self, size: float, entry_price: float) -> tuple[Optional[str], str]:
         """Reconcile state with exchange."""
-        if size > 0:
-            if self.current_position != 1:
-                self.current_position = 1
+        action = None
+        reason = ""
+        
+        expected_pos = 1 if size > 0 else 0
+        
+        if self.current_position != expected_pos:
+            logger.info("Reconciling: Internal %s -> Exchange %s (Size: %s)", self.current_position, expected_pos, size)
+            old_position = self.current_position
+            self.current_position = expected_pos
+            
+            if expected_pos == 1 and not self.active_trade:
                 self.last_entry_price = entry_price
+                import time, datetime
+                formatted_time = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%y %H:%M')
+                self.active_trade = {
+                    "type": "LONG",
+                    "entry_time": f"{formatted_time} (Rec)",
+                    "entry_price": entry_price,
+                    "status": "OPEN"
+                }
                 logger.info(f"Reconciled state to LONG (Size: {size})")
-        elif size == 0:
-            if self.current_position != 0:
-                self.current_position = 0
-                logger.info("Reconciled state to FLAT")
                 
-            # Ensure active_trade is closed if we are actually FLAT
-            if self.active_trade:
-                import time
-                current_timestamp = time.time() * 1000
-                import datetime
-                formatted_time = datetime.datetime.fromtimestamp(current_timestamp/1000).strftime('%d-%m-%y %H:%M')
+            elif expected_pos == 0 and self.active_trade:
+                action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                reason = "External Exit (Stop-Loss or Manual)"
+                
+                import time, datetime
+                formatted_time = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%y %H:%M')
                 
                 logger.info("Closing phantom active_trade via Reconciliation")
                 self.active_trade["exit_time"] = f"{formatted_time} (Reconciled)"
-                self.active_trade["exit_price"] = 0.0 # Unknown or fetch if possible, but 0 tells us it's special
+                self.active_trade["exit_price"] = 0.0 
                 self.active_trade["exit_rsi"] = 0.0
                 self.active_trade["status"] = "CLOSED (SYNC)"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
+                logger.info("Reconciled state to FLAT")
+        
+        return action, reason
 
     def run_backtest(self, df: pd.DataFrame):
         """Simple backtest loop."""

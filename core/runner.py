@@ -492,7 +492,8 @@ def run_strategy_terminal(
                                  min_price_seen=getattr(strategy, 'min_price_seen', None)
                              )
                      except Exception as e:
-                         logger.warning(f"Failed to fetch position or reconcile: {e}")
+                          logger.error(f"[{symbol}] Critical error in reconciliation: {e}", exc_info=True)
+                          notifier.send_error(f"Reconciliation Error [{symbol}]", f"Failed to reconcile position: {e}\n\nPlease check the logs for details.")
 
                      # Now process current live candle
                      current_time_ms = int(time.time() * 1000)

@@ -371,7 +371,7 @@ class RSISupertrendStrategy(BaseStrategy):
                 self.trades.append(self.active_trade)
                 self.active_trade = None
 
-    def reconcile_position(self, size: float, entry_price: float):
+    def reconcile_position(self, size: float, entry_price: float) -> tuple[Optional[str], str]:
         """
         Reconcile strategy state with exchange position.
         
@@ -379,20 +379,45 @@ class RSISupertrendStrategy(BaseStrategy):
             size: Position size from exchange (>0 for long, 0 for flat)
             entry_price: Entry price from exchange
         """
-        if size > 0:
-            if self.current_position != 1:
-                self.current_position = 1
+        action = None
+        reason = ""
+        
+        expected_pos = 1 if size > 0 else 0
+        
+        if self.current_position != expected_pos:
+            logger.info("Reconciling: Internal %s -> Exchange %s (Size: %s)", self.current_position, expected_pos, size)
+            old_position = self.current_position
+            self.current_position = expected_pos
+            
+            if expected_pos == 1 and not self.active_trade:
                 self.last_entry_price = entry_price
+                import time, datetime
+                formatted_time = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%y %H:%M')
+                self.active_trade = {
+                    "type": "LONG",
+                    "entry_time": f"{formatted_time} (Rec)",
+                    "entry_price": entry_price,
+                    "status": "OPEN"
+                }
                 logger.info("Reconciled state to LONG (Size: %s, Entry: %s)", size, entry_price)
-        elif size == 0:
-            if self.current_position != 0:
-                self.current_position = 0
-                logger.info("Reconciled state to FLAT")
                 
-            # DO NOT close active_trade during reconciliation when FLAT
-            # The trade is still logically open from strategy perspective
-            # It will be properly closed when exit signal is triggered
-            # This prevents showing negative P&L in trade history
+            elif expected_pos == 0 and self.active_trade:
+                action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                reason = "External Exit (Stop-Loss or Manual)"
+                
+                import time, datetime
+                formatted_time = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%y %H:%M')
+                
+                logger.info("Closing active_trade via Reconciliation")
+                self.active_trade["exit_time"] = f"{formatted_time} (Reconciled)"
+                self.active_trade["exit_price"] = 0.0 
+                self.active_trade["exit_rsi"] = 0.0
+                self.active_trade["status"] = "CLOSED (SYNC)"
+                self.trades.append(self.active_trade)
+                self.active_trade = None
+                logger.info("Reconciled state to FLAT")
+        
+        return action, reason
 
 
     def run_backtest(self, df: pd.DataFrame):

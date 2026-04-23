@@ -200,8 +200,12 @@ class MACDPSAR100EMAStrategy(BaseStrategy):
         current_ts = int(time.time() * 1000)
         expected_pos = 1 if size > 0 else 0
         
+        action = None
+        reason = ""
+
         if self.current_position != expected_pos:
             logger.warning(f"Reconciling: Internal {self.current_position} -> Exchange {expected_pos}")
+            old_position = self.current_position
             self.current_position = expected_pos
             
             if expected_pos == 1 and not self.active_trade:
@@ -239,17 +243,17 @@ class MACDPSAR100EMAStrategy(BaseStrategy):
             elif expected_pos == 0 and self.active_trade:
                 # Exchange is FLAT but strategy has active trade
                 # This means position was closed while bot was off
-                # ONLY close if we're certain - check if this reconciliation was actually called with data
-                # If entry_price is 0, the reconciliation might just be defaulting to FLAT
-                # In this case, DON'T close - trust that the active_trade might be valid
-                
-                # Actually, if exchange returns size=0 explicitly, we should trust it
+                action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                reason = "External Exit (Stop-Loss or Manual)"
+
                 # Close the trade
                 self.active_trade["exit_time"] = format_time(current_ts) + " (Rec)"
                 self.active_trade["status"] = "CLOSED"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
                 logger.info("Reconciled state to FLAT - closed active trade (position was closed while bot was off)")
+        
+        return action, reason
                 
     def run_backtest(self, df: pd.DataFrame):
         """Run backtest."""
