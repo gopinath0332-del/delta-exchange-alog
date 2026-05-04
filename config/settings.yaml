@@ -38,7 +38,7 @@ risk_management:
   settlement_asset: "USD"    # Your wallet uses "USD" instead of "USDT"
 
   # Global Profit Milestones (takes 30% at >=50% PnL, another 30% at >=100% PnL)
-  enable_profit_milestones: false
+  enable_profit_milestones: true
   profit_milestones:
     - pnl_pct: 50.0 # Trigger at 50% Unrealized Margin PnL
       exit_pct: 0.30 # Exit 30% of the current active position size
