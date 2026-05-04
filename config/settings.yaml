@@ -33,12 +33,12 @@ risk_management:
   atr_margin_multiplier: 2.0 # Multiplier for ATR-based sizing
   atr_margin_cap_multiplier: 1 # 1x safety cap on actual margin usage
   sizing_method: "fractional" # Default to fractional risk sizing
-  risk_pct_per_trade: 0.02  # Risk exactly 2% of equity per trade Backtested values for risk% optimised order - [5%, 4.5%, 4%, 3.5%]
+  risk_pct_per_trade: 0.01  # Risk exactly 1% of equity per trade Backtested values for risk% optimised order - [5%, 4.5%, 4%, 3.5%]
   fractional_margin_cap: 0.1 # Max 10% of account as margin per trade (Safe for 6-coin portfolio)
   settlement_asset: "USD"    # Your wallet uses "USD" instead of "USDT"
 
   # Global Profit Milestones (takes 30% at >=50% PnL, another 30% at >=100% PnL)
-  enable_profit_milestones: true
+  enable_profit_milestones: false
   profit_milestones:
     - pnl_pct: 50.0 # Trigger at 50% Unrealized Margin PnL
       exit_pct: 0.30 # Exit 30% of the current active position size
@@ -133,7 +133,7 @@ strategies:
     # to match TradingView's HA values.  With only 30 days the HA smoothing is
     # insufficient and signals can fire on effectively-standard-candle values.
     historical_days: 90
-    stop_loss_pct: 0.20 # Cap max loss at 20% of margin per trade segment
+    stop_loss_pct: null # Cap max loss at 20% of margin per trade segment
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:
@@ -167,7 +167,7 @@ strategies:
     htf_ema_length: 100 # EMA length on the simulated HTF (matches Pine htfLength=100)
     # Data
     historical_days: 60 # Days of history to fetch for warmup/backtest
-    stop_loss_pct: 0.20 # Cap max loss at 20% of margin per trade segment
+    stop_loss_pct: null # Cap max loss at 20% of margin per trade segment
 
 # Multi-Coin Service Configuration
 # Defines symbol groups that can be run together in a single process via
