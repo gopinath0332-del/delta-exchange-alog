@@ -5,6 +5,7 @@ import json
 import time
 import hmac
 import hashlib
+import ssl
 from typing import Callable, Dict, List, Optional, Any
 
 import websocket
@@ -102,7 +103,7 @@ class DeltaWebSocketClient:
                     on_close=self._on_close
                 )
                 
-                self.ws.run_forever()
+                self.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
                 
                 self.is_connected = False
                 self.is_authenticated = False
