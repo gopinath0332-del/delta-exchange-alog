@@ -732,21 +732,21 @@ class BBBreakoutStrategy(BaseStrategy):
             # ── Stop Loss Exit (Intra-candle) ───────────────────────────────
             # Fixed SL
             if self.initial_sl_price is not None:
-                if self.current_position == 1 and low <= self.initial_sl_price:
+                if self.current_position == 1 and bar_low <= self.initial_sl_price:
                     self.update_position_state("EXIT_LONG", current_time_ms, {"atr": atr}, self.initial_sl_price, "Fixed SL Hit")
                     continue
-                elif self.current_position == -1 and high >= self.initial_sl_price:
+                elif self.current_position == -1 and bar_high >= self.initial_sl_price:
                     self.update_position_state("EXIT_SHORT", current_time_ms, {"atr": atr}, self.initial_sl_price, "Fixed SL Hit")
                     continue
 
             # Trailing Stop Hit (Intra-candle)
             if self.use_atr_sl and self.trailing_stop_level is not None:
-                if self.current_position == 1 and low <= self.trailing_stop_level:
+                if self.current_position == 1 and bar_low <= self.trailing_stop_level:
                     self.update_position_state(
                         "EXIT_LONG", current_time_ms, {"atr": atr}, self.trailing_stop_level, "Trailing SL Hit"
                     )
                     continue
-                elif self.current_position == -1 and high >= self.trailing_stop_level:
+                elif self.current_position == -1 and bar_high >= self.trailing_stop_level:
                     self.update_position_state(
                         "EXIT_SHORT", current_time_ms, {"atr": atr}, self.trailing_stop_level, "Trailing SL Hit"
                     )

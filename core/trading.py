@@ -338,6 +338,7 @@ def execute_strategy_signal(
     # actual exchange fill price. We need this to compute the SL percentage-move later.
     # The `price` param is the HA close from runner; `execution_price` (fill) may differ.
     original_signal_price = price
+    execution_price = None  # Initialize to avoid UnboundLocalError
     
     try:
         # 1. Resolve Product ID
