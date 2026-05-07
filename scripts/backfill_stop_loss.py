@@ -4,6 +4,7 @@ import os
 import argparse
 import time
 from datetime import datetime, timedelta
+import dateutil.parser
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -124,6 +125,21 @@ def main():
         candidates = []
         for trade_id, trade in trades.items():
             if trade.get('symbol') == symbol:
+                # SIDE CHECK: 
+                # Exchange BUY order must match Firestore ENTRY_SHORT
+                # Exchange SELL order must match Firestore ENTRY_LONG
+                entry_side = trade.get('entry_side', 'buy')
+                order_side = order.get('side', 'buy') # 'buy' or 'sell'
+                
+                side_match = False
+                if order_side == 'buy' and entry_side == 'sell':
+                    side_match = True
+                elif order_side == 'sell' and entry_side == 'buy':
+                    side_match = True
+                
+                if not side_match:
+                    continue
+                    
                 entry_time = trade.get('entry_timestamp')
                 # Handle Firestore Timestamp objects or datetimes
                 if hasattr(entry_time, 'to_datetime'):
@@ -209,10 +225,34 @@ def main():
         order = update['order']
         logger.info(f"Updating {idx+1}/{len(missing_updates)}: Trade {update['trade_id']} <- Order {order.get('id')}")
         
-        # Use entry_side from the matched trade to determine the correct exit action name
-        entry_side = best_match_data.get('entry_side', 'buy')
-        action = "EXIT_LONG" if entry_side == "buy" else "EXIT_SHORT"
+        # Check if this is a milestone (partial) or final exit
+        # Get total size of the trade
+        total_size = float(best_match_data.get('order_size', 0))
+        # Get already exited size from existing events
+        current_events = best_match_data.get('events', [])
+        already_exited_size = sum([float(e.get('order_size', 0)) for e in current_events if e.get('action', '').startswith('EXIT_') or e.get('action') == 'MILESTONE_EXIT'])
         
+        remaining_size_before = total_size - already_exited_size
+        order_size = float(order.get('size', 0))
+        
+        entry_side = best_match_data.get('entry_side', 'buy')
+        
+        # Logic: If this order doesn't cover at least 95% of the remaining size, it's a milestone
+        if order_size < (remaining_size_before * 0.95):
+            action = "MILESTONE_EXIT"
+            is_partial = True
+        else:
+            action = "EXIT_LONG" if entry_side == "buy" else "EXIT_SHORT"
+            is_partial = False
+            
+        # Parse order timestamp
+        order_ts_str = order.get('created_at')
+        if order_ts_str:
+            # Delta returns ISO format like '2026-05-05T16:00:11.750014Z'
+            order_timestamp = dateutil.parser.isoparse(order_ts_str)
+        else:
+            order_timestamp = datetime.now()
+            
         try:
             fs_client.journal_trade(
                 symbol=order.get('product_symbol'),
@@ -225,9 +265,11 @@ def main():
                 mode="live",
                 trade_id=update['trade_id'],
                 is_entry=False,
+                is_partial_exit=is_partial,
                 pnl=update['pnl'],
                 order_id=str(order.get('id')),
-                reason="Exchange Triggered Bracket Stop-Loss (Backfilled)"
+                timestamp=order_timestamp,
+                reason="Exchange Triggered Bracket Stop-Loss (Backfilled)" if not is_partial else "Milestone: Backfilled Exchange Order"
             )
         except Exception as e:
             logger.error(f"Failed to update trade {update['trade_id']}: {e}")
