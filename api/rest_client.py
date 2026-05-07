@@ -761,6 +761,76 @@ class DeltaRestClient:
 
         return cast(List[Dict[str, Any]], orders)
 
+    def get_order_history(
+        self,
+        state: Optional[str] = "closed",
+        product_id: Optional[int] = None,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+        page_size: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get historical orders.
+        
+        Args:
+            state: Filter by state (e.g. 'open', 'closed', 'cancelled'). Default 'closed'.
+            product_id: Optional product ID filter.
+            start_time: Start time in microseconds (epoch).
+            end_time: End time in microseconds (epoch).
+            page_size: Number of records per page (max 100).
+            
+        Returns:
+            List of order dictionaries.
+        """
+        logger.info(
+            "Fetching order history",
+            state=state,
+            product_id=product_id,
+            start_time=start_time,
+            end_time=end_time
+        )
+        
+        params: Dict[str, Any] = {
+            "page_size": page_size,
+        }
+        if state is not None:
+            params["state"] = state
+        if product_id is not None:
+            params["product_ids"] = str(product_id)
+        if start_time is not None:
+            params["start_time"] = start_time
+        if end_time is not None:
+            params["end_time"] = end_time
+            
+        all_orders: List[Dict[str, Any]] = []
+        after_cursor: Optional[str] = None
+        
+        while True:
+            if after_cursor:
+                params["after"] = after_cursor
+            elif "after" in params:
+                del params["after"]
+                
+            try:
+                response = self._make_auth_request("GET", "/v2/orders/history", params=params)
+            except Exception as e:
+                logger.warning("Failed to fetch order history", error=str(e))
+                break
+                
+            result = response.get("result", []) if isinstance(response, dict) else []
+            if not result:
+                break
+                
+            all_orders.extend(result)
+            
+            meta = response.get("meta", {}) if isinstance(response, dict) else {}
+            after_cursor = meta.get("after")
+            if not after_cursor:
+                break
+                
+        logger.info("Fetched order history", count=len(all_orders))
+        return all_orders
+
     def place_order(
         self,
         product_id: int,
