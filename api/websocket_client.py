@@ -103,7 +103,11 @@ class DeltaWebSocketClient:
                     on_close=self._on_close
                 )
                 
-                self.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
+                self.ws.run_forever(
+                    sslopt={"cert_reqs": ssl.CERT_NONE},
+                    ping_interval=30,   # Send ping every 30 seconds
+                    ping_timeout=10     # Wait 10 seconds for pong
+                )
                 
                 self.is_connected = False
                 self.is_authenticated = False
@@ -163,11 +167,24 @@ class DeltaWebSocketClient:
 
     def _on_error(self, ws, error: Exception) -> None:
         """Handle WebSocket error."""
-        logger.error(f"WebSocket Error: {error}")
+        import traceback
+        error_msg = str(error)
+        stack_trace = traceback.format_exc()
+        
+        logger.error(
+            f"WebSocket Error: {error_msg}",
+            error_type=type(error).__name__,
+            traceback=stack_trace if "traceback" not in error_msg.lower() else None
+        )
 
     def _on_close(self, ws, close_status_code, close_msg) -> None:
         """Handle WebSocket connection closed."""
-        logger.warning(f"WebSocket connection closed. Status: {close_status_code}, Msg: {close_msg}")
+        logger.warning(
+            "WebSocket connection closed",
+            status_code=close_status_code,
+            message=close_msg,
+            should_reconnect=self.should_reconnect
+        )
         self.is_connected = False
         self.is_authenticated = False
 
