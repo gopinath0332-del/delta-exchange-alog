@@ -13,6 +13,7 @@ from core.logger import get_logger
 from api.rest_client import DeltaRestClient
 from notifications.manager import NotificationManager
 from core.firestore_client import journal_trade  # For trade journaling to Firestore
+from core.order_cache import order_cache
 
 logger = get_logger(__name__)
 
@@ -572,12 +573,25 @@ def execute_strategy_signal(
                 logger.error(f"Failed to set leverage: {e}")
                 # Continue anyway, might already be set
         
-        # 5. Place Order (Market)
+        # 5. Resolve trade_id before placing order
+        if not trade_id:
+            if is_entry:
+                timestamp_str = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+                trade_id = f"{symbol}_{strategy_name or 'unknown'}_{timestamp_str}_{uuid.uuid4().hex[:6]}"
+                logger.info(f"Generated NEW trade_id for entry: {trade_id}")
+            else:
+                if active_position and active_position.get('created_at'):
+                    entry_ts = active_position.get('created_at', '')
+                    trade_id = f"{symbol}_{strategy_name or 'unknown'}_{entry_ts}"
+                else:
+                    logger.warning(f"No trade_id provided for {action} and could not generate fallback.")
+        
+        # 6. Place Order (Market)
         order = None  # Initialize to prevent UnboundLocalError when orders are disabled
         
         if mode == "paper":
             logger.info(f"[PAPER] Simulating {side.upper()} order for {order_size} contract(s) of {symbol}")
-            order = {"id": "PAPER_ORDER_ID"}
+            order = {"id": f"PAPER_{uuid.uuid4().hex[:8]}"}
             margin_used = 0.0
             remaining_margin = 0.0
             # Estimate margin for dashboard consistency
@@ -629,6 +643,20 @@ def execute_strategy_signal(
                         # Fallback: Fetch order details? Or just leave as None and use candle close
                         # Usually market orders return fills immediately or we wait a split second
                         pass
+                        
+                    # Save context to cache so WebSocket can handle notification/journaling accurately
+                    order_id = order.get('id')
+                    if order_id:
+                        order_cache.add(str(order_id), {
+                            "action": action,
+                            "reason": reason,
+                            "strategy_name": strategy_name,
+                            "rsi": rsi,
+                            "mode": mode,
+                            "trade_id": trade_id,  # Might be None for new entries, that's fine
+                            "is_entry": is_entry
+                        })
+                        logger.info(f"Pushed order {order_id} context to cache for WS handler.")
 
                 except Exception as e:
                     logger.error(f"Failed to place order: {e}")
@@ -808,39 +836,38 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.warning(f"Failed to extract PnL/fees from position: {e}")
         
-        # 8. Send Alert
-        try:
-            notifier.send_trade_alert(
-                symbol=symbol,
-                side=action, # "ENTRY_LONG" etc.
-                price=execution_price if execution_price and mode != "paper" else price,
-                rsi=rsi,
-                reason=reason + (" [PAPER]" if mode == "paper" else ""),
-                margin_used=margin_used if is_entry else None,
-                remaining_margin=remaining_margin,
-                strategy_name=strategy_name,
-                pnl=pnl,
-                funding_charges=funding_charges,
-                trading_fees=trading_fees,
-                market_price=market_price,
-                lot_size=lot_size,
-                # Pass configured target margin so Discord/email shows the capital allocation setting
-                target_margin=target_margin if is_entry else None,
-                timeframe=timeframe,
-                stop_loss_price=stop_loss_price,
-                atr=atr,
-                justification=justification,
-                mode=mode
-            )
-        except Exception as e:
-            logger.error(f"Failed to send trade alert: {e}")
-
-        # 8b. Send fee breakdown as a separate Discord message (exit signals, live mode only)
-        if not is_entry and mode != "paper" and (funding_txns or trading_fee_txns):
+        # 8. Send Alert (Only for PAPER mode. Live mode alerts are handled by WebSocket)
+        if mode == "paper":
             try:
-                notifier.send_fee_breakdown(symbol, funding_txns, trading_fee_txns)
+                notifier.send_trade_alert(
+                    symbol=symbol,
+                    side=action, # "ENTRY_LONG" etc.
+                    price=execution_price if execution_price and mode != "paper" else price,
+                    rsi=rsi,
+                    reason=reason + " [PAPER]",
+                    margin_used=margin_used if is_entry else None,
+                    remaining_margin=remaining_margin,
+                    strategy_name=strategy_name,
+                    pnl=pnl,
+                    funding_charges=funding_charges,
+                    trading_fees=trading_fees,
+                    market_price=market_price,
+                    lot_size=lot_size,
+                    # Pass configured target margin so Discord/email shows the capital allocation setting
+                    target_margin=target_margin if is_entry else None,
+                    timeframe=timeframe,
+                    stop_loss_price=stop_loss_price,
+                    atr=atr,
+                    justification=justification,
+                    mode=mode
+                )
             except Exception as e:
-                logger.warning(f"Failed to send fee breakdown: {e}")
+                logger.error(f"Failed to send trade alert: {e}")
+
+            # 8b. Send fee breakdown as a separate Discord message (paper doesn't have real fees, but keeping structure)
+            pass
+        else:
+            logger.info("Live mode: Trade alert delegated to WebSocket handler.")
 
         # 9. Journal Trade to Firestore
         # This happens after successful execution and notification
@@ -853,24 +880,7 @@ def execute_strategy_signal(
         if order and not mode == "paper":
             actual_execution_price = float(order.get('avg_fill_price', 0)) if order.get('avg_fill_price') else None
         
-        # Resolve trade_id: 
-        # Priority: 1. Passed as argument (from strategy state)
-        #           2. Generate new if is_entry
-        #           3. Fallback to consistent ID for exits
-        if not trade_id:
-            if is_entry:
-                # Generate a unique trade_id for this new trade
-                timestamp_str = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-                # Use a cleaner ID format for easier reading
-                trade_id = f"{symbol}_{strategy_name or 'unknown'}_{timestamp_str}_{uuid.uuid4().hex[:6]}"
-                logger.info(f"Generated NEW trade_id for entry: {trade_id}")
-            else:
-                # For exits without a trade_id, try to get consistent ID from position metadata
-                if active_position and active_position.get('created_at'):
-                    entry_ts = active_position.get('created_at', '')
-                    trade_id = f"{symbol}_{strategy_name or 'unknown'}_{entry_ts}"
-                else:
-                    logger.warning(f"No trade_id provided for {action} and could not generate fallback.")
+        # (trade_id was already resolved before order placement)
         
         if is_entry:
             # For entries, the execution price becomes the entry price

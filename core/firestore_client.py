@@ -372,6 +372,59 @@ def journal_trade(
         return None
 
 
+def get_open_trade_by_symbol(symbol: str) -> Optional[str]:
+    """
+    Find the most recent OPEN trade document ID for a given symbol.
+    """
+    global _firestore_client, _firestore_enabled, _firestore_collection
+    
+    if not _firestore_enabled or _firestore_client is None:
+        return None
+        
+    try:
+        from firebase_admin import firestore
+        
+        # Query for OPEN trades matching the symbol
+        docs = _firestore_client.collection(_firestore_collection)\
+            .where(filter=firestore.FieldFilter("symbol", "==", symbol))\
+            .where(filter=firestore.FieldFilter("status", "in", ["OPEN", "PARTIAL_CLOSED"]))\
+            .order_by("entry_timestamp", direction=firestore.Query.DESCENDING)\
+            .limit(1)\
+            .stream()
+            
+        for doc in docs:
+            return doc.id
+            
+        return None
+    except Exception as e:
+        logger.error(f"Failed to query open trades for {symbol}: {e}")
+        return None
+
+def get_trade_by_entry_order_id(order_id: str) -> Optional[str]:
+    """
+    Find a trade document ID by its entry order ID.
+    """
+    global _firestore_client, _firestore_enabled, _firestore_collection
+    
+    if not _firestore_enabled or _firestore_client is None:
+        return None
+        
+    try:
+        from firebase_admin import firestore
+        
+        docs = _firestore_client.collection(_firestore_collection)\
+            .where(filter=firestore.FieldFilter("entry_order_id", "==", order_id))\
+            .limit(1)\
+            .stream()
+            
+        for doc in docs:
+            return doc.id
+            
+        return None
+    except Exception as e:
+        logger.error(f"Failed to query trade by order ID {order_id}: {e}")
+        return None
+
 def get_firestore_status() -> Dict[str, Any]:
     """
     Get Firestore client status.
