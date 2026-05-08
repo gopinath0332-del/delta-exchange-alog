@@ -29,6 +29,7 @@ class WebSocketEventHandler:
         Args:
             data: The JSON payload from the WebSocket
         """
+        logger.info(f"Handling order event: {data.get('type')}")
         # Delta Exchange payload usually nests the actual data
         payload = data.get("payload", {})
         if not payload:

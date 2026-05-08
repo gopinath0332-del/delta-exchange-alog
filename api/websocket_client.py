@@ -145,6 +145,10 @@ class DeltaWebSocketClient:
             data = json.loads(message)
             msg_type = data.get("type")
             
+            # Diagnostic logging for all messages except heartbeats
+            if msg_type != "heartbeat":
+                logger.info(f"WebSocket received message: {msg_type}")
+            
             if msg_type == "key-auth":
                 if data.get("success"):
                     logger.info("WebSocket authentication successful")
@@ -237,7 +241,7 @@ class DeltaWebSocketClient:
 
     def _resubscribe(self) -> None:
         """Resubscribe to all active channels (usually after reconnect/auth)."""
-        logger.info("Resubscribing to active channels...")
+        logger.info(f"Resubscribing to active channels: {list(self.active_channels.keys())}")
         for channel, symbols in self.active_channels.items():
             payload = {
                 "type": "subscribe",
@@ -252,6 +256,7 @@ class DeltaWebSocketClient:
             }
             try:
                 self.ws.send(json.dumps(payload))
+                logger.info(f"Sent resubscribe request for {channel} with symbols {symbols} - Payload: {json.dumps(payload)}")
             except Exception as e:
                 logger.error(f"Failed to resubscribe to {channel}: {e}")
 
