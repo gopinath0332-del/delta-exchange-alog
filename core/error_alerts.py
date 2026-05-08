@@ -89,13 +89,18 @@ class ErrorAlertHandler(logging.Handler):
         # Create a key based on logger name and the stable parts of the message
         alert_key = f"{record.name}:{record.levelname}:{clean_msg[:100]}"
         
+        # SPECIAL CASE: Connection lost/back errors should be prioritized 
+        # but still throttled to 60s instead of 300s to show flapping.
+        is_connection_error = any(term in clean_msg.lower() for term in ["connection", "websocket", "socket", "remote host"])
+        throttle_time = 60 if is_connection_error else self.alert_throttle_seconds
+        
         last_alert_time = self._last_alert_times.get(alert_key)
         if last_alert_time is None:
             return False
 
         # Check if enough time has passed since last alert
         time_since_last = datetime.now() - last_alert_time
-        return time_since_last.total_seconds() < self.alert_throttle_seconds
+        return time_since_last.total_seconds() < throttle_time
 
     def _update_alert_time(self, record: logging.LogRecord) -> None:
         """

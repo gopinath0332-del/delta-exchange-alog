@@ -93,33 +93,36 @@ class DeltaWebSocketClient:
         
         def run_forever():
             while self.should_reconnect:
-                logger.info(f"Connecting to WebSocket: {self.ws_url}")
-                
-                self.ws = websocket.WebSocketApp(
-                    self.ws_url,
-                    on_open=self._on_open,
-                    on_message=self._on_message,
-                    on_error=self._on_error,
-                    on_close=self._on_close
-                )
-                
-                self.ws.run_forever(
-                    sslopt={"cert_reqs": ssl.CERT_NONE},
-                    ping_interval=30,   # Send ping every 30 seconds
-                    ping_timeout=10     # Wait 10 seconds for pong
-                )
-                
-                self.is_connected = False
-                self.is_authenticated = False
+                try:
+                    logger.info(f"Connecting to WebSocket: {self.ws_url}")
+                    
+                    self.ws = websocket.WebSocketApp(
+                        self.ws_url,
+                        on_open=self._on_open,
+                        on_message=self._on_message,
+                        on_error=self._on_error,
+                        on_close=self._on_close
+                    )
+                    
+                    self.ws.run_forever(
+                        sslopt={"cert_reqs": ssl.CERT_NONE},
+                        ping_interval=30,   # Send ping every 30 seconds
+                        ping_timeout=10     # Wait 10 seconds for pong
+                    )
+                except Exception as e:
+                    logger.error(f"Critical error in WebSocket run_forever loop: {e}", exc_info=True)
+                finally:
+                    self.is_connected = False
+                    self.is_authenticated = False
                 
                 if self.should_reconnect:
-                    logger.info(f"WebSocket disconnected. Reconnecting in {self.reconnect_delay}s...")
+                    logger.info(f"WebSocket connection lost or closed. Reconnecting in {self.reconnect_delay}s...")
                     time.sleep(self.reconnect_delay)
                     # Exponential backoff
                     self.reconnect_delay = min(self.reconnect_delay * 2, self.max_reconnect_delay)
 
         if self.thread is None or not self.thread.is_alive():
-            self.thread = threading.Thread(target=run_forever, daemon=True)
+            self.thread = threading.Thread(target=run_forever, name="WebSocketThread", daemon=True)
             self.thread.start()
 
     def disconnect(self) -> None:
