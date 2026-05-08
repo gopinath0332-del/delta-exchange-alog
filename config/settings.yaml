@@ -210,6 +210,15 @@ multi_coin:
         atr_margin_multiplier: 2.0
         target_margin: 50
         log_file: logs/river_2h.log
+      - symbol: PAXGUSD
+        timeframe: 2h
+        candle_type: heikin-ashi
+        mode: paper
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 30
+        log_file: logs/paxg.log
       - symbol: TAOUSD
         timeframe: 4h
         candle_type: heikin-ashi
@@ -271,6 +280,9 @@ single_coin:
     leverage: 5
     target_margin: 50
   PAXG:
+    leverage: 5
+    target_margin: 30
+  SLVON:
     leverage: 5
     target_margin: 30
   BTC:

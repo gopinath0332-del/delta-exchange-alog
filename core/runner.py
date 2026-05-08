@@ -1031,10 +1031,13 @@ def run_multi_symbol_terminal(
         timeframe = sym_cfg.get("timeframe", "1h")
         candle_type = sym_cfg.get("candle_type", "heikin-ashi")
         log_file = sym_cfg.get("log_file")  # e.g. "logs/pi.log"
+        
+        # Per-symbol mode override (falls back to the group-level mode)
+        thread_mode = sym_cfg.get("mode", mode)
 
         t = threading.Thread(
             target=run_strategy_terminal,
-            args=(config, strategy_name, symbol, mode, candle_type, timeframe),
+            args=(config, strategy_name, symbol, thread_mode, candle_type, timeframe),
             kwargs={
                 "shared_client": shared_client,
                 "shared_notifier": shared_notifier,
