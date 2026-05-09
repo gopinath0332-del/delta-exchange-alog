@@ -643,8 +643,6 @@ def execute_strategy_signal(
                         # Fallback: Fetch order details? Or just leave as None and use candle close
                         # Usually market orders return fills immediately or we wait a split second
                         pass
-                        
-                        logger.info(f"Order {order_id} placed successfully.")
 
                 except Exception as e:
                     logger.error(f"Failed to place order: {e}")
