@@ -13,7 +13,6 @@ from core.logger import get_logger
 from api.rest_client import DeltaRestClient
 from notifications.manager import NotificationManager
 from core.firestore_client import journal_trade  # For trade journaling to Firestore
-from core.order_cache import order_cache
 
 logger = get_logger(__name__)
 
@@ -645,19 +644,7 @@ def execute_strategy_signal(
                         # Usually market orders return fills immediately or we wait a split second
                         pass
                         
-                    # Save context to cache so WebSocket can handle notification/journaling accurately
-                    order_id = order.get('id')
-                    if order_id:
-                        order_cache.add(str(order_id), {
-                            "action": action,
-                            "reason": reason,
-                            "strategy_name": strategy_name,
-                            "rsi": rsi,
-                            "mode": mode,
-                            "trade_id": trade_id,  # Might be None for new entries, that's fine
-                            "is_entry": is_entry
-                        })
-                        logger.info(f"Pushed order {order_id} context to cache for WS handler.")
+                        logger.info(f"Order {order_id} placed successfully.")
 
                 except Exception as e:
                     logger.error(f"Failed to place order: {e}")
@@ -837,38 +824,35 @@ def execute_strategy_signal(
             except Exception as e:
                 logger.warning(f"Failed to extract PnL/fees from position: {e}")
         
-        # 8. Send Alert (Only for PAPER mode. Live mode alerts are handled by WebSocket)
-        if mode == "paper":
-            try:
-                notifier.send_trade_alert(
-                    symbol=symbol,
-                    side=action, # "ENTRY_LONG" etc.
-                    price=execution_price if execution_price and mode != "paper" else price,
-                    rsi=rsi,
-                    reason=reason + " [PAPER]",
-                    margin_used=margin_used if is_entry else None,
-                    remaining_margin=remaining_margin,
-                    strategy_name=strategy_name,
-                    pnl=pnl,
-                    funding_charges=funding_charges,
-                    trading_fees=trading_fees,
-                    market_price=market_price,
-                    lot_size=lot_size,
-                    # Pass configured target margin so Discord/email shows the capital allocation setting
-                    target_margin=target_margin if is_entry else None,
-                    timeframe=timeframe,
-                    stop_loss_price=stop_loss_price,
-                    atr=atr,
-                    justification=justification,
-                    mode=mode
-                )
-            except Exception as e:
-                logger.error(f"Failed to send trade alert: {e}")
+        # 8. Send Alert (Directly via REST response)
+        try:
+            notifier.send_trade_alert(
+                symbol=symbol,
+                side=action, # "ENTRY_LONG" etc.
+                price=execution_price if execution_price and mode != "paper" else price,
+                rsi=rsi,
+                reason=reason + (" [PAPER]" if mode == "paper" else ""),
+                margin_used=margin_used if is_entry else None,
+                remaining_margin=remaining_margin,
+                strategy_name=strategy_name,
+                pnl=pnl,
+                funding_charges=funding_charges,
+                trading_fees=trading_fees,
+                market_price=market_price,
+                lot_size=lot_size,
+                # Pass configured target margin so Discord/email shows the capital allocation setting
+                target_margin=target_margin if is_entry else None,
+                timeframe=timeframe,
+                stop_loss_price=stop_loss_price,
+                atr=atr,
+                justification=justification,
+                mode=mode
+            )
+        except Exception as e:
+            logger.error(f"Failed to send trade alert: {e}")
 
-            # 8b. Send fee breakdown as a separate Discord message (paper doesn't have real fees, but keeping structure)
-            pass
-        else:
-            logger.info("Live mode: Trade alert delegated to WebSocket handler.")
+        # 8b. Send fee breakdown as a separate Discord message
+        pass
 
         # 9. Journal Trade to Firestore
         # This happens after successful execution and notification

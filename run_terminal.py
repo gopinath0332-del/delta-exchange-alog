@@ -14,9 +14,6 @@ from core.config import get_config
 from core.logger import setup_logging, get_logger
 from core.runner import run_strategy_terminal, run_multi_symbol_terminal
 from notifications.manager import NotificationManager
-from api.websocket_client import DeltaWebSocketClient
-from core.websocket_handler import WebSocketEventHandler
-
 def main():
     # Load configuration
     config = get_config()
@@ -40,27 +37,7 @@ def main():
     print("\n" + "="*80)
     print(" DELTA EXCHANGE TRADING BOT - TERMINAL MODE")
     print("="*80)
-    
-    # -----------------------------------------------------------------------
-    # Initialize and Start WebSocket for 24/7 Order Notifications
-    # -----------------------------------------------------------------------
-    try:
-        shared_notifier = NotificationManager(config)
-        ws_handler = WebSocketEventHandler(shared_notifier)
-        ws_client = DeltaWebSocketClient(config)
-        
-        # Start connection in background
-        ws_client.connect()
-        
-        # Subscribe to orders channel with our handler callback
-        # We pass ["all"] for all symbols
-        ws_client.subscribe("orders", ["all"], ws_handler.handle_order_event)
-        
-        logger.info("WebSocket Client started in background.")
-    except Exception as e:
-        logger.error(f"Failed to start WebSocket client: {e}")
-        # Proceed anyway as bot can still trade without WS notifications
-        
+
     # Available Strategies
     STRATEGIES = [
         {
