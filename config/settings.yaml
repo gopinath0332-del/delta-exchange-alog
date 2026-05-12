@@ -42,8 +42,8 @@ risk_management:
   profit_milestones:
     - pnl_pct: 50.0 # Trigger at 50% Unrealized Margin PnL
       exit_pct: 0.30 # Exit 30% of the current active position size
-    - pnl_pct: 100.0 # Trigger at 100% Unrealized Margin PnL
-      exit_pct: 0.30 # Exit 30% of the remaining active position size
+    # - pnl_pct: 100.0 # Trigger at 100% Unrealized Margin PnL
+    #   exit_pct: 0.30 # Exit 30% of the remaining active position size
 
 # Notification Settings
 notifications:
@@ -133,7 +133,7 @@ strategies:
     # to match TradingView's HA values.  With only 30 days the HA smoothing is
     # insufficient and signals can fire on effectively-standard-candle values.
     historical_days: 90
-    stop_loss_pct: 0.20 # Cap max loss at 20% of margin per trade segment
+    stop_loss_pct: null # Cap max loss at 20% of margin per trade segment
 
   # EMA Cross Strategy (BTC 4H)
   ema_cross:
@@ -167,7 +167,7 @@ strategies:
     htf_ema_length: 100 # EMA length on the simulated HTF (matches Pine htfLength=100)
     # Data
     historical_days: 60 # Days of history to fetch for warmup/backtest
-    stop_loss_pct: 0.20 # Cap max loss at 20% of margin per trade segment
+    stop_loss_pct: null # Cap max loss at 20% of margin per trade segment
 
 # Multi-Coin Service Configuration
 # Defines symbol groups that can be run together in a single process via
