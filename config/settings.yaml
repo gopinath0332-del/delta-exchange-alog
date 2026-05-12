@@ -194,14 +194,6 @@ multi_coin:
         atr_margin_multiplier: 2.0
         target_margin: 50
         log_file: logs/pi.log
-      - symbol: JTOUSD
-        timeframe: 2h
-        candle_type: heikin-ashi
-        leverage: 5
-        position_sizing_type: "atr"
-        atr_margin_multiplier: 2.0
-        target_margin: 50
-        log_file: logs/jto.log
       - symbol: RIVERUSD
         timeframe: 2h
         candle_type: heikin-ashi
@@ -210,6 +202,14 @@ multi_coin:
         atr_margin_multiplier: 2.0
         target_margin: 50
         log_file: logs/river_2h.log
+      - symbol: EVAAUSD
+        timeframe: 2h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 50
+        log_file: logs/evaa_2h.log
       - symbol: PAXGUSD
         timeframe: 2h
         candle_type: heikin-ashi
@@ -306,7 +306,7 @@ single_coin:
   JTO:
     leverage: 5
     target_margin: 50
-  RIVER:
+  EVAA:
     leverage: 5
     target_margin: 50
 
@@ -314,4 +314,4 @@ single_coin:
 firestore:
   enabled: true # Enable/disable trade journaling to Firestore
   service_account_path: "config/firestore-service-account.json" # Path to Admin SDK service account key
-  collection_name: "crypto" # Firestore collection name for trade data
+  collection_name: "noStoplossTrades" # Firestore collection name for trade data
