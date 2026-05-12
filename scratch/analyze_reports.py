@@ -3,66 +3,66 @@ import re
 from pathlib import Path
 
 def extract_metrics(file_path):
-    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-        content = f.read()
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+    except Exception:
+        with open(file_path, 'r', encoding='latin-1') as f:
+            content = f.read()
     
-    symbol = os.path.basename(file_path).replace('_1h_report.html', '')
-    metrics = {}
+    # Extract Symbol from Title
+    symbol_match = re.search(r'<title>Backtest Report - (.*?) \(', content)
+    symbol = symbol_match.group(1).strip() if symbol_match else file_path.name.split('_')[0]
     
-    def get_stat(title):
-        pattern = rf'{title}</div>.*?stat-value.*?>\s*(?:<span.*?>)?(.*?)(?:%?</span>)?\s*(?:</span|</div>)'
+    # Extract metrics using regex
+    def get_val(label):
+        # Look for the label in a stat-title, then get the following stat-value
+        pattern = rf'<div class="stat-title">{label}</div>\s*<div class="stat-value.*?">(.*?)</div>'
         match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
         if match:
-            val = match.group(1).strip().replace('+', '').replace('%', '').replace(',', '')
+            val = match.group(1).strip()
+            # Clean up percentage signs and dollar signs
+            val = val.replace('%', '').replace('$', '').replace(',', '')
             try:
                 return float(val)
             except ValueError:
                 return 0.0
         return 0.0
 
-    metrics['Total Return %'] = get_stat('Total Return %')
-    metrics['Max Drawdown %'] = get_stat('Max Drawdown %')
-    metrics['Profit Factor'] = get_stat('Profit Factor')
-    metrics['Win Rate %'] = get_stat('Win Rate %')
-    metrics['Sharpe Ratio'] = get_stat('Sharpe Ratio')
-    
-    # Number of Trades is slightly different or in the table
-    trades_pattern = r'Number of Trades:</span>\s*<span.*?>(\d+)</span>'
-    trades_match = re.search(trades_pattern, content)
-    if trades_match:
-        metrics['Number of Trades'] = int(trades_match.group(1))
-    else:
-        metrics['Number of Trades'] = int(get_stat('Number of Trades'))
+    profit_factor = get_val('Profit Factor')
+    total_return = get_val('Total Return')
+    max_drawdown = get_val('Max Drawdown')
+    trades = get_val('Total Trades')
+    win_rate = get_val('Win Rate')
 
-    return symbol, metrics
+    return {
+        'Symbol': symbol,
+        'Profit Factor': profit_factor,
+        'Total Return %': total_return,
+        'Max Drawdown %': max_drawdown,
+        'Trades': int(trades),
+        'Win Rate %': win_rate
+    }
 
 def main():
     reports_dir = Path('reports')
-    all_results = []
+    all_metrics = []
     
-    for report_file in reports_dir.glob('*_report.html'):
+    for file in reports_dir.glob('*_2h_report.html'):
         try:
-            symbol, metrics = extract_metrics(report_file)
-            if metrics['Number of Trades'] > 0: # Check any trades
-                metrics['Symbol'] = symbol
-                all_results.append(metrics)
-            else:
-                # print(f"Skipping {symbol}: No trades")
-                pass
+            metrics = extract_metrics(file)
+            if metrics['Trades'] > 5: # Filter out low trade count
+                all_metrics.append(metrics)
         except Exception as e:
-            print(f"Error parsing {report_file}: {e}")
-            
-    if not all_results:
-        print("No results found. Check regex or file paths.")
-        return
+            print(f"Error processing {file}: {e}")
 
-    # Sort by Profit Factor descending
-    sorted_results = sorted(all_results, key=lambda x: x.get('Profit Factor', 0), reverse=True)
+    # Sort by Profit Factor
+    sorted_metrics = sorted(all_metrics, key=lambda x: x['Profit Factor'], reverse=True)
     
-    print(f"{'Symbol':<15} | {'Return %':<10} | {'Max DD %':<10} | {'PF':<6} | {'Sharpe':<6} | {'Trades':<6}")
-    print("-" * 65)
-    for m in sorted_results[:20]:
-        print(f"{m['Symbol']:<15} | {m['Total Return %']:>10.2f} | {m['Max Drawdown %']:>10.2f} | {m['Profit Factor']:>6.2f} | {m['Sharpe Ratio']:>6.2f} | {m['Number of Trades']:>6}")
+    print(f"{'Symbol':<15} | {'Return %':<10} | {'Drawdown %':<12} | {'Trades':<8} | {'Win %':<8} | {'PF':<8}")
+    print("-" * 75)
+    for m in sorted_metrics[:20]:
+        print(f"{m['Symbol']:<15} | {m['Total Return %']:>9.2f}% | {m['Max Drawdown %']:>11.2f}% | {m['Trades']:>8} | {m['Win Rate %']:>7.2f}% | {m['Profit Factor']:>8.2f}")
 
 if __name__ == "__main__":
     main()
