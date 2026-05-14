@@ -9,6 +9,9 @@ A comprehensive Python-based crypto trading analysis platform with Delta Exchang
 - **Closed Candle Logic**: Standardized signal generation on confirmed candle closes (eliminates backtest vs. live discrepancies)
 - **Global Profit Milestones**: Unified system in `BaseStrategy` to take partial profits at 50% and 100% PnL across ALL strategies (NEW)
 - **Firestore Trade Journaling**: Comprehensive trade tracking with auto-calculated analytics (PnL %, days held, status tracking)
+- **Transaction-Accurate Reporting**: Fetches actual realized P&L, commissions, and funding metrics directly from verified exchange transaction ledgers post-execution for precise financial reporting on partial and milestone exits (NEW)
+- **Robust Exchange Sync**: Implements dynamic polling logic for order fills to ensure data is finalized before reporting/journaling, with resilient retries for exchange latency (NEW)
+- **Improved Margin Visualization**: Update notifications to reflect total account equity ("cash value") rather than just available margin, matching the Delta Exchange dashboard precisely (NEW)
 - **Structured Logging**: Human-readable logs using `structlog`
 - **Modular Architecture**: Clean separation of concerns for easy extension
 - **Multiple Timeframes**: 5m, 15m, 1h, 3h, 4h, 1d (configurable)
