@@ -755,9 +755,11 @@ def execute_strategy_signal(
                     logger.info(f"Found balance object: {balance_obj}")
 
                 # Parse fields
-                available_balance = float(balance_obj.get('available_balance', 0.0))
-                remaining_margin = available_balance
-                logger.info(f"Fetched wallet balance for {collateral_currency}: {remaining_margin}")
+                # Parse fields
+                # Use 'balance' (Total Equity) instead of 'available_balance' for "cash value"
+                # as requested by the user to match the exchange dashboard.
+                remaining_margin = float(balance_obj.get('balance', 0.0))
+                logger.info(f"Fetched total wallet balance (equity) for {collateral_currency}: {remaining_margin}")
 
             except Exception as e:
                 logger.error(f"Failed to fetch wallet details: {e}", exc_info=True)
@@ -766,61 +768,71 @@ def execute_strategy_signal(
         pnl = None
         funding_charges = None
         trading_fees = None
-        funding_txns: list = []     # raw txns kept for fee breakdown message
-        trading_fee_txns: list = []
-
-        if not is_entry and active_position:
-            try:
-                # Extract unrealized PnL (will be realized after exit)
-                pnl = float(active_position.get('unrealized_pnl', 0.0))
-
-                # Compute trade time range (reused for both funding and fee fetches)
+        
+        if not is_entry:
+            # For exits, we want the ACTUAL realized P&L and commissions from the exchange.
+            if mode != "paper" and order and order.get('id'):
+                # Resilient polling loop: wait for the order to be 'closed'
+                # to ensure realized_pnl and fill prices are finalized.
+                max_attempts = 3
+                order_details = None
+                for attempt in range(max_attempts):
+                    time.sleep(2.0)
+                    try:
+                        logger.info(f"Polling for fill details (Attempt {attempt+1}/{max_attempts})...")
+                        order_details = client.get_order(order.get('id'))
+                        if order_details and order_details.get('state') == 'closed':
+                            logger.info(f"Order {order.get('id')} confirmed CLOSED.")
+                            break
+                    except Exception as pe:
+                        logger.warning(f"Polling attempt {attempt+1} failed: {pe}")
+                
+                try:
+                    # 1. Fetch exact order details to get Realized PnL
+                    if order_details:
+                        pnl = float(order_details.get('realized_pnl', 0.0))
+                        # Update execution price if we have it from the order
+                        if order_details.get('avg_fill_price'):
+                            execution_price = float(order_details.get('avg_fill_price'))
+                        logger.info(f"Extracted ACTUAL PnL from Order: ${pnl:+,.4f}")
+                    
+                    # 2. Fetch Commissions and Funding from Ledger
+                    now_us = int(time.time() * 1_000_000)
+                    # Tight window for this specific exit's fees
+                    start_us = now_us - (60 * 1_000_000) 
+                    
+                    fee_txns = client.get_wallet_transactions(
+                        transaction_types="commission",
+                        start_time_us=start_us,
+                        end_time_us=now_us,
+                        product_id=product_id
+                    )
+                    if fee_txns:
+                        trading_fees = sum(abs(float(t.get("amount", 0))) for t in fee_txns)
+                        logger.info(f"Extracted ACTUAL Fees from Ledger: ${trading_fees:,.4f}")
+                except Exception as e:
+                    logger.error(f"Failed to fetch actual metrics from exchange: {e}")
+            
+            # 3. Fetch Funding (Always over trade duration)
+            if active_position:
                 entry_ts_us = _parse_position_timestamp_us(active_position.get("created_at"))
                 exit_ts_us = int(time.time() * 1_000_000)
-
-                # Fetch actual funding debits/credits from wallet transactions
-                # for the duration of this trade (entry time → now)
                 if entry_ts_us and mode != "paper":
                     try:
                         txns = client.get_funding_transactions(entry_ts_us, exit_ts_us, product_id=product_id)
-                        if txns:
-                            funding_txns = txns
-                            funding_charges = sum(float(t.get("amount", 0)) for t in txns)
-                            logger.info(
-                                f"Funding from wallet txns: ${funding_charges:+,.4f}"
-                                f" ({len(txns)} transactions) for product_id: {product_id}"
-                            )
-                        else:
-                            funding_charges = float(active_position.get('funding_pnl', 0.0))
-                    except Exception as fe:
-                        logger.warning(f"Funding transaction fetch failed, using position field: {fe}")
+                        funding_charges = sum(float(t.get("amount", 0)) for t in txns) if txns else float(active_position.get('funding_pnl', 0.0))
+                    except Exception:
                         funding_charges = float(active_position.get('funding_pnl', 0.0))
                 else:
                     funding_charges = float(active_position.get('funding_pnl', 0.0))
+            
+            # Fallback if PnL is still None (e.g. paper mode or fetch failed)
+            if pnl is None and active_position:
+                pnl = float(active_position.get('unrealized_pnl', 0.0))
+            if trading_fees is None and active_position:
+                trading_fees = float(active_position.get('commission', 0.0))
 
-                # Fetch actual trading fees (entry + all partials + final exit) from wallet
-                if entry_ts_us and mode != "paper":
-                    try:
-                        fee_txns = client.get_trading_fee_transactions(entry_ts_us, exit_ts_us, product_id=product_id)
-                        if fee_txns:
-                            trading_fee_txns = fee_txns
-                            # Fee amounts are negative debits; use abs() for display
-                            trading_fees = sum(abs(float(t.get("amount", 0))) for t in fee_txns)
-                            logger.info(
-                                f"Trading fees from wallet txns: ${trading_fees:,.4f}"
-                                f" ({len(fee_txns)} transactions) for product_id: {product_id}"
-                            )
-                        else:
-                            trading_fees = float(active_position.get('commission', 0.0))
-                    except Exception as fe:
-                        logger.warning(f"Trading fee transaction fetch failed, using position field: {fe}")
-                        trading_fees = float(active_position.get('commission', 0.0))
-                else:
-                    trading_fees = float(active_position.get('commission', 0.0))
-
-                logger.info(f"Exit metrics - PnL: ${pnl:+,.2f}, Fees: ${trading_fees:,.4f}, Funding: ${funding_charges:+,.4f}")
-            except Exception as e:
-                logger.warning(f"Failed to extract PnL/fees from position: {e}")
+            logger.info(f"Final exit metrics - PnL: ${pnl if pnl is not None else 0:+,.2f}, Fees: ${trading_fees if trading_fees is not None else 0:,.4f}, Funding: ${funding_charges if funding_charges is not None else 0:+,.4f}")
         
         # 8. Send Alert (Directly via REST response)
         try:

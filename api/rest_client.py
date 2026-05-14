@@ -831,6 +831,20 @@ class DeltaRestClient:
         logger.info("Fetched order history", count=len(all_orders))
         return all_orders
 
+    def get_order(self, order_id: int) -> Dict[str, Any]:
+        """
+        Get order details by ID.
+        
+        Args:
+            order_id: Order ID
+            
+        Returns:
+            Order details dictionary
+        """
+        logger.debug("Fetching order", order_id=order_id)
+        response = self._make_auth_request("GET", f"/v2/orders/{order_id}")
+        return cast(Dict[str, Any], response.get('result', response))
+
     def place_order(
         self,
         product_id: int,
