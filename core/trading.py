@@ -12,7 +12,7 @@ from datetime import datetime
 from core.logger import get_logger
 from api.rest_client import DeltaRestClient
 from notifications.manager import NotificationManager
-from core.firestore_client import journal_trade  # For trade journaling to Firestore
+from core.firestore_client import journal_trade, get_open_trade_by_symbol  # For trade journaling to Firestore
 
 logger = get_logger(__name__)
 
@@ -580,9 +580,13 @@ def execute_strategy_signal(
                 trade_id = f"{symbol}_{strategy_name or 'unknown'}_{timestamp_str}_{uuid.uuid4().hex[:6]}"
                 logger.info(f"Generated NEW trade_id for entry: {trade_id}")
             else:
-                if active_position and active_position.get('created_at'):
+                trade_id = get_open_trade_by_symbol(symbol)
+                if trade_id:
+                    logger.info(f"Resolved trade_id from Firestore for exit: {trade_id}")
+                elif active_position and active_position.get('created_at'):
                     entry_ts = active_position.get('created_at', '')
                     trade_id = f"{symbol}_{strategy_name or 'unknown'}_{entry_ts}"
+                    logger.warning(f"Could not find open trade in Firestore. Using fallback trade_id: {trade_id}")
                 else:
                     logger.warning(f"No trade_id provided for {action} and could not generate fallback.")
         
@@ -790,7 +794,11 @@ def execute_strategy_signal(
                 try:
                     # 1. Fetch exact order details to get Realized PnL
                     if order_details:
-                        pnl = float(order_details.get('realized_pnl', 0.0))
+                        pnl_val = order_details.get('realized_pnl')
+                        if pnl_val is None and 'meta_data' in order_details:
+                            pnl_val = order_details['meta_data'].get('pnl') or order_details['meta_data'].get('cashflow')
+                        pnl = float(pnl_val) if pnl_val is not None else 0.0
+                        
                         # Update execution price if we have it from the order
                         if order_details.get('avg_fill_price'):
                             execution_price = float(order_details.get('avg_fill_price'))
