@@ -78,7 +78,7 @@ class DonchianChannelStrategy(BaseStrategy):
         self.last_ema = 0.0  # NEW: EMA Cache
         
         # Load persistent state
-        self._load_from_disk()
+        self.restored_from_disk = self._load_from_disk()
         
     def _update_bars_per_day(self, timeframe: str):
         """Update bars_per_day and min_long_bars based on timeframe."""
@@ -515,6 +515,9 @@ class DonchianChannelStrategy(BaseStrategy):
 
     def _save_to_disk(self):
         """Save current trade flags to disk for persistence across restarts."""
+        if self._suppress_persistence:
+            return
+
         if self.current_position == 0:
             self.clear_state()
             return
@@ -643,6 +646,8 @@ class DonchianChannelStrategy(BaseStrategy):
     def run_backtest(self, df: pd.DataFrame):
         """Run backtest."""
         logger.info("Starting Donchian Channel backtest...")
+        previous_suppression = self._suppress_persistence
+        self._suppress_persistence = True
         self.trades = []
         self.current_position = 0
         self.active_trade = None
@@ -653,7 +658,9 @@ class DonchianChannelStrategy(BaseStrategy):
         self.long_entry_bar = None
         self.reset_milestones()
 
-        if df.empty: return
+        if df.empty:
+            self._suppress_persistence = previous_suppression
+            return
         
         # Pre-calculate
         upper_channel = df['high'].rolling(window=self.enter_period).max()
@@ -783,4 +790,5 @@ class DonchianChannelStrategy(BaseStrategy):
                 if close >= upper_prev:
                      self.update_position_state("EXIT_SHORT", current_time_ms, indicators, close, "Breakout")
                      
+        self._suppress_persistence = previous_suppression
         logger.info(f"Backtest complete. Trades: {len(self.trades)}")

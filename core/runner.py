@@ -410,12 +410,19 @@ def run_strategy_terminal(
                          closes = df['close'].astype(float)
 
                      # 2. Run Backtest / Warmup (If first run or empty history)
-                     if not strategy.trades and not strategy.active_trade:
+                     has_restored_live_state = (
+                         getattr(strategy, 'current_position', 0) != 0
+                         or getattr(strategy, 'entry_price', None) is not None
+                         or getattr(strategy, 'restored_from_disk', False)
+                     )
+                     if not strategy.trades and not strategy.active_trade and not has_restored_live_state:
                          if len(df) > 1:
                              logger.info("Backtesting history for warmup...")
                              strategy.run_backtest(df.iloc[:-1])
                              logger.info("Backtest warmup complete.")
                              logger.info("Warmup complete. Position reconciliation will happen in the main loop.")
+                     elif has_restored_live_state:
+                         logger.info("Skipping backtest warmup because live strategy state is already restored.")
                      
                      try:
                          # 3. CONSOLIDATED RECONCILIATION & POSITION FETCH
@@ -590,11 +597,30 @@ def run_strategy_terminal(
                              # For backward compatibility with strategies expecting single value
                              indicators = current_rsi
                          
+                         execution_failed = (
+                             result is not None
+                             and isinstance(result, dict)
+                             and result.get('success') is False
+                         )
+
                          # Execute Action (Update State) with CORRECT ARGUMENTS
                          if action == "MILESTONE_EXIT" and hasattr(strategy, 'handle_milestone_state'):
-                             strategy.handle_milestone_state(reason, exec_price, current_time_ms)
-                         else:
+                             milestone_executed = (
+                                 result is not None
+                                 and isinstance(result, dict)
+                                 and result.get('success')
+                                 and (mode == "paper" or result.get('order_placed'))
+                             )
+                             if milestone_executed:
+                                 strategy.handle_milestone_state(reason, exec_price, current_time_ms)
+                             else:
+                                 logger.warning(
+                                     f"[{symbol}] Milestone state NOT marked hit because no milestone order executed."
+                                 )
+                         elif not execution_failed:
                              strategy.update_position_state(action, current_time_ms, indicators, exec_price, reason=reason)
+                         else:
+                             logger.warning(f"[{symbol}] State update skipped because execution failed for {action}.")
                     else:
                         logger.error(f"Unexpected candle data format: {df.columns}")
                         time.sleep(10)

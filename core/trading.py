@@ -8,6 +8,7 @@ import time
 import os
 import uuid
 import json
+import math
 from datetime import datetime
 from core.logger import get_logger
 from api.rest_client import DeltaRestClient
@@ -515,7 +516,8 @@ def execute_strategy_signal(
                 if active_position:
                     current_size = float(active_position['size'])
                     side = "sell" if current_size > 0 else "buy"
-                    milestone_size = int(abs(current_size) * exit_pct)
+                    milestone_size = int(math.ceil(abs(current_size) * exit_pct)) if exit_pct > 0 else 0
+                    milestone_size = min(milestone_size, int(abs(current_size)))
                     if milestone_size > 0:
                         order_size = milestone_size
                         lot_size = order_size
@@ -688,7 +690,6 @@ def execute_strategy_signal(
                         tick_size = float(product.get('tick_size', '0.01'))
                         p_decimals = 2
                         if tick_size < 1:
-                            import math
                             p_decimals = math.ceil(abs(math.log10(tick_size)))
                         
                         sl_price_str = f"{stop_loss_price:.{p_decimals}f}"
@@ -954,7 +955,10 @@ def execute_strategy_signal(
         return {
             "success": True,
             "execution_price": actual_execution_price or price,
-            "trade_id": trade_id
+            "trade_id": trade_id,
+            "order_id": order.get("id") if order else None,
+            "order_placed": bool(order and mode != "paper"),
+            "paper_order": bool(order and mode == "paper"),
         }
 
     except Exception as e:

@@ -28,6 +28,7 @@ class BaseStrategy:
         self.timeframe: str = "1h"
         self.indicator_label: str = "IND"
         self.leverage: int = 1
+        self._suppress_persistence: bool = False
         
         # New: Shared Indicator State
         self.last_atr: Optional[float] = None
@@ -179,6 +180,9 @@ class BaseStrategy:
         Args:
             extra_data: Optional dict of strategy-specific fields to persist.
         """
+        if self._suppress_persistence:
+            return
+
         try:
             state = {
                 "current_position": self.current_position,
@@ -242,7 +246,8 @@ class BaseStrategy:
         self.min_price_seen = None
         self.initial_sl_price = None
         self.reset_milestones()
-        clear_strategy_state(self.symbol, self.strategy_name)
+        if not self._suppress_persistence:
+            clear_strategy_state(self.symbol, self.strategy_name)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Interface hooks (to be overridden by subclasses)
