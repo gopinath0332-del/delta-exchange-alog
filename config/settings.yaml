@@ -184,7 +184,7 @@ multi_coin:
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        target_margin: 40
+        target_margin: 100
         log_file: logs/pippin.log
       - symbol: ZECUSD
         timeframe: 1h
@@ -192,7 +192,7 @@ multi_coin:
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        target_margin: 40
+        target_margin: 100
         log_file: logs/zec.log
       - symbol: PAXGUSD
         timeframe: 1h
@@ -200,7 +200,7 @@ multi_coin:
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        target_margin: 30
+        target_margin: 100
         log_file: logs/paxg.log
       - symbol: RIVERUSD
         timeframe: 2h
@@ -208,7 +208,7 @@ multi_coin:
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        target_margin: 40
+        target_margin: 100
         log_file: logs/river_2h.log
       - symbol: EVAAUSD
         timeframe: 2h
@@ -216,7 +216,7 @@ multi_coin:
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        target_margin: 40
+        target_margin: 100
         log_file: logs/evaa_2h.log
       - symbol: DEEPUSD
         timeframe: 4h
@@ -224,7 +224,7 @@ multi_coin:
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        target_margin: 40
+        target_margin: 100
         log_file: logs/deep.log
       - symbol: BERAUSD
         timeframe: 4h
@@ -232,7 +232,7 @@ multi_coin:
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        target_margin: 40
+        target_margin: 100
         log_file: logs/bera.log
       - symbol: IPUSD
         timeframe: 6h
@@ -240,7 +240,7 @@ multi_coin:
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        target_margin: 40
+        target_margin: 100
         log_file: logs/ip_6h.log
       - symbol: VVVUSD
         timeframe: 6h
@@ -248,7 +248,7 @@ multi_coin:
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
-        target_margin: 40
+        target_margin: 100
         log_file: logs/vvv_6h.log
   # bb_breakout:
   #   mode: paper
@@ -278,61 +278,61 @@ multi_coin:
 single_coin:
   PIPPIN:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   ZEC:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   BIO:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   ARC:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   RIVER:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   BERA:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   PAXG:
     leverage: 5
-    target_margin: 30
+    target_margin: 100
   SLVON:
     leverage: 5
-    target_margin: 30
+    target_margin: 100
   BTC:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   ETH:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   XRP:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   BEAT:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   TAO:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   HYPE:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   JTO:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   EVAA:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   DEEP:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   IP:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
   VVV:
     leverage: 5
-    target_margin: 40
+    target_margin: 100
 
 # Firestore Configuration (for trade journaling)
 firestore:
