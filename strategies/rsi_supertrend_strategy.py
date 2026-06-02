@@ -389,19 +389,7 @@ class RSISupertrendStrategy(BaseStrategy):
             old_position = self.current_position
             self.current_position = expected_pos
             
-            if expected_pos == 1 and not self.active_trade:
-                self.last_entry_price = entry_price
-                import time, datetime
-                formatted_time = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%y %H:%M')
-                self.active_trade = {
-                    "type": "LONG",
-                    "entry_time": f"{formatted_time} (Rec)",
-                    "entry_price": entry_price,
-                    "status": "OPEN"
-                }
-                logger.info("Reconciled state to LONG (Size: %s, Entry: %s)", size, entry_price)
-                
-            elif expected_pos == 0 and self.active_trade:
+            if expected_pos == 0 and self.active_trade:
                 action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
                 reason = "External Exit (Stop-Loss or Manual)"
                 
@@ -416,6 +404,18 @@ class RSISupertrendStrategy(BaseStrategy):
                 self.trades.append(self.active_trade)
                 self.active_trade = None
                 logger.info("Reconciled state to FLAT")
+        
+        if expected_pos == 1 and not self.active_trade:
+            self.last_entry_price = entry_price
+            import time, datetime
+            formatted_time = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%y %H:%M')
+            self.active_trade = {
+                "type": "LONG",
+                "entry_time": f"{formatted_time} (Rec)",
+                "entry_price": entry_price,
+                "status": "OPEN"
+            }
+            logger.info("Reconciled state to LONG (Size: %s, Entry: %s)", size, entry_price)
         
         return action, reason
 

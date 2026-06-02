@@ -29,12 +29,16 @@ class TestDonchianShort(unittest.TestCase):
         }
         self.mock_get_config.return_value = self.mock_config_instance
         
+        # Clear persistent state before instantiating to avoid test pollution
+        from core.persistence import clear_strategy_state
+        clear_strategy_state("ARCUSD", "donchian_channel")
+        
         self.strategy = DonchianChannelStrategy()
 
     def tearDown(self):
         self.config_patcher.stop()
 
-    def create_mock_df(self, length=50, price_trend="flat"):
+    def create_mock_df(self, length=120, price_trend="flat"):
         # Create a dataframe with enough length for indicators
         dates = pd.date_range(end=pd.Timestamp.now(), periods=length, freq='1h')
         times = [d.timestamp() * 1000 for d in dates] # ms
@@ -64,7 +68,7 @@ class TestDonchianShort(unittest.TestCase):
 
     def test_short_entry_signal(self):
         # Setup: Flat then Drop below lower channel
-        df = self.create_mock_df(length=60, price_trend="flat")
+        df = self.create_mock_df(length=120, price_trend="flat")
         
         # Force a lower channel breach
         # Enter period 20, Exit period 10
@@ -96,6 +100,17 @@ class TestDonchianShort(unittest.TestCase):
         # Run check
         action, reason = self.strategy.check_signals(df, current_time)
         
+        print("\n--- DEBUG test_short_entry_signal ---")
+        print("action:", action)
+        print("reason:", reason)
+        print("len(df):", len(df))
+        print("ema_length:", self.strategy.ema_length)
+        print("allow_short:", self.strategy.allow_short)
+        print("current_position:", self.strategy.current_position)
+        print("min_long_days:", self.strategy.min_long_days)
+        print("last_action_candle_ts:", self.strategy.last_action_candle_ts)
+        print("--- END DEBUG ---\n")
+        
         self.assertEqual(action, "ENTRY_SHORT")
         self.assertIn("Breakdown", reason)
         self.assertEqual(self.strategy.current_position, 0) # Should verify state update happens OUTSIDE check usually, but signal is key
@@ -109,7 +124,7 @@ class TestDonchianShort(unittest.TestCase):
         self.strategy.current_position = -1
         self.strategy.allow_short = True
         
-        df = self.create_mock_df(length=60, price_trend="flat")
+        df = self.create_mock_df(length=120, price_trend="flat")
         
         # Define Upper Channel at 110 (Highs)
         # Breakout to 120

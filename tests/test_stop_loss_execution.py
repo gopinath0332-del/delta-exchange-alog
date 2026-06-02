@@ -34,6 +34,7 @@ class TestStopLossExecution(unittest.TestCase):
 
         # Patch environment variables
         self.env_patcher = patch.dict('os.environ', {
+            'ENABLE_ORDER_PLACEMENT': 'true',
             'ENABLE_ORDER_PLACEMENT_RIVER': 'true',
             'TARGET_MARGIN_RIVER': '50',
             'LEVERAGE_RIVER': '5',

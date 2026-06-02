@@ -338,32 +338,32 @@ class EMACrossStrategy(BaseStrategy):
         reason = ""
 
         if self.current_position != expected_pos:
-            logger.warning(f"Reconciling: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
+            logger.warning(f"Reconciling Position: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
             old_position = self.current_position
             self.current_position = expected_pos
             
-            if expected_pos != 0 and not self.active_trade:
-                side = "LONG" if expected_pos == 1 else "SHORT"
-                self.active_trade = {
-                    "type": side,
-                    "entry_time": format_time(time.time() * 1000) + " (Rec)",
-                    "entry_price": entry_price,
-                    "entry_ema": "-/-",
-                    "status": "OPEN"
-                }
-                self.entry_price = entry_price
-                logger.warning("Reconciled position - created active trade record")
-            
-            elif expected_pos == 0 and self.active_trade:
+            if expected_pos == 0 and self.active_trade:
                 action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
                 reason = "External Exit (Stop-Loss or Manual)"
                 
-                self.active_trade["exit_time"] = format_time(time.time() * 1000) + " (Rec)"
+                logger.info(f"Closing phantom active_trade via Reconciliation: {reason}")
+                self.active_trade["exit_time"] = f"{formatted_time} (Reconciled)"
+                self.active_trade["exit_price"] = 0.0 
                 self.active_trade["status"] = "CLOSED (SYNC)"
                 self.trades.append(self.active_trade)
                 self.active_trade = None
                 self.trade_id = None
-                logger.warning(f"Reconciled position - closed active trade record: {reason}")
+        
+        if expected_pos != 0 and not self.active_trade:
+            side = "LONG" if expected_pos == 1 else "SHORT"
+            self.active_trade = {
+                "type": side,
+                "entry_time": f"{formatted_time} (Rec)",
+                "entry_price": entry_price,
+                "status": "OPEN"
+            }
+            self.entry_price = entry_price
+            logger.info(f"Re-synced with existing {side} position via Reconciliation")
         
         return action, reason
     

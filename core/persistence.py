@@ -24,20 +24,25 @@ class StateEncoder(json.JSONEncoder):
 # Base directory for state persistence
 # Using absolute path resolution relative to project root
 PROJECT_ROOT = Path(__file__).parent.parent
-STATE_DIR = PROJECT_ROOT / "data" / "state"
+
+def get_state_dir() -> Path:
+    if 'PYTEST_CURRENT_TEST' in os.environ:
+        return PROJECT_ROOT / "data" / "state_test"
+    return PROJECT_ROOT / "data" / "state"
 
 def _ensure_state_dir():
     """Ensure state directory exists."""
-    if not STATE_DIR.exists():
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Created state directory at {STATE_DIR}")
+    state_dir = get_state_dir()
+    if not state_dir.exists():
+        state_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created state directory at {state_dir}")
 
 def get_state_path(symbol: str, strategy_name: str) -> Path:
     """Generate persistence path for a symbol/strategy."""
     # Normalize names for filename safety
     safe_symbol = symbol.replace("/", "_").replace("-", "_")
     safe_strategy = strategy_name.replace("/", "_").replace("-", "_")
-    return STATE_DIR / f"{safe_symbol}_{safe_strategy}_state.json"
+    return get_state_dir() / f"{safe_symbol}_{safe_strategy}_state.json"
 
 def save_strategy_state(symbol: str, strategy_name: str, state_dict: Dict[str, Any]):
     """Save strategy state to disk."""

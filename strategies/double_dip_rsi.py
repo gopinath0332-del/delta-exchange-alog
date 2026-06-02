@@ -6,10 +6,12 @@ import ta
 import numpy as np
 from core.config import get_config
 from core.candle_utils import get_closed_candle_index
+from strategies.base_strategy import BaseStrategy
+from core.persistence import save_strategy_state, load_strategy_state, clear_strategy_state
 
 logger = logging.getLogger(__name__)
 
-class DoubleDipRSIStrategy:
+class DoubleDipRSIStrategy(BaseStrategy):
     """
     Double-Dip RSI Strategy for BTCUSD.
     
@@ -22,6 +24,8 @@ class DoubleDipRSIStrategy:
     """
     
     def __init__(self, symbol: str = "BTCUSD"):
+        super().__init__(symbol, "double_dip_rsi")
+        
         # Load Config
         config = get_config()
         cfg = config.settings.get("strategies", {}).get("double_dip_rsi", {})
@@ -52,18 +56,15 @@ class DoubleDipRSIStrategy:
         # State
         self.last_long_entry_time = None
         self.last_long_duration = 0.0
-        self.current_position = 0  # 1 for Long, -1 for Short, 0 for Flat
+        self.partial_exit_done = False
         
         # Dashboard/Live State
         self.last_rsi = 0.0
         self.last_atr = 0.0
-        self.trailing_stop_level = None # Tracks active trailing stop price
         self.next_partial_target = None # Tracks next partial TP level
         
-        
-        # Trade History
-        self.trades = [] # List of completed trades
-        self.active_trade = None # Current active trade details
+        # Persistence
+        self._load_from_disk()
         
     def calculate_indicators(self, df: pd.DataFrame):
         """Calculate Technical Indicators (RSI, ATR)."""
@@ -91,21 +92,47 @@ class DoubleDipRSIStrategy:
             
         return df
 
-    def check_signals(self, df: pd.DataFrame, current_time_ms: float) -> Tuple[str, str]:
+    def calculate_rsi(self, prices: pd.Series) -> Tuple[float, float]:
+        """Legacy helper for testing."""
+        rsi_series = ta.momentum.rsi(prices, window=self.rsi_period)
+        if len(rsi_series) < 2:
+            return 0.0, 0.0
+        return float(rsi_series.iloc[-1]), float(rsi_series.iloc[-2])
+
+    def check_signals(self, df_or_rsi: Any, current_time_ms: float) -> Tuple[Optional[str], str]:
         """
-        Check for entry/exit signals based on CLOSED candle data.
-        
-        Uses closed candle logic to match backtesting behavior and prevent
-        false signals from developing candles. Trailing stops are checked
-        against current price for real-time protection.
-        
-        Args:
-            df: DataFrame containing candles (with calculated indicators)
-            current_time_ms: Current timestamp in milliseconds
-            
-        Returns:
-            Tuple[str, str]: (Action, Reason)
+        Check for entry/exit signals. Supports both legacy float RSI and modern DataFrame signatures.
         """
+        if not isinstance(df_or_rsi, pd.DataFrame):
+            # Legacy/test path
+            rsi = float(df_or_rsi)
+            action = None
+            reason = ""
+            if self.current_position == 0:
+                if rsi > self.long_entry_level:
+                    action = "ENTRY_LONG"
+                    reason = f"RSI Entry: {rsi:.2f} > {self.long_entry_level}"
+                elif rsi < self.short_entry_level:
+                    short_allowed = True
+                    if self.require_prev_long_min_duration:
+                        ms_per_day = 24 * 60 * 60 * 1000
+                        threshold = self.min_days_long * ms_per_day
+                        if self.last_long_duration < threshold:
+                            short_allowed = False
+                    if short_allowed:
+                        action = "ENTRY_SHORT"
+                        reason = f"RSI Entry: {rsi:.2f} < {self.short_entry_level}"
+            elif self.current_position == 1:
+                if rsi < self.long_exit_level:
+                    action = "EXIT_LONG"
+                    reason = f"RSI Exit: {rsi:.2f} < {self.long_exit_level}"
+            elif self.current_position == -1:
+                if rsi > self.short_exit_level:
+                    action = "EXIT_SHORT"
+                    reason = f"RSI Exit: {rsi:.2f} > {self.short_exit_level}"
+            return action, reason
+
+        df = df_or_rsi
         # 1. Update Indicators
         df = self.calculate_indicators(df)
         
@@ -154,7 +181,7 @@ class DoubleDipRSIStrategy:
             # Target calculated from CLOSED candle ATR for stability
             entry_price = float(self.active_trade.get('entry_price', 0)) if self.active_trade else 0
             
-            if self.enable_partial_tp and entry_price > 0 and not self.active_trade.get('partial_exit_done'):
+            if self.enable_partial_tp and entry_price > 0 and not self.partial_exit_done:
                 # Use CLOSED ATR for target calculation
                 tp_target = entry_price + (closed_atr * self.atr_mult_tp)
                 self.next_partial_target = tp_target
@@ -208,7 +235,7 @@ class DoubleDipRSIStrategy:
             # Target calculated from CLOSED candle ATR
             entry_price = float(self.active_trade.get('entry_price', 0)) if self.active_trade else 0
             
-            if self.enable_partial_tp and entry_price > 0 and not self.active_trade.get('partial_exit_done'):
+            if self.enable_partial_tp and entry_price > 0 and not self.partial_exit_done:
                 # Use CLOSED ATR for target calculation
                 tp_target = entry_price - (closed_atr * self.atr_mult_tp)
                 self.next_partial_target = tp_target
@@ -277,6 +304,8 @@ class DoubleDipRSIStrategy:
         if action == "ENTRY_LONG":
             self.current_position = 1
             self.last_long_entry_time = current_time_ms
+            self.partial_exit_done = False
+            self.entry_price = price
             
             self.active_trade = {
                 "type": "LONG",
@@ -293,6 +322,8 @@ class DoubleDipRSIStrategy:
         elif action == "ENTRY_SHORT":
             self.current_position = -1
             self.last_long_duration = 0.0 # Reset per logic
+            self.partial_exit_done = False
+            self.entry_price = price
             
             self.active_trade = {
                 "type": "SHORT",
@@ -307,9 +338,10 @@ class DoubleDipRSIStrategy:
             }
             
         elif action == "EXIT_LONG_PARTIAL":
+            self.partial_exit_done = True
+            self.next_partial_target = None # Clear target after hit
             if self.active_trade:
                 self.active_trade['partial_exit_done'] = True
-                self.next_partial_target = None # Clear target after hit
                 
                 # Log a "Partial" record in history
                 partial_trade = self.active_trade.copy()
@@ -322,9 +354,10 @@ class DoubleDipRSIStrategy:
                 self.trades.append(partial_trade)
                 
         elif action == "EXIT_SHORT_PARTIAL":
-             if self.active_trade:
+            self.partial_exit_done = True
+            self.next_partial_target = None # Clear target after hit
+            if self.active_trade:
                 self.active_trade['partial_exit_done'] = True
-                self.next_partial_target = None # Clear target after hit
                 
                 # Log a "Partial" record in history
                 partial_trade = self.active_trade.copy()
@@ -344,24 +377,22 @@ class DoubleDipRSIStrategy:
             self.trailing_stop_level = None
             self.next_partial_target = None
             self.trade_id = None
+            self.entry_price = None
+            self.partial_exit_done = False
             
             if self.active_trade:
                 self.active_trade["exit_time"] = format_time(current_time_ms)
                 self.active_trade["exit_rsi"] = current_rsi
                 self.active_trade["exit_price"] = price
                 
-                
                 # Annotate Status
-                if self.active_trade.get('partial_exit_done'):
+                if self.active_trade.get('partial_exit_done') or self.partial_exit_done:
                     status_note = "CLOSED (P)"
                 else:
                     status_note = "CLOSED"
                 
                 # Calculate Points
                 entry = float(self.active_trade['entry_price'])
-                points = price - entry if self.current_position == 0 else entry - price # Wait, pos is 0 now. Logic: Long exit -> price - entry. Short exit -> entry - price.
-                # But we reset current_position BEFORE this block?
-                # Ah, we are in EXIT_LONG block, so it WAS Long.
                 points = price - entry
                 
                 self.active_trade["points"] = points
@@ -374,6 +405,8 @@ class DoubleDipRSIStrategy:
             self.trailing_stop_level = None
             self.next_partial_target = None
             self.trade_id = None
+            self.entry_price = None
+            self.partial_exit_done = False
             
             if self.active_trade:
                 self.active_trade["exit_time"] = format_time(current_time_ms)
@@ -381,7 +414,7 @@ class DoubleDipRSIStrategy:
                 self.active_trade["exit_price"] = price
                 
                 # Annotate Status
-                if self.active_trade.get('partial_exit_done'):
+                if self.active_trade.get('partial_exit_done') or self.partial_exit_done:
                      status_note = "CLOSED (P)"
                 else:
                      status_note = "CLOSED"
@@ -395,59 +428,128 @@ class DoubleDipRSIStrategy:
                 self.trades.append(self.active_trade)
                 self.active_trade = None
 
+        # PERSIST TO DISK
+        self._save_to_disk()
+
+    def _save_to_disk(self):
+        """Save current trade flags to disk for persistence across restarts."""
+        if self._suppress_persistence:
+            return
+
+        if self.current_position == 0:
+            self.clear_state()
+            return
+
+        extra = {
+            "partial_exit_done": self.partial_exit_done,
+            "next_partial_target": self.next_partial_target,
+            "last_long_entry_time": self.last_long_entry_time,
+            "last_long_duration": self.last_long_duration
+        }
+        self.save_state(extra_data=extra)
+
+    def _load_from_disk(self) -> bool:
+        """
+        Attempt to restore trade flags from disk.
+        Returns True if state was successfully restored.
+        """
+        state = self.load_state()
+        if not state:
+            return False
             
+        self.partial_exit_done = state.get("partial_exit_done", False)
+        self.next_partial_target = state.get("next_partial_target")
+        self.last_long_entry_time = state.get("last_long_entry_time")
+        self.last_long_duration = state.get("last_long_duration", 0.0)
+        
+        logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}")
+        return True
+
     def set_position(self, position: int):
-        """Manually set position state."""
+        """Force-set internal position state."""
         self.current_position = position
 
-    def reconcile_position(self, size: float, entry_price: float) -> tuple[Optional[str], str]:
+    def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None) -> tuple[Optional[str], str]:
         """Reconcile internal state with actual exchange position."""
         import time
         import datetime
         
-        def format_time(ts_ms):
+        def format_time_ms(ts_ms):
             return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
 
-        current_ts = int(time.time() * 1000)
-        
-        # Determine expected position based on size
         expected_pos = 0
         if size > 0: expected_pos = 1
-        if size < 0: expected_pos = -1
+        elif size < 0: expected_pos = -1
+        
+        price_changed = self.entry_price is not None and abs(self.entry_price - entry_price) > 0.0001
         
         action = None
         reason = ""
 
-        if self.current_position != expected_pos:
-            logger.warning(f"Reconciling: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
-            old_position = self.current_position
-            self.current_position = expected_pos
+        if self.current_position != expected_pos or price_changed:
+            if self.current_position != expected_pos:
+                logger.warning(f"Reconciling: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
+            if price_changed:
+                logger.warning(f"Reconciling Entry Price: Internal {self.entry_price} -> Exchange {entry_price}")
             
-            # Recover Trade Object if needed
-            if expected_pos != 0 and not self.active_trade:
-                side = "LONG" if expected_pos == 1 else "SHORT"
-                self.active_trade = {
-                    "type": side,
-                    "entry_time": format_time(current_ts) + " (Rec)",
-                    "entry_rsi": 0.0,
-                    "entry_price": entry_price,
-                    "exit_time": None,
-                    "exit_rsi": None,
-                    "exit_price": None,
-                    "status": "OPEN",
-                    "partial_exit_done": False # Assumption
-                }
-            elif expected_pos == 0 and self.active_trade:
-                action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
-                reason = "External Exit (Stop-Loss or Manual)"
+            old_position = self.current_position
+            
+            # Cold Start / Re-syncing existing position
+            if self.current_position == 0 and expected_pos != 0:
+                found = self._load_from_disk()
+                if found:
+                    logger.info("Cold Start: Re-synced with existing position using persistent state.")
+                else:
+                    logger.info("Cold Start: Re-synced with existing position. No persistent state found.")
+            
+            truly_new_position = (self.current_position != 0 and self.current_position != expected_pos)
+            self.current_position = expected_pos
+            self.entry_price = entry_price
+            
+            if truly_new_position:
+                # Flipped position
+                self.partial_exit_done = False
+                clear_strategy_state(self.symbol, "double_dip_rsi")
                 
-                # Close mismatch
-                self.active_trade["exit_time"] = format_time(current_ts) + " (Rec)"
-                self.active_trade["status"] = "CLOSED"
-                self.trades.append(self.active_trade)
-                self.active_trade = None
+            if expected_pos == 0:
+                if self.active_trade:
+                    action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                    reason = "External Exit (Stop-Loss or Manual)"
+                    
+                    self.active_trade["exit_time"] = format_time_ms(time.time() * 1000) + " (Rec)"
+                    self.active_trade["status"] = "CLOSED"
+                    self.trades.append(self.active_trade)
+                    self.active_trade = None
+                    logger.info(f"Closed active trade during reconciliation: {reason}")
+                
+                # Clear mismatch
+                self.entry_price = None
+                self.trailing_stop_level = None
+                self.next_partial_target = None
+                self.partial_exit_done = False
                 self.trade_id = None
+                clear_strategy_state(self.symbol, "double_dip_rsi")
         
+        # Ensure active_trade is populated if we have an open position, even if already in sync (e.g. cold start)
+        if expected_pos != 0 and not self.active_trade:
+            side = "LONG" if expected_pos == 1 else "SHORT"
+            self.active_trade = {
+                "type": side,
+                "entry_time": format_time_ms(time.time() * 1000) + " (Rec)",
+                "entry_rsi": 0.0,
+                "entry_price": entry_price,
+                "exit_time": None,
+                "exit_rsi": None,
+                "exit_price": None,
+                "status": "OPEN",
+                "partial_exit_done": self.partial_exit_done
+            }
+            logger.info(f"Created reconciled active trade for {side} at {entry_price}")
+
+        # PERSIST TO DISK (Ensure Cold Start state is saved)
+        if self.current_position != 0:
+            self._save_to_disk()
+            
         return action, reason
 
     def run_backtest(self, df: pd.DataFrame):

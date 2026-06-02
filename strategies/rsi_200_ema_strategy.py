@@ -50,7 +50,7 @@ class RSI200EMAStrategy(BaseStrategy):
         self.partial_pct = cfg.get("partial_pct", 0.5)
         
         # Persistence
-        self.load_state()
+        self._load_from_disk()
 
         self.indicator_label = "RSI"
         
@@ -285,6 +285,7 @@ class RSI200EMAStrategy(BaseStrategy):
             
         elif action == "PARTIAL_EXIT":
             # Record partial exit in trade history
+            self.partial_exit_done = True
             if self.active_trade:
                 # Create a copy for the partial exit record
                 partial_trade = self.active_trade.copy()
@@ -296,7 +297,6 @@ class RSI200EMAStrategy(BaseStrategy):
                 self.trades.append(partial_trade)
                 
                 # Mark partial exit done
-                self.partial_exit_done = True
                 self.active_trade["partial_exit"] = True
                 
         elif action == "EXIT_LONG":
@@ -328,48 +328,122 @@ class RSI200EMAStrategy(BaseStrategy):
             self.partial_exit_done = False
             self.trade_id = None
 
+        # PERSIST TO DISK
+        self._save_to_disk()
+
+    def _save_to_disk(self):
+        """Save current trade flags to disk for persistence across restarts."""
+        if self._suppress_persistence:
+            return
+
+        if self.current_position == 0:
+            self.clear_state()
+            return
+
+        extra = {
+            "partial_exit_done": self.partial_exit_done,
+            "tp_level": self.tp_level,
+            "initial_sl_price": self.initial_sl_price
+        }
+        self.save_state(extra_data=extra)
+
+    def _load_from_disk(self) -> bool:
+        """
+        Attempt to restore trade flags from disk.
+        Returns True if state was successfully restored.
+        """
+        state = self.load_state()
+        if not state:
+            return False
+            
+        self.partial_exit_done = state.get("partial_exit_done", False)
+        
+        # Restore levels if they aren't already set
+        if self.tp_level is None: self.tp_level = state.get("tp_level")
+        if self.initial_sl_price is None: self.initial_sl_price = state.get("initial_sl_price")
+        
+        logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}")
+        return True
+
     def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None) -> tuple[Optional[str], str]:
         """Reconcile internal state with live position."""
         import time, datetime
+        def format_time_ms(ts_ms): return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%d-%m-%y %H:%M')
         formatted_time = datetime.datetime.now().strftime("%d-%m-%y %H:%M")
         
         expected_pos = 0
         if size > 0: expected_pos = 1
         elif size < 0: expected_pos = -1
         
+        # Determine if we need to reset state (Entry price changed or new position found)
+        price_changed = self.entry_price is not None and abs(self.entry_price - entry_price) > 0.0001
+        
         action = None
         reason = ""
 
-        if self.current_position != expected_pos:
-            logger.warning(f"Reconciling Position: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
-            old_position = self.current_position
-            self.current_position = expected_pos
+        # Sync state if needed
+        if self.current_position != expected_pos or price_changed:
+            if self.current_position != expected_pos:
+                logger.warning(f"Reconciling Position: Internal {self.current_position} -> Exchange {expected_pos} (Size: {size})")
             
-            if expected_pos != 0 and not self.active_trade:
-                side = "LONG" if expected_pos == 1 else "SHORT"
-                self.active_trade = {
-                    "type": side,
-                    "entry_time": f"{formatted_time} (Rec)",
-                    "entry_price": entry_price,
-                    "entry_rsi": 0.0,
-                    "status": "OPEN",
-                    "partial_exit_done": False
-                }
-                self.entry_price = entry_price
-                logger.info(f"Re-synced with existing {side} position via Reconciliation")
+            if price_changed:
+                logger.warning(f"Reconciling Entry Price: Internal {self.entry_price} -> Exchange {entry_price}")
+
+            # Cold Start / Re-syncing existing position
+            if self.current_position == 0 and expected_pos != 0:
+                found = self._load_from_disk()
+                if found:
+                    logger.info("Cold Start: Re-synced with existing position using persistent state.")
+                else:
+                    logger.info("Cold Start: Re-synced with existing position. No persistent state found.")
                 
-            elif expected_pos == 0 and self.active_trade:
-                action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
-                reason = "External Exit (Stop-Loss or Manual)"
+            truly_new_position = (self.current_position != 0 and self.current_position != expected_pos)
+            old_position = self.current_position
+
+            self.current_position = expected_pos
+            self.entry_price = entry_price
+            
+            if truly_new_position:
+                # Genuinely flipped direction -> reset all flags
+                self.partial_exit_done = False
+                clear_strategy_state(self.symbol, "rsi_200_ema") # Clean slate
+            
+            if expected_pos == 0:
+                if self.active_trade:
+                    action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
+                    reason = "External Exit (Stop-Loss or Manual)"
+                    
+                    self.active_trade["exit_time"] = format_time_ms(time.time()*1000) + " (Rec)"
+                    self.active_trade["status"] = "CLOSED (SYNC)"
+                    self.trades.append(self.active_trade)
+                    self.active_trade = None
+                    logger.info(f"Closed active trade during reconciliation: {reason}")
                 
-                logger.info(f"Closing phantom active_trade via Reconciliation: {reason}")
-                self.active_trade["exit_time"] = f"{formatted_time} (Reconciled)"
-                self.active_trade["exit_price"] = current_price or 0.0
-                self.active_trade["exit_rsi"] = 0.0
-                self.active_trade["status"] = "CLOSED (SYNC)"
-                self.trades.append(self.active_trade)
-                self.active_trade = None
+                # IMPORTANT: Clear stale state to prevent reuse in next trade
+                self.entry_price = None
+                self.tp_level = None
+                self.trailing_stop_level = None
+                self.initial_sl_price = None
+                self.partial_exit_done = False
                 self.trade_id = None
+                clear_strategy_state(self.symbol, "rsi_200_ema")
+
+        # Ensure active_trade is populated if we have an open position, even if already in sync (e.g. cold start)
+        if expected_pos != 0 and not self.active_trade:
+            side = "LONG" if expected_pos == 1 else "SHORT"
+            self.active_trade = {
+                "type": side,
+                "entry_time": f"{formatted_time} (Rec)",
+                "entry_price": entry_price,
+                "entry_rsi": 0.0,
+                "status": "OPEN",
+                "partial_exit": self.partial_exit_done
+            }
+            logger.info(f"Created reconciled active trade for {side} at {entry_price}")
+
+        # PERSIST TO DISK (Ensure Cold Start state is saved)
+        if self.current_position != 0:
+            self._save_to_disk()
         
         return action, reason
 

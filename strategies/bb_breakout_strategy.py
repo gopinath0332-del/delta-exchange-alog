@@ -580,24 +580,7 @@ class BBBreakoutStrategy(BaseStrategy):
             old_position = self.current_position
             self.current_position = expected
 
-            if expected != 0 and not self.active_trade:
-                side = "LONG" if expected == 1 else "SHORT"
-                self.active_trade = {
-                    "type": side,
-                    "entry_time": fmt(time.time() * 1000) + " (Rec)",
-                    "entry_price": entry_price,
-                    "status": "OPEN",
-                }
-                self.entry_price = entry_price
-                # Reconstruct trailing stop so it's not None after restart
-                if self.trailing_stop_level is None and entry_price:
-                    if expected == 1:
-                        self.trailing_stop_level = entry_price - self.last_atr * self.atr_mult
-                    else:
-                        self.trailing_stop_level = entry_price + self.last_atr * self.atr_mult
-                logger.info(f"Reconciled active {side} trade @ {entry_price}, TSL={self.trailing_stop_level}")
-
-            elif expected == 0 and self.active_trade:
+            if expected == 0 and self.active_trade:
                 action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
                 reason = "External Exit (Stop-Loss or Manual)"
                 
@@ -608,6 +591,23 @@ class BBBreakoutStrategy(BaseStrategy):
                 self._reset_trade_state()
                 self.clear_state()
                 logger.info(f"Reconciled: position closed externally: {reason}")
+        
+        if expected != 0 and not self.active_trade:
+            side = "LONG" if expected == 1 else "SHORT"
+            self.active_trade = {
+                "type": side,
+                "entry_time": fmt(time.time() * 1000) + " (Rec)",
+                "entry_price": entry_price,
+                "status": "OPEN",
+            }
+            self.entry_price = entry_price
+            # Reconstruct trailing stop so it's not None after restart
+            if self.trailing_stop_level is None and entry_price:
+                if expected == 1:
+                    self.trailing_stop_level = entry_price - self.last_atr * self.atr_mult
+                else:
+                    self.trailing_stop_level = entry_price + self.last_atr * self.atr_mult
+            logger.info(f"Reconciled active {side} trade @ {entry_price}, TSL={self.trailing_stop_level}")
         
         return action, reason
 

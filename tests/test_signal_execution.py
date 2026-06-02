@@ -32,10 +32,32 @@ class TestTradingExecution(unittest.TestCase):
         # Default: No positions found
         self.mock_client.get_positions.return_value = []
 
+        # Mock get_ticker to return close = 1.0 so that size calculation returns 200000
+        self.mock_client.get_ticker.return_value = {"close": 1.0}
+
+        # Mock get_config
+        self.config_patcher = patch('core.config.get_config')
+        self.mock_get_config = self.config_patcher.start()
+        self.mock_config_instance = MagicMock()
+        
+        mock_rm = MagicMock()
+        mock_rm.position_sizing_type = "margin"
+        mock_rm.sizing_method = "fixed"
+        mock_rm.settlement_asset = "USDT"
+        mock_rm.atr_margin_multiplier = 2.0
+        mock_rm.atr_margin_cap_multiplier = 1.5
+        mock_rm.risk_pct_per_trade = 0.01
+        mock_rm.fractional_margin_cap = 0.2
+        self.mock_config_instance.risk_management = mock_rm
+        
+        self.mock_config_instance.settings = {}
+        self.mock_get_config.return_value = self.mock_config_instance
+
         # Patch asset-specific env vars that trading.py checks.
         # The code reads ENABLE_ORDER_PLACEMENT_BTC (not generic ENABLE_ORDER_PLACEMENT)
         # and TARGET_MARGIN_BTC / LEVERAGE_BTC for position sizing.
         self.env_patcher = patch.dict('os.environ', {
+            'ENABLE_ORDER_PLACEMENT': 'true',
             'ENABLE_ORDER_PLACEMENT_BTC': 'true',
             'TARGET_MARGIN_BTC': '40',
             'LEVERAGE_BTC': '5',
@@ -44,6 +66,7 @@ class TestTradingExecution(unittest.TestCase):
 
     def tearDown(self):
         self.env_patcher.stop()
+        self.config_patcher.stop()
 
         
     def test_entry_long(self):

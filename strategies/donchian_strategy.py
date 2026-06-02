@@ -407,6 +407,7 @@ class DonchianChannelStrategy(BaseStrategy):
                 self.initial_sl_price = None
 
         elif action == "PARTIAL_EXIT":
+            self.partial_exit_done = True
             if self.active_trade:
                 partial_trade = self.active_trade.copy()
                 partial_trade["exit_time"] = format_time(current_time_ms)
@@ -416,24 +417,23 @@ class DonchianChannelStrategy(BaseStrategy):
                 entry = float(self.active_trade['entry_price'])
                 partial_trade["points"] = price - entry if self.current_position == 1 else entry - price
                 self.trades.append(partial_trade)
-                self.partial_exit_done = True
                 self.active_trade["partial_exit"] = True
 
         elif action == "MILESTONE_EXIT":
-            if self.active_trade:
-                # Extract milestone index and exit percentage from reason
-                import re
-                milestone_idx = 0
-                exit_pct = 0.0
-                match = re.search(r"Milestone (\d+):", reason)
-                if match:
-                    milestone_idx = int(match.group(1)) - 1
-                
-                if 0 <= milestone_idx < len(self.profit_milestones):
-                    milestone = self.profit_milestones[milestone_idx]
-                    exit_pct = milestone.get("exit_pct", 0.0) if isinstance(milestone, dict) else getattr(milestone, "exit_pct", 0.0)
-                    self.milestones_hit[milestone_idx] = True
+            # Extract milestone index and exit percentage from reason
+            import re
+            milestone_idx = 0
+            exit_pct = 0.0
+            match = re.search(r"Milestone (\d+):", reason)
+            if match:
+                milestone_idx = int(match.group(1)) - 1
+            
+            if 0 <= milestone_idx < len(self.profit_milestones):
+                milestone = self.profit_milestones[milestone_idx]
+                exit_pct = milestone.get("exit_pct", 0.0) if isinstance(milestone, dict) else getattr(milestone, "exit_pct", 0.0)
+                self.milestones_hit[milestone_idx] = True
 
+            if self.active_trade:
                 milestone_trade = self.active_trade.copy()
                 milestone_trade["exit_time"] = format_time(current_time_ms)
                 milestone_trade["exit_price"] = price
@@ -599,17 +599,7 @@ class DonchianChannelStrategy(BaseStrategy):
                 self.partial_exit_done = False
                 clear_strategy_state(self.symbol, "donchian_channel") # Clean slate
             
-            if expected_pos != 0 and not self.active_trade:
-                side = "LONG" if expected_pos == 1 else "SHORT"
-                self.active_trade = {
-                    "type": side,
-                    "entry_time": format_time(time.time()*1000) + " (Rec)",
-                    "entry_price": entry_price,
-                    "status": "OPEN"
-                }
-                logger.info(f"Created reconciled active trade for {side} at {entry_price}")
-
-            elif expected_pos == 0:
+            if expected_pos == 0:
                 if self.active_trade:
                     action = "EXIT_LONG" if old_position == 1 else "EXIT_SHORT"
                     reason = "External Exit (Stop-Loss or Manual)"
@@ -629,6 +619,17 @@ class DonchianChannelStrategy(BaseStrategy):
                 self.reset_milestones()
                 self.trade_id = None
                 clear_strategy_state(self.symbol, "donchian_channel")
+
+        # Ensure active_trade is populated if we have an open position, even if already in sync (e.g. cold start)
+        if expected_pos != 0 and not self.active_trade:
+            side = "LONG" if expected_pos == 1 else "SHORT"
+            self.active_trade = {
+                "type": side,
+                "entry_time": format_time(time.time()*1000) + " (Rec)",
+                "entry_price": entry_price,
+                "status": "OPEN"
+            }
+            logger.info(f"Created reconciled active trade for {side} at {entry_price}")
 
         # CATCH-UP LOGIC: We used to mark milestones as ALREADY HIT here if PnL exceeded threshold.
         # This was too aggressive and caused missed exits if the bot was offline when the target was hit.
