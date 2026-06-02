@@ -446,6 +446,33 @@ def run_strategy_terminal(
                                       if len(all_positions) == 1:
                                           live_pos_data = p
                                           break
+
+                             # Transient API Sync Lag Mitigation:
+                             # If the strategy in memory believes it has an active position (strategy.current_position != 0),
+                             # but the API returned flat (live_pos_data is None or size == 0.0),
+                             # sleep for 2 seconds and retry the position fetch once to avoid false flat reconciliations.
+                             strategy_pos = getattr(strategy, 'current_position', 0)
+                             api_size = float(live_pos_data.get('size', 0.0)) if live_pos_data else 0.0
+                             if strategy_pos != 0 and api_size == 0.0:
+                                 logger.warning(
+                                     f"[{symbol}] API returned FLAT position, but strategy memory is in an active position ({strategy_pos}). "
+                                     f"Retrying position fetch in 2 seconds to mitigate transient API lag..."
+                                 )
+                                 time.sleep(2)
+                                 all_positions = client.get_positions(product_id=pid)
+                                 if isinstance(all_positions, dict):
+                                     all_positions = [all_positions]
+                                 
+                                 live_pos_data = None
+                                 for p in all_positions:
+                                     if isinstance(p, dict):
+                                          p_id = p.get('product_id')
+                                          if p_id and str(p_id) == str(pid):
+                                              live_pos_data = p
+                                              break
+                                          if len(all_positions) == 1:
+                                              live_pos_data = p
+                                              break
                          
                          size = 0.0
                          entry_price = 0.0

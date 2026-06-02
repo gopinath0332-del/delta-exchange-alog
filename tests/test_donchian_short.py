@@ -152,5 +152,28 @@ class TestDonchianShort(unittest.TestCase):
         self.assertEqual(self.strategy.active_trade['type'], "SHORT")
         self.assertEqual(self.strategy.active_trade['entry_price'], 95000.0)
 
+    def test_save_state_preserves_custom_fields(self):
+        # Setup strategy fields
+        self.strategy.current_position = -1
+        self.strategy.entry_price = 100.0
+        self.strategy.tp_level = 95.0
+        self.strategy.partial_exit_done = True
+        self.strategy.initial_sl_price = 105.0
+        
+        # Save state (which uses overridden save_state)
+        self.strategy.save_state()
+        
+        # Load state directly from disk
+        from core.persistence import load_strategy_state
+        state = load_strategy_state(self.strategy.symbol, self.strategy.strategy_name)
+        
+        self.assertIsNotNone(state)
+        self.assertEqual(state.get("partial_exit_done"), True)
+        self.assertEqual(state.get("tp_level"), 95.0)
+        self.assertEqual(state.get("initial_sl_price"), 105.0)
+        
+        # Clear state
+        self.strategy.clear_state()
+
 if __name__ == '__main__':
     unittest.main()

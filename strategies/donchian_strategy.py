@@ -513,6 +513,21 @@ class DonchianChannelStrategy(BaseStrategy):
     def set_position(self, position: int):
         self.current_position = position
 
+    def save_state(self, extra_data: Optional[Dict[str, Any]] = None):
+        """
+        Override save_state to ensure Donchian-specific properties are always saved,
+        even if save_state is called from the base class (e.g., handle_milestone_state)
+        without extra_data.
+        """
+        donchian_extra = {
+            "partial_exit_done": self.partial_exit_done,
+            "tp_level": self.tp_level,
+            "initial_sl_price": self.initial_sl_price
+        }
+        if extra_data:
+            donchian_extra.update(extra_data)
+        super().save_state(extra_data=donchian_extra)
+
     def _save_to_disk(self):
         """Save current trade flags to disk for persistence across restarts."""
         if self._suppress_persistence:
