@@ -855,7 +855,22 @@ class DeltaRestClient:
         **kwargs,
     ) -> Dict[str, Any]:
         """
-        Place a new order.
+        Place a new order with automatic retry on transient timeout/connection errors.
+
+        Uses a "verify-then-retry" strategy: before retrying after a timeout,
+        the current exchange position is checked to detect silent fills (i.e.
+        the order landed on the exchange but the TCP response was lost in
+        transit).  This prevents accidental double-orders that would flip the
+        position in the wrong direction.
+
+        Only transient errors are retried (timeout, connection reset, pool
+        exhausted). Business errors (insufficient margin, bad params, auth)
+        raise immediately without retry.
+
+        Retry timing (env-configurable, capped at 3 for orders):
+            Attempt 1 → wait 3s  → idempotency check → Attempt 2
+            Attempt 2 → wait 10s → idempotency check → Attempt 3
+            Attempt 3 → wait 20s → idempotency check → give up
 
         Args:
             product_id: Product ID
@@ -866,8 +881,30 @@ class DeltaRestClient:
             **kwargs: Additional order parameters
 
         Returns:
-            Order response
+            Order response dict.  When a silent fill is detected the dict will
+            contain ``"inferred_fill": True`` and ``"id": None`` instead of a
+            real exchange order ID.
+
+        Raises:
+            APIError: If all retries are exhausted or a non-retryable error occurs.
         """
+        # Cap order retries at 3 — we don't want to hold a position open for too long
+        _ORDER_MAX_RETRIES: int = min(_MAX_RETRIES, 3)
+        # Progressive delays between attempts: 3s, 10s, 20s
+        _ORDER_RETRY_DELAYS: list = [3.0, 10.0, 20.0]
+        # Error keywords that indicate a transient infra/network problem (safe to retry)
+        _RETRYABLE_KEYWORDS: tuple = (
+            "timed out",
+            "timeout",
+            "connection",
+            "read timed",
+            "network",
+            "connectionpool",
+            "remotedisconnected",
+            "connection reset",
+            "broken pipe",
+        )
+
         logger.info(
             "Placing order",
             product_id=product_id,
@@ -877,24 +914,128 @@ class DeltaRestClient:
             limit_price=limit_price,
         )
 
+        # Resolve order type enum once before the retry loop
         if isinstance(order_type, str):
             if order_type == "market_order":
-                order_type = OrderType.MARKET
+                order_type_enum = OrderType.MARKET
             elif order_type == "limit_order":
-                order_type = OrderType.LIMIT
+                order_type_enum = OrderType.LIMIT
+            else:
+                order_type_enum = order_type
+        else:
+            order_type_enum = order_type
 
-        response = self._make_request(
-            self.client.place_order,
-            product_id=product_id,
-            size=size,
-            side=side,
-            order_type=order_type,
-            limit_price=limit_price,
-            **kwargs,
+        last_exception: Optional[Exception] = None
+
+        for attempt in range(_ORDER_MAX_RETRIES + 1):  # +1: first attempt counts
+            try:
+                response = self._make_request(
+                    self.client.place_order,
+                    product_id=product_id,
+                    size=size,
+                    side=side,
+                    order_type=order_type_enum,
+                    limit_price=limit_price,
+                    **kwargs,
+                )
+                if attempt > 0:
+                    logger.info(
+                        f"Order placed successfully on retry attempt {attempt + 1}/{_ORDER_MAX_RETRIES + 1}",
+                        order_id=response.get("id"),
+                    )
+                else:
+                    logger.info("Order placed", order_id=response.get("id"))
+                return cast(Dict[str, Any], response)
+
+            except (APIError, Exception) as exc:
+                last_exception = exc
+                error_msg = str(exc).lower()
+
+                # Immediately re-raise non-retryable errors (auth failures, bad params, etc.)
+                is_retryable = any(kw in error_msg for kw in _RETRYABLE_KEYWORDS)
+                if not is_retryable:
+                    logger.error(
+                        f"Order failed with non-retryable error "
+                        f"(attempt {attempt + 1}/{_ORDER_MAX_RETRIES + 1}): {exc}"
+                    )
+                    raise
+
+                if attempt >= _ORDER_MAX_RETRIES:
+                    logger.error(
+                        f"Order failed after {_ORDER_MAX_RETRIES + 1} attempts. "
+                        f"Giving up. Last error: {exc}"
+                    )
+                    break
+
+                delay = _ORDER_RETRY_DELAYS[min(attempt, len(_ORDER_RETRY_DELAYS) - 1)]
+                logger.warning(
+                    f"Order attempt {attempt + 1}/{_ORDER_MAX_RETRIES + 1} timed out. "
+                    f"Waiting {delay:.0f}s then verifying position before retry... "
+                    f"(product_id={product_id}, side={side}, size={size})"
+                )
+                time.sleep(delay)
+
+                # ------------------------------------------------------------
+                # IDEMPOTENCY CHECK — verify the order didn't land silently.
+                #
+                # A read timeout means the POST reached the server but we never
+                # got an HTTP response back. The matching engine may have already
+                # processed the order. Retrying blindly could create a duplicate:
+                #   e.g. two BUY orders on a -154 SHORT → position flips to LONG
+                #
+                # Rule:
+                #   BUY  closes a SHORT (negative size) → already filled if size >= 0
+                #   SELL closes a LONG  (positive size) → already filled if size <= 0
+                # ------------------------------------------------------------
+                try:
+                    positions = self.get_positions(product_id=product_id)
+                    current_pos = next(
+                        (p for p in positions
+                         if str(p.get("product_id")) == str(product_id)),
+                        None,
+                    )
+                    current_size = float(current_pos.get("size", 0)) if current_pos else 0.0
+
+                    buy_filled  = (side == "buy"  and current_size >= 0)
+                    sell_filled = (side == "sell" and current_size <= 0)
+
+                    if buy_filled or sell_filled:
+                        logger.warning(
+                            f"IDEMPOTENCY CHECK: Position size is now {current_size} after timeout — "
+                            f"order appears to have landed silently on the exchange. "
+                            f"Skipping retry to avoid double-order. "
+                            f"(product_id={product_id}, side={side})"
+                        )
+                        # Return a synthetic response so the caller continues normally.
+                        # 'inferred_fill' signals to callers that there is no real order ID.
+                        return cast(
+                            Dict[str, Any],
+                            {
+                                "id": None,
+                                "status": "filled_after_timeout",
+                                "size": size,
+                                "side": side,
+                                "inferred_fill": True,
+                            },
+                        )
+
+                    logger.info(
+                        f"IDEMPOTENCY CHECK: Position size is {current_size} — "
+                        f"order does NOT appear to have landed. "
+                        f"Proceeding with retry attempt {attempt + 2}/{_ORDER_MAX_RETRIES + 1}."
+                    )
+
+                except Exception as pos_exc:
+                    # Position check itself failed — retry the order anyway but warn loudly
+                    logger.warning(
+                        f"IDEMPOTENCY CHECK failed (could not fetch position): {pos_exc}. "
+                        f"Retrying order anyway — monitor exchange manually for duplicates."
+                    )
+
+        raise APIError(
+            f"Order failed after {_ORDER_MAX_RETRIES + 1} attempts. "
+            f"Last error: {last_exception}"
         )
-
-        logger.info("Order placed", order_id=response.get("id"))
-        return cast(Dict[str, Any], response)
 
     def place_bracket_order(
         self,

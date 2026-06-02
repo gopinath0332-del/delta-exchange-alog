@@ -473,6 +473,37 @@ def run_strategy_terminal(
                              except TypeError:
                                  recon_action, recon_reason = strategy.reconcile_position(size, entry_price)
 
+                         # -------------------------------------------------------
+                         # PENDING EXIT RETRY
+                         # If a previous cycle's EXIT order failed (e.g. API timeout)
+                         # and the exchange position is still open, re-inject the
+                         # failed action as a reconciliation exit so we retry in the
+                         # very next cycle rather than waiting up to 1h for the signal
+                         # to re-trigger naturally.
+                         # -------------------------------------------------------
+                         pending_exit_action = getattr(strategy, 'pending_exit_action', None)
+                         if pending_exit_action and not recon_action and live_pos_data:
+                             pending_size = float(live_pos_data.get('size', 0))
+                             if pending_size != 0:
+                                 recon_action = pending_exit_action
+                                 recon_reason = (
+                                     f"[RETRY] Previous {pending_exit_action} order failed "
+                                     f"(API timeout) — retrying position close."
+                                 )
+                                 logger.warning(
+                                     f"[{symbol}] Retrying failed exit from previous cycle: "
+                                     f"{pending_exit_action} (exchange position still open: {pending_size})"
+                                 )
+                                 # Clear flag BEFORE executing to avoid infinite retry loops
+                                 strategy.pending_exit_action = None
+                             else:
+                                 # Position already flat — original order must have landed silently
+                                 logger.info(
+                                     f"[{symbol}] pending_exit_action={pending_exit_action} cleared: "
+                                     f"exchange position is already flat."
+                                 )
+                                 strategy.pending_exit_action = None
+
                          # If reconciliation triggered an exit (e.g. SL hit on exchange), journal it immediately
                          if recon_action:
                              logger.info(f"[{symbol}] Reconciliation action detected: {recon_action} - {recon_reason}")
@@ -621,6 +652,16 @@ def run_strategy_terminal(
                              strategy.update_position_state(action, current_time_ms, indicators, exec_price, reason=reason)
                          else:
                              logger.warning(f"[{symbol}] State update skipped because execution failed for {action}.")
+                             # If an EXIT order failed due to a transient error (e.g. API timeout),
+                             # store the action so the next cycle's reconciliation can retry it
+                             # automatically rather than waiting for the signal to re-trigger
+                             # naturally (which could be an hour away on a 1h strategy).
+                             if action.startswith("EXIT") or action in ("PARTIAL_EXIT", "MILESTONE_EXIT"):
+                                 strategy.pending_exit_action = action
+                                 logger.warning(
+                                     f"[{symbol}] pending_exit_action={action} stored. "
+                                     f"Next reconciliation cycle will retry the position close."
+                                 )
                     else:
                         logger.error(f"Unexpected candle data format: {df.columns}")
                         time.sleep(10)
