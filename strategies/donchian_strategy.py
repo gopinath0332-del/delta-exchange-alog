@@ -44,6 +44,8 @@ class DonchianChannelStrategy(BaseStrategy):
         self.enable_partial_tp = cfg.get("enable_partial_tp", True)  # Changed default to True
         self.partial_pct = cfg.get("partial_pct", 0.5)
         self.stop_loss_pct = cfg.get("stop_loss_pct", None)  # Fixed stop loss % (e.g. 0.50 for 50%)
+        # PnL Exit: Close when margin PnL% >= this value (backtest only, default None = disabled)
+        self.pnl_exit_pct = cfg.get("pnl_exit_pct", None)
 
 
         # Use provided bars_per_day as fallback, otherwise calculate
@@ -255,8 +257,36 @@ class DonchianChannelStrategy(BaseStrategy):
             elif self.current_position == -1 and close_closed >= self.trailing_stop_level:
                 self.last_action_candle_ts = closed_candle_ts
                 return "EXIT_SHORT", f"Trailing SL Hit: {close_closed:.4f} >= {self.trailing_stop_level:.4f}"
-                
-        # 3. Check Partial TP (LIVE PRICE LOGIC - fires immediately when price crosses ATR TP level)
+
+        # 3. PnL Exit: Close when unrealized margin PnL >= pnl_exit_pct (LIVE PRICE LOGIC)
+        # Uses exchange unrealized PnL from live_pos_data when available for accuracy;
+        # falls back to manual calculation from entry_price and leverage.
+        if self.pnl_exit_pct is not None and self.entry_price and self.current_position != 0:
+            unrealized_pnl_pct = 0.0
+            if live_pos_data:
+                unrealized_pnl = float(live_pos_data.get('unrealized_pnl', 0.0))
+                margin = float(live_pos_data.get('margin', 0.0))
+                if margin > 0:
+                    unrealized_pnl_pct = (unrealized_pnl / margin) * 100.0
+                else:
+                    # Margin not available — fall back to manual calc
+                    if self.current_position == 1:
+                        unrealized_pnl_pct = (current_price - self.entry_price) / self.entry_price * self.leverage * 100
+                    else:
+                        unrealized_pnl_pct = (self.entry_price - current_price) / self.entry_price * self.leverage * 100
+            else:
+                if self.current_position == 1:
+                    unrealized_pnl_pct = (current_price - self.entry_price) / self.entry_price * self.leverage * 100
+                else:
+                    unrealized_pnl_pct = (self.entry_price - current_price) / self.entry_price * self.leverage * 100
+
+            if unrealized_pnl_pct >= self.pnl_exit_pct:
+                action_str = "EXIT_LONG" if self.current_position == 1 else "EXIT_SHORT"
+                reason_str = f"PnL Exit: {unrealized_pnl_pct:.1f}% >= {self.pnl_exit_pct}%"
+                self.last_action_candle_ts = closed_candle_ts
+                return action_str, reason_str
+
+        # 4. Check Partial TP (LIVE PRICE LOGIC - fires immediately when price crosses ATR TP level)
         # Uses current_price (latest tick) instead of close_closed so the TP executes as soon as
         # the market touches the target, without waiting for the candle to close.
         if self.enable_partial_tp and not self.partial_exit_done and self.tp_level is not None:
@@ -265,8 +295,7 @@ class DonchianChannelStrategy(BaseStrategy):
             elif self.current_position == -1 and current_price <= self.tp_level:
                 return "PARTIAL_EXIT", f"Partial TP Hit: {current_price:.4f} <= {self.tp_level:.4f}"
 
-
-        # 4. Entry/Exit Logic (Closed Candle)
+        # 5. Entry/Exit Logic (Closed Candle)
         
         # LONG Logic
         if self.allow_long:
@@ -471,6 +500,7 @@ class DonchianChannelStrategy(BaseStrategy):
                 # Update status label based on the exit reason
                 if "Trailing" in reason: self.active_trade["status"] = "TRAIL STOP"
                 elif "Breakdown" in reason: self.active_trade["status"] = "CHANNEL EXIT"
+                elif "PnL Exit" in reason: self.active_trade["status"] = "PNL EXIT"
 
                 self.active_trade["points"] = price - self.active_trade["entry_price"]
                 self.trades.append(self.active_trade)
@@ -493,6 +523,7 @@ class DonchianChannelStrategy(BaseStrategy):
                 self.active_trade["status"] = "CLOSED"
                 if "Trailing" in reason: self.active_trade["status"] = "TRAIL STOP"
                 elif "Breakout" in reason: self.active_trade["status"] = "CHANNEL EXIT"
+                elif "PnL Exit" in reason: self.active_trade["status"] = "PNL EXIT"
 
                 self.active_trade["points"] = self.active_trade["entry_price"] - price
                 self.trades.append(self.active_trade)
@@ -719,6 +750,21 @@ class DonchianChannelStrategy(BaseStrategy):
                     if new_stop < self.trailing_stop_level: self.trailing_stop_level = new_stop
             
             # 2. Check Signals manually (Backtest Loop)
+
+            # PnL Exit: Close when unrealized margin PnL >= pnl_exit_pct
+            if self.pnl_exit_pct is not None and self.entry_price and self.current_position != 0:
+                if self.current_position == 1:
+                    unrealized_pnl_pct = (close - self.entry_price) / self.entry_price * self.leverage * 100
+                else:  # SHORT
+                    unrealized_pnl_pct = (self.entry_price - close) / self.entry_price * self.leverage * 100
+                if unrealized_pnl_pct >= self.pnl_exit_pct:
+                    action_str = "EXIT_LONG" if self.current_position == 1 else "EXIT_SHORT"
+                    reason_str = f"PnL Exit: {unrealized_pnl_pct:.1f}% >= {self.pnl_exit_pct}%"
+                    self.update_position_state(action_str, current_time_ms, indicators, close, reason_str)
+                    if self.current_position == 0 and self.long_entry_bar is not None:
+                        self.last_long_duration_bars = i - self.long_entry_bar
+                    continue
+
             # Fixed Stop Loss Hit (Intra-candle)
             if self.initial_sl_price is not None:
                 if self.current_position == 1 and low <= self.initial_sl_price:

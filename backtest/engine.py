@@ -195,7 +195,7 @@ class BacktestEngine:
         contract_val = get_contract_value(self.symbol)
         
         for trade in raw_trades:
-            if trade['status'] not in ['CLOSED', 'PARTIAL', 'TRAIL STOP', 'CHANNEL EXIT'] and not ('exit_price' in trade and trade['exit_price']) and not 'MILESTONE' in str(trade.get('status', '')):
+            if trade['status'] not in ['CLOSED', 'PARTIAL', 'TRAIL STOP', 'CHANNEL EXIT', 'PNL EXIT'] and not ('exit_price' in trade and trade['exit_price']) and not 'MILESTONE' in str(trade.get('status', '')):
                 continue 
                 
             entry_price = float(trade['entry_price'])
