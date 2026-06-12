@@ -1,0 +1,125 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0
+// © Gopinath | EMA Channel Strategy (Long & Short)
+
+//@version=5
+strategy(
+     title         = "EMA Channel Strategy (Long & Short)",
+     shorttitle    = "EMA Channel",
+     overlay       = true,
+     default_qty_type  = strategy.percent_of_equity,
+     default_qty_value = 100,
+     initial_capital   = 100000,
+     commission_type   = strategy.commission.percent,
+     commission_value  = 0.05,
+     slippage          = 2
+ )
+
+// ─────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────
+ema_len      = input.int(20,  title="EMA Channel Length",  minval=1)
+ema_trend    = input.int(200, title="Trend EMA Length",    minval=1)
+
+// ─────────────────────────────────────────────
+// INDICATORS
+// ─────────────────────────────────────────────
+upper_band   = ta.ema(high,  ema_len)    // 20 EMA of High
+lower_band   = ta.ema(low,   ema_len)    // 20 EMA of Low
+ema200       = ta.ema(close, ema_trend)  // 200 EMA of Close
+
+// ─────────────────────────────────────────────
+// PLOTS
+// ─────────────────────────────────────────────
+p_upper = plot(upper_band, title="Upper Band (20 EMA High)", color=color.new(color.teal, 0),  linewidth=2)
+p_lower = plot(lower_band, title="Lower Band (20 EMA Low)",  color=color.new(color.orange, 0), linewidth=2)
+fill(p_upper, p_lower, color=color.new(color.gray, 88), title="Channel Fill")
+
+plot(ema200, title="200 EMA", color=color.new(color.purple, 0), linewidth=2, style=plot.style_line)
+
+// ─────────────────────────────────────────────
+// CONDITIONS
+// ─────────────────────────────────────────────
+
+// LONG: Close above upper band AND close above 200 EMA
+long_entry  = close > upper_band and close > ema200
+// LONG EXIT: Close below lower band
+long_exit   = close < lower_band
+
+// SHORT: Close below lower band AND close below 200 EMA
+short_entry = close < lower_band and close < ema200
+// SHORT EXIT: Close above upper band
+short_exit  = close > upper_band
+
+// ─────────────────────────────────────────────
+// STRATEGY ORDERS
+// ─────────────────────────────────────────────
+
+// Long entries / exits
+if long_entry
+    strategy.entry("Long", strategy.long)
+
+if long_exit
+    strategy.close("Long", comment="Long Exit")
+
+// Short entries / exits
+if short_entry
+    strategy.entry("Short", strategy.short)
+
+if short_exit
+    strategy.close("Short", comment="Short Exit")
+
+// ─────────────────────────────────────────────
+// BACKGROUND COLOR WHEN IN POSITION
+// ─────────────────────────────────────────────
+in_long  = strategy.position_size > 0
+in_short = strategy.position_size < 0
+
+bgcolor(
+     in_long  ? color.new(color.green, 88) :
+     in_short ? color.new(color.red,   88) :
+     na,
+     title="Position Background"
+ )
+
+// ─────────────────────────────────────────────
+// SIGNAL LABELS
+// ─────────────────────────────────────────────
+plotshape(
+     long_entry and not in_long,
+     title="Long Signal",
+     style=shape.triangleup,
+     location=location.belowbar,
+     color=color.new(color.green, 0),
+     size=size.small,
+     text="L"
+ )
+
+plotshape(
+     short_entry and not in_short,
+     title="Short Signal",
+     style=shape.triangledown,
+     location=location.abovebar,
+     color=color.new(color.red, 0),
+     size=size.small,
+     text="S"
+ )
+
+plotshape(
+     long_exit and in_long,
+     title="Long Exit Signal",
+     style=shape.xcross,
+     location=location.abovebar,
+     color=color.new(color.orange, 0),
+     size=size.small,
+     text="LX"
+ )
+
+plotshape(
+     short_exit and in_short,
+     title="Short Exit Signal",
+     style=shape.xcross,
+     location=location.belowbar,
+     color=color.new(color.blue, 0),
+     size=size.small,
+     text="SX"
+ )

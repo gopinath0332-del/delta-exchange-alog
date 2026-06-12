@@ -143,6 +143,31 @@ strategies:
     slow_ema_length: 20 # Slow EMA period
     allow_flip: true # Allow same-bar close & reverse
 
+  # EMA Channel Strategy (Long & Short)
+  # Upper Band = EMA(High, channel_length)
+  # Lower Band = EMA(Low,  channel_length)
+  # Trend Filter = EMA(Close, trend_length)
+  ema_channel:
+    trade_mode: "Both"        # "Long", "Short", "Both"
+    channel_length: 20        # EMA period for High/Low bands
+    trend_length: 200         # EMA period for 200 EMA trend filter
+    allow_flip: true          # Allow same-bar close & reverse on opposite direction
+
+    # ATR-based risk management
+    atr_period: 14            # ATR smoothing period
+    atr_mult_tp: 4.0          # ATR multiplier for take-profit target
+    atr_mult_trail: 2.0       # ATR multiplier for trailing stop (ratchets each candle)
+    enable_partial_tp: true   # Take partial profit (partial_pct) when TP level is reached
+    partial_pct: 0.5          # Fraction of position to exit at partial TP (0.5 = 50%)
+
+    # Optional hard stop-loss (% of margin, set null to disable)
+    # Example: 0.50 = exit when margin loss reaches 50%
+    stop_loss_pct: null
+
+    # Optional PnL % exit gate (% of margin unrealized PnL, set null to disable)
+    # Example: 200 = exit when unrealized PnL reaches 200% of margin
+    pnl_exit_pct: 100
+
   # BB Breakout + TTM Squeeze + RVOL + EMA + HTF Strategy
   bb_breakout:
     trade_mode: "Both" # "Long", "Short", "Both"

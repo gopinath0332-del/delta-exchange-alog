@@ -160,6 +160,11 @@ def run_strategy_terminal(
         strategy = BBBreakoutStrategy(symbol=symbol)
         strategy.timeframe = timeframe
         logger.info(f"Initialized BBBreakoutStrategy for {symbol}")
+    elif strategy_name.lower() in ["ema-channel", "ema_channel", "emachannel"]:
+        from strategies.ema_channel_strategy import EMAChannelStrategy
+        strategy = EMAChannelStrategy(symbol=symbol)
+        strategy.timeframe = timeframe
+        logger.info(f"Initialized EMAChannelStrategy for {symbol}")
     else:
         logger.error(f"Unknown strategy name: {strategy_name}")
         return
@@ -649,6 +654,13 @@ def run_strategy_terminal(
                              indicators = {
                                  'fast_ema': getattr(strategy, 'last_fast_ema', 0.0),
                                  'slow_ema': getattr(strategy, 'last_slow_ema', 0.0)
+                             }
+                         elif strategy_name.lower() in ["ema-channel", "ema_channel", "emachannel"]:
+                             # EMA Channel uses upper_band, lower_band, trend_ema
+                             indicators = {
+                                 'upper_band': getattr(strategy, 'last_upper_band', 0.0),
+                                 'lower_band': getattr(strategy, 'last_lower_band', 0.0),
+                                 'trend_ema':  getattr(strategy, 'last_trend_ema',  0.0),
                              }
                          else:
                              # Default: RSI-based strategies, or single indicator value

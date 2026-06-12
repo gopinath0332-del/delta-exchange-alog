@@ -187,6 +187,15 @@ def main():
             "desc": "Runs BB Breakout for ARCUSD, BTCUSD, ETHUSD in parallel threads. API calls serialized via shared client."
         },
         {
+            "id": 17,
+            "name": "BTCUSD EMA Channel Strategy (1H Standard)",
+            "symbol": "BTCUSD",
+            "monitor": "ema-channel",
+            "timeframe": "1h",
+            "candle_type": "standard",
+            "desc": "Long/Short: 20 EMA High/Low channel bands + 200 EMA trend filter. No SL — exit on opposite band breach."
+        },
+        {
             "id": 20,
             "name": "Master Service — All Configured Strategies (Multiple Strategies + Multiple Coins)",
             "master_mode": True,
