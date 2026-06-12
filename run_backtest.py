@@ -57,6 +57,9 @@ def get_strategy_instance(strategy_name: str, timeframe: str):
     elif name in ["bb-breakout", "bb_breakout", "bbbreakout"]:
         from strategies.bb_breakout_strategy import BBBreakoutStrategy
         strategy = BBBreakoutStrategy()
+    elif name in ["ema-channel", "ema_channel", "emachannel"]:
+        from strategies.ema_channel_strategy import EMAChannelStrategy
+        strategy = EMAChannelStrategy()
     else:
         raise ValueError(f"Unknown strategy: {strategy_name}")
         
@@ -261,7 +264,8 @@ def main():
             "rsi-supertrend",
             "donchian-channel",
             "ema-cross",
-            "bb-breakout"
+            "bb-breakout",
+            "ema-channel",
         ]
         print("Available Strategies:")
         for i, s in enumerate(strategies, 1):

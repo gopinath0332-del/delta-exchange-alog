@@ -143,6 +143,32 @@ strategies:
     slow_ema_length: 20 # Slow EMA period
     allow_flip: true # Allow same-bar close & reverse
 
+  # EMA Channel Strategy (Long & Short)
+  # Upper Band = EMA(High, channel_length)
+  # Lower Band = EMA(Low,  channel_length)
+  # Trend Filter = EMA(Close, trend_length)
+  ema_channel:
+    trade_mode: "Both"        # "Long", "Short", "Both"
+    channel_length: 20        # EMA period for High/Low bands
+    trend_length: 200         # EMA period for 200 EMA trend filter
+    allow_flip: true          # Allow same-bar close & reverse on opposite direction
+
+    # ATR-based risk management
+    atr_period: 14            # ATR smoothing period
+    atr_mult_tp: 4.0          # ATR multiplier for take-profit target
+    atr_mult_trail: 2.0       # ATR multiplier for trailing stop (ratchets each candle)
+    enable_trailing_stop: false  # Set to false to disable the ATR trailing stop entirely
+    enable_partial_tp: true   # Take partial profit (partial_pct) when TP level is reached
+    partial_pct: 0.5          # Fraction of position to exit at partial TP (0.5 = 50%)
+
+    # Optional hard stop-loss (% of margin, set null to disable)
+    # Example: 0.50 = exit when margin loss reaches 50%
+    stop_loss_pct: null
+
+    # Optional PnL % exit gate (% of margin unrealized PnL, set null to disable)
+    # Example: 200 = exit when unrealized PnL reaches 200% of margin
+    pnl_exit_pct: 100
+
   # BB Breakout + TTM Squeeze + RVOL + EMA + HTF Strategy
   bb_breakout:
     trade_mode: "Both" # "Long", "Short", "Both"
@@ -270,6 +296,36 @@ multi_coin:
   #       position_sizing_type: "atr" # Switch from "margin" to "atr"
   #       atr_margin_multiplier: 2.0 # 1.0 is aggressive, 2.0-3.0 is conservative
   #       log_file: "logs/river.log"
+  ema_channel:
+    mode: paper
+    symbols:
+      - symbol: WLDUSD
+        mode: paper
+        timeframe: 2h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 100
+        log_file: logs/wld_emach.log
+      - symbol: KAITOUSD
+        mode: paper
+        timeframe: 4h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 100
+        log_file: logs/kaito_emach.log
+      - symbol: BEATUSD
+        mode: paper
+        timeframe: 6h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 100
+        log_file: logs/beat_emach.log
 ####### EVERY TIME A NEW COIN IS ADDED, ADD IT UNDER single_coin (and multi_coin if applicable) IN settings.yaml ########
 
 # Single-Coin Symbol Settings
@@ -332,6 +388,12 @@ single_coin:
     leverage: 5
     target_margin: 100
   VVV:
+    leverage: 5
+    target_margin: 100
+  WLD:
+    leverage: 5
+    target_margin: 100
+  KAITO:
     leverage: 5
     target_margin: 100
 

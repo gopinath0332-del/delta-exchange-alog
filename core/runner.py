@@ -160,6 +160,11 @@ def run_strategy_terminal(
         strategy = BBBreakoutStrategy(symbol=symbol)
         strategy.timeframe = timeframe
         logger.info(f"Initialized BBBreakoutStrategy for {symbol}")
+    elif strategy_name.lower() in ["ema-channel", "ema_channel", "emachannel"]:
+        from strategies.ema_channel_strategy import EMAChannelStrategy
+        strategy = EMAChannelStrategy(symbol=symbol)
+        strategy.timeframe = timeframe
+        logger.info(f"Initialized EMAChannelStrategy for {symbol}")
     else:
         logger.error(f"Unknown strategy name: {strategy_name}")
         return
@@ -409,21 +414,52 @@ def run_strategy_terminal(
                      else:
                          closes = df['close'].astype(float)
 
-                     # 2. Run Backtest / Warmup (If first run or empty history)
+                     # 2. Run Backtest / Warmup
+                     # Always run to populate strategy.trades for the dashboard.
+                     # If live state was already restored from disk, snapshot the key
+                     # position fields beforehand and re-apply them afterwards so the
+                     # open trade is not clobbered by the backtest loop.
                      has_restored_live_state = (
                          getattr(strategy, 'current_position', 0) != 0
                          or getattr(strategy, 'entry_price', None) is not None
                          or getattr(strategy, 'restored_from_disk', False)
                      )
-                     if not strategy.trades and not strategy.active_trade and not has_restored_live_state:
-                         if len(df) > 1:
+                     if len(df) > 1:
+                         if has_restored_live_state:
+                             # Snapshot live position state before backtest overwrites it
+                             _snap_position      = getattr(strategy, 'current_position',    0)
+                             _snap_entry_price   = getattr(strategy, 'entry_price',         None)
+                             _snap_active_trade  = getattr(strategy, 'active_trade',        None)
+                             _snap_tp            = getattr(strategy, 'tp_level',            None)
+                             _snap_trail         = getattr(strategy, 'trailing_stop_level', None)
+                             _snap_initial_sl    = getattr(strategy, 'initial_sl_price',    None)
+                             _snap_partial_done  = getattr(strategy, 'partial_exit_done',   False)
+                             _snap_trade_id      = getattr(strategy, 'trade_id',            None)
+                             logger.info("Running backtest warmup for trade history (live state will be restored after)...")
+                         else:
                              logger.info("Backtesting history for warmup...")
-                             strategy.run_backtest(df.iloc[:-1])
-                             logger.info("Backtest warmup complete.")
-                             logger.info("Warmup complete. Position reconciliation will happen in the main loop.")
-                     elif has_restored_live_state:
-                         logger.info("Skipping backtest warmup because live strategy state is already restored.")
-                     
+
+                         strategy.run_backtest(df.iloc[:-1])
+                         logger.info("Backtest warmup complete.")
+
+                         if has_restored_live_state:
+                             # Re-apply the live position on top of the backtest trade list
+                             strategy.current_position    = _snap_position
+                             strategy.entry_price         = _snap_entry_price
+                             strategy.active_trade        = _snap_active_trade
+                             if hasattr(strategy, 'tp_level'):
+                                 strategy.tp_level            = _snap_tp
+                             if hasattr(strategy, 'trailing_stop_level'):
+                                 strategy.trailing_stop_level = _snap_trail
+                             if hasattr(strategy, 'initial_sl_price'):
+                                 strategy.initial_sl_price    = _snap_initial_sl
+                             if hasattr(strategy, 'partial_exit_done'):
+                                 strategy.partial_exit_done   = _snap_partial_done
+                             strategy.trade_id            = _snap_trade_id
+                             logger.info("Live position state restored on top of backtest history.")
+                         logger.info("Warmup complete. Position reconciliation will happen in the main loop.")
+
+
                      try:
                          # 3. CONSOLIDATED RECONCILIATION & POSITION FETCH
                          # Fetch live position data for signal check, dashboard, and reconciliation.
@@ -649,6 +685,13 @@ def run_strategy_terminal(
                              indicators = {
                                  'fast_ema': getattr(strategy, 'last_fast_ema', 0.0),
                                  'slow_ema': getattr(strategy, 'last_slow_ema', 0.0)
+                             }
+                         elif strategy_name.lower() in ["ema-channel", "ema_channel", "emachannel"]:
+                             # EMA Channel uses upper_band, lower_band, trend_ema
+                             indicators = {
+                                 'upper_band': getattr(strategy, 'last_upper_band', 0.0),
+                                 'lower_band': getattr(strategy, 'last_lower_band', 0.0),
+                                 'trend_ema':  getattr(strategy, 'last_trend_ema',  0.0),
                              }
                          else:
                              # Default: RSI-based strategies, or single indicator value

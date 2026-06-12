@@ -187,6 +187,21 @@ def main():
             "desc": "Runs BB Breakout for ARCUSD, BTCUSD, ETHUSD in parallel threads. API calls serialized via shared client."
         },
         {
+            "id": 17,
+            "name": "BTCUSD EMA Channel Strategy (1H Standard)",
+            "symbol": "BTCUSD",
+            "monitor": "ema-channel",
+            "timeframe": "1h",
+            "candle_type": "standard",
+            "desc": "Long/Short: 20 EMA High/Low channel bands + 200 EMA trend filter. No SL — exit on opposite band breach."
+        },
+        {
+            "id": 18,
+            "name": "EMA Channel — PIPPINUSD (1H Heikin Ashi)",
+            "multi_coin_key": "ema_channel",   # reads multi_coin.ema_channel from settings.yaml
+            "desc": "Runs EMA Channel strategy for PIPPINUSD. 20 EMA channel bands + 200 EMA trend filter + ATR trailing stop."
+        },
+        {
             "id": 20,
             "name": "Master Service — All Configured Strategies (Multiple Strategies + Multiple Coins)",
             "master_mode": True,
@@ -259,10 +274,11 @@ def main():
             print(f"Error: 'symbols' list is empty for multi_coin.{strategy_key} in settings.yaml.")
             sys.exit(1)
 
-        logger.info(f"Multi-coin mode: strategy={strategy_key}, symbols={[s['symbol'] for s in symbols_config]}")
+        strategy_mode = strategy_coin_cfg.get("mode", mode)
+        logger.info(f"Multi-coin mode: strategy={strategy_key}, symbols={[s['symbol'] for s in symbols_config]}, mode={strategy_mode}")
 
         try:
-            run_multi_symbol_terminal(config, strategy_key, symbols_config, mode)
+            run_multi_symbol_terminal(config, strategy_key, symbols_config, strategy_mode)
         except KeyboardInterrupt:
             print("\nExiting...")
             sys.exit(0)
