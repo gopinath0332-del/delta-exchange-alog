@@ -299,15 +299,33 @@ multi_coin:
   ema_channel:
     mode: paper
     symbols:
-      - symbol: PIPPINUSD
+      - symbol: WLDUSD
         mode: paper
-        timeframe: 1h
+        timeframe: 2h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         target_margin: 100
-        log_file: logs/pippin_emach.log
+        log_file: logs/wld_emach.log
+      - symbol: KAITOUSD
+        mode: paper
+        timeframe: 4h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 100
+        log_file: logs/kaito_emach.log
+      - symbol: BEATUSD
+        mode: paper
+        timeframe: 6h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 100
+        log_file: logs/beat_emach.log
 ####### EVERY TIME A NEW COIN IS ADDED, ADD IT UNDER single_coin (and multi_coin if applicable) IN settings.yaml ########
 
 # Single-Coin Symbol Settings
@@ -370,6 +388,12 @@ single_coin:
     leverage: 5
     target_margin: 100
   VVV:
+    leverage: 5
+    target_margin: 100
+  WLD:
+    leverage: 5
+    target_margin: 100
+  KAITO:
     leverage: 5
     target_margin: 100
 
