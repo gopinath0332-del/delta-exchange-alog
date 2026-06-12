@@ -227,14 +227,14 @@ multi_coin:
         atr_margin_multiplier: 2.0
         target_margin: 100
         log_file: logs/deep.log
-      - symbol: BERAUSD
+      - symbol: PIUSD
         timeframe: 4h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         target_margin: 100
-        log_file: logs/bera.log
+        log_file: logs/pi.log
       - symbol: IPUSD
         timeframe: 6h
         candle_type: heikin-ashi
@@ -292,7 +292,7 @@ single_coin:
   RIVER:
     leverage: 5
     target_margin: 100
-  BERA:
+  PIU:
     leverage: 5
     target_margin: 100
   PAXG:

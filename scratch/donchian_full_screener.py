@@ -84,13 +84,13 @@ SKIP_SYMBOLS = {
 
 def get_strategy(timeframe: str):
     from strategies.donchian_strategy import DonchianChannelStrategy
+    # All params loaded directly from settings.yaml — identical to live bot config.
     s = DonchianChannelStrategy()
     s._suppress_persistence = True
     s.timeframe = timeframe
     if hasattr(s, '_update_bars_per_day'):
         s._update_bars_per_day(timeframe)
     s.leverage = LEVERAGE
-    s.pnl_exit_pct = None  # baseline — no PnL exit
     return s
 
 
