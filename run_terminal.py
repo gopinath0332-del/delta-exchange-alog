@@ -274,10 +274,11 @@ def main():
             print(f"Error: 'symbols' list is empty for multi_coin.{strategy_key} in settings.yaml.")
             sys.exit(1)
 
-        logger.info(f"Multi-coin mode: strategy={strategy_key}, symbols={[s['symbol'] for s in symbols_config]}")
+        strategy_mode = strategy_coin_cfg.get("mode", mode)
+        logger.info(f"Multi-coin mode: strategy={strategy_key}, symbols={[s['symbol'] for s in symbols_config]}, mode={strategy_mode}")
 
         try:
-            run_multi_symbol_terminal(config, strategy_key, symbols_config, mode)
+            run_multi_symbol_terminal(config, strategy_key, symbols_config, strategy_mode)
         except KeyboardInterrupt:
             print("\nExiting...")
             sys.exit(0)
