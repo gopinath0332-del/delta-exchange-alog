@@ -157,6 +157,7 @@ strategies:
     atr_period: 14            # ATR smoothing period
     atr_mult_tp: 4.0          # ATR multiplier for take-profit target
     atr_mult_trail: 2.0       # ATR multiplier for trailing stop (ratchets each candle)
+    enable_trailing_stop: false  # Set to false to disable the ATR trailing stop entirely
     enable_partial_tp: true   # Take partial profit (partial_pct) when TP level is reached
     partial_pct: 0.5          # Fraction of position to exit at partial TP (0.5 = 50%)
 

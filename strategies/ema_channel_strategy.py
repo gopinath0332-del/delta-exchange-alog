@@ -1,5 +1,5 @@
 """
-EMA Channel Strategy — Long & Short (Production Grade)
+EMA Channel Strategy -- Long & Short (Production Grade)
 
 Pine Script equivalent (ema_channel_strategy.pine):
 
@@ -46,7 +46,7 @@ def _fmt(ts_ms: float) -> str:
 
 class EMAChannelStrategy(BaseStrategy):
     """
-    EMA Channel Strategy — Both Long and Short (production-grade).
+    EMA Channel Strategy -- Both Long and Short (production-grade).
 
     Channel:
         Upper Band = EMA(High,  channel_length)   [default 20]
@@ -57,7 +57,7 @@ class EMAChannelStrategy(BaseStrategy):
     Exits:
         Primary   : Band breach (close crosses opposite band)
         Secondary : ATR trailing stop (ratchets each candle)
-        Optional  : Partial TP at entry ± (ATR × atr_mult_tp)
+        Optional  : Partial TP at entry +/- (ATR * atr_mult_tp)
         Optional  : Fixed stop-loss % of margin
         Optional  : PnL % exit gate
         Optional  : Profit milestone partial exits
@@ -68,7 +68,7 @@ class EMAChannelStrategy(BaseStrategy):
     def __init__(self, symbol: str = "BTCUSD"):
         super().__init__(symbol, self.STRATEGY_NAME)
 
-        # ── Config ────────────────────────────────────────────────────────────
+        # -- Config ------------------------------------------------------------
         config = get_config()
         cfg = config.settings.get("strategies", {}).get(self.STRATEGY_NAME, {})
 
@@ -78,25 +78,26 @@ class EMAChannelStrategy(BaseStrategy):
         self.allow_flip     = cfg.get("allow_flip",      True)
 
         # ATR-based risk management
-        self.atr_period      = cfg.get("atr_period",       14)
-        self.atr_mult_tp     = cfg.get("atr_mult_tp",     4.0)
-        self.atr_mult_trail  = cfg.get("atr_mult_trail",  2.0)
-        self.enable_partial_tp = cfg.get("enable_partial_tp", True)
-        self.partial_pct       = cfg.get("partial_pct",      0.5)
+        self.atr_period          = cfg.get("atr_period",          14)
+        self.atr_mult_tp         = cfg.get("atr_mult_tp",        4.0)
+        self.atr_mult_trail      = cfg.get("atr_mult_trail",     2.0)
+        self.enable_trailing_stop = cfg.get("enable_trailing_stop", True)  # set False to disable
+        self.enable_partial_tp   = cfg.get("enable_partial_tp",  True)
+        self.partial_pct         = cfg.get("partial_pct",        0.5)
 
         # Optional exits
         self.stop_loss_pct = cfg.get("stop_loss_pct", None)   # e.g. 0.50 = 50% of margin
         self.pnl_exit_pct  = cfg.get("pnl_exit_pct",  None)   # e.g. 102 = 102% margin PnL
 
-        # ── Mode Flags ────────────────────────────────────────────────────────
+        # -- Mode Flags --------------------------------------------------------
         self.allow_long  = self.trade_mode in ["Long",  "Both"]
         self.allow_short = self.trade_mode in ["Short", "Both"]
 
-        # ── Strategy-specific persistent state ────────────────────────────────
+        # -- Strategy-specific persistent state --------------------------------
         self.tp_level          = None   # ATR take-profit price level
         self.partial_exit_done = False  # True after first partial TP fires
 
-        # ── Indicator Cache (live dashboard) ──────────────────────────────────
+        # -- Indicator Cache (live dashboard) ----------------------------------
         self.last_upper_band  = 0.0
         self.last_lower_band  = 0.0
         self.last_trend_ema   = 0.0
@@ -109,7 +110,7 @@ class EMAChannelStrategy(BaseStrategy):
 
         self.indicator_label = "EMACH"
 
-        # ── Restore state from disk (must happen after field defaults) ────────
+        # -- Restore state from disk (must happen after field defaults) --------
         self.restored_from_disk = self._load_from_disk()
 
         logger.info(
@@ -120,7 +121,7 @@ class EMAChannelStrategy(BaseStrategy):
             f"mode={self.trade_mode}, allow_flip={self.allow_flip}"
         )
 
-    # ── Timeframe Hook (REQUIRED by runner — without this the bot won't start) ─
+    # -- Timeframe Hook (REQUIRED by runner -- without this the bot won't start) -
 
     def _update_bars_per_day(self, timeframe: str):
         """Called by the runner after init to sync bars-per-day to the chosen TF."""
@@ -142,7 +143,7 @@ class EMAChannelStrategy(BaseStrategy):
         self.last_closed_lower     = 0.0
         self.last_closed_trend_ema = 0.0
 
-    # ── Custom Persistence ────────────────────────────────────────────────────
+    # -- Custom Persistence ----------------------------------------------------
 
     def save_state(self, extra_data: Optional[Dict[str, Any]] = None):
         """
@@ -185,7 +186,7 @@ class EMAChannelStrategy(BaseStrategy):
             self.initial_sl_price = state.get("initial_sl_price")
 
         logger.info(
-            f"[{self.symbol}] EMAChannelStrategy: state restored from disk — "
+            f"[{self.symbol}] EMAChannelStrategy: state restored from disk -- "
             f"partial_done={self.partial_exit_done}, "
             f"tp_level={self.tp_level}, "
             f"trail_sl={self.trailing_stop_level}, "
@@ -193,11 +194,11 @@ class EMAChannelStrategy(BaseStrategy):
         )
         return True
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # -- Helpers ---------------------------------------------------------------
 
     @staticmethod
     def _ema(series: pd.Series, length: int) -> pd.Series:
-        """Standard EMA using pandas ewm — matches Pine Script ta.ema()."""
+        """Standard EMA using pandas ewm -- matches Pine Script ta.ema()."""
         return series.astype(float).ewm(span=length, adjust=False).mean()
 
     def _compute_bands(self, df: pd.DataFrame):
@@ -215,7 +216,7 @@ class EMAChannelStrategy(BaseStrategy):
         tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         return tr.ewm(span=self.atr_period, adjust=False).mean()
 
-    # ── Interface: calculate_indicators ──────────────────────────────────────
+    # -- Interface: calculate_indicators --------------------------------------
 
     def calculate_indicators(
         self,
@@ -226,7 +227,7 @@ class EMAChannelStrategy(BaseStrategy):
         Calculate EMA Channel bands, 200 EMA trend filter, and ATR.
 
         Returns:
-            (upper_band, lower_band, trend_ema) — current (live) values.
+            (upper_band, lower_band, trend_ema) -- current (live) values.
         """
         min_needed = max(self.channel_length, self.trend_length, self.atr_period) + 1
         if df.empty or len(df) < min_needed:
@@ -264,7 +265,7 @@ class EMAChannelStrategy(BaseStrategy):
 
         return self.last_upper_band, self.last_lower_band, self.last_trend_ema
 
-    # ── Interface: check_signals ──────────────────────────────────────────────
+    # -- Interface: check_signals ----------------------------------------------
 
     def check_signals(
         self,
@@ -311,8 +312,8 @@ class EMAChannelStrategy(BaseStrategy):
 
         pos = self.current_position   # 0=flat, 1=long, -1=short
 
-        # ── 1. Update trailing stop (ratchet — never moves against position) ──
-        if self.trailing_stop_level is not None:
+        # -- 1. Update trailing stop (ratchet -- never moves against position) --
+        if self.enable_trailing_stop and self.trailing_stop_level is not None:
             if pos == 1:
                 new_stop = close_c - (atr_c * self.atr_mult_trail)
                 if new_stop > self.trailing_stop_level:
@@ -328,8 +329,8 @@ class EMAChannelStrategy(BaseStrategy):
                         f"[{self.symbol}] Trail stop ratcheted DOWN to {self.trailing_stop_level:.4f}"
                     )
 
-        # ── 2. Trailing stop exit (closed-candle) ─────────────────────────────
-        if self.trailing_stop_level is not None:
+        # -- 2. Trailing stop exit (closed-candle) -----------------------------
+        if self.enable_trailing_stop and self.trailing_stop_level is not None:
             if pos == 1 and close_c <= self.trailing_stop_level:
                 self.last_action_candle_ts = closed_candle_ts
                 return "EXIT_LONG", (
@@ -341,7 +342,7 @@ class EMAChannelStrategy(BaseStrategy):
                     f"Trailing SL Hit: {close_c:.4f} >= {self.trailing_stop_level:.4f}"
                 )
 
-        # ── 3. PnL % exit gate (live price, exchange data when available) ──────
+        # -- 3. PnL % exit gate (live price, exchange data when available) ------
         if self.pnl_exit_pct is not None and self.entry_price and pos != 0:
             pnl_pct = 0.0
             if live_pos_data:
@@ -366,7 +367,7 @@ class EMAChannelStrategy(BaseStrategy):
                 self.last_action_candle_ts = closed_candle_ts
                 return act, f"PnL Exit: {pnl_pct:.1f}% >= {self.pnl_exit_pct}%"
 
-        # ── 4. Partial TP (live price) ─────────────────────────────────────────
+        # -- 4. Partial TP (live price) -----------------------------------------
         if self.enable_partial_tp and not self.partial_exit_done and self.tp_level is not None:
             if pos == 1 and current_price >= self.tp_level:
                 return "PARTIAL_EXIT", (
@@ -377,9 +378,9 @@ class EMAChannelStrategy(BaseStrategy):
                     f"Partial TP Hit: {current_price:.4f} <= {self.tp_level:.4f}"
                 )
 
-        # ── 5. Band entry / exit (closed-candle) ──────────────────────────────
+        # -- 5. Band entry / exit (closed-candle) ------------------------------
 
-        # FLAT — check both entry directions
+        # FLAT -- check both entry directions
         if pos == 0:
             if self.allow_long and close_c > upper and close_c > trend:
                 self.entry_price = close_c
@@ -407,13 +408,13 @@ class EMAChannelStrategy(BaseStrategy):
                     f"& Close < Trend EMA ({trend:.4f})"
                 )
 
-        # LONG — check band exit
+        # LONG -- check band exit
         elif pos == 1:
             if close_c < lower:
                 self.last_action_candle_ts = closed_candle_ts
                 return "EXIT_LONG", f"Band Exit: Close ({close_c:.4f}) < Lower ({lower:.4f})"
 
-        # SHORT — check band exit
+        # SHORT -- check band exit
         elif pos == -1:
             if close_c > upper:
                 self.last_action_candle_ts = closed_candle_ts
@@ -421,7 +422,7 @@ class EMAChannelStrategy(BaseStrategy):
 
         return None, ""
 
-    # ── Interface: update_position_state ─────────────────────────────────────
+    # -- Interface: update_position_state -------------------------------------
 
     def update_position_state(
         self,
@@ -438,7 +439,7 @@ class EMAChannelStrategy(BaseStrategy):
             f"| T={self.last_trend_ema:.4f}"
         )
 
-        # ── Entry Long ────────────────────────────────────────────────────────
+        # -- Entry Long --------------------------------------------------------
         if action == "ENTRY_LONG":
             self.current_position  = 1
             self.entry_price       = price
@@ -465,7 +466,7 @@ class EMAChannelStrategy(BaseStrategy):
                 "logs":        [],
             }
 
-        # ── Entry Short ───────────────────────────────────────────────────────
+        # -- Entry Short -------------------------------------------------------
         elif action == "ENTRY_SHORT":
             self.current_position  = -1
             self.entry_price       = price
@@ -491,7 +492,7 @@ class EMAChannelStrategy(BaseStrategy):
                 "logs":        [],
             }
 
-        # ── Partial Exit ──────────────────────────────────────────────────────
+        # -- Partial Exit ------------------------------------------------------
         elif action == "PARTIAL_EXIT":
             self.partial_exit_done = True
             if self.active_trade:
@@ -507,7 +508,7 @@ class EMAChannelStrategy(BaseStrategy):
                 self.trades.append(partial)
                 self.active_trade["partial_exit"] = True
 
-        # ── Milestone Exit ────────────────────────────────────────────────────
+        # -- Milestone Exit ----------------------------------------------------
         elif action == "MILESTONE_EXIT":
             milestone_idx = 0
             exit_pct      = 0.0
@@ -533,7 +534,7 @@ class EMAChannelStrategy(BaseStrategy):
                 self.trades.append(ms_trade)
                 self.active_trade["milestone_exit"] = True
 
-        # ── Exit Long ─────────────────────────────────────────────────────────
+        # -- Exit Long ---------------------------------------------------------
         elif action == "EXIT_LONG":
             self.current_position = 0
             if self.active_trade:
@@ -559,7 +560,7 @@ class EMAChannelStrategy(BaseStrategy):
 
             self._clear_trade_levels()
 
-        # ── Exit Short ────────────────────────────────────────────────────────
+        # -- Exit Short --------------------------------------------------------
         elif action == "EXIT_SHORT":
             self.current_position = 0
             if self.active_trade:
@@ -598,7 +599,7 @@ class EMAChannelStrategy(BaseStrategy):
         self.trade_id          = None
         self.reset_milestones()
 
-    # ── Interface: reconcile_position ─────────────────────────────────────────
+    # -- Interface: reconcile_position -----------------------------------------
 
     def reconcile_position(
         self,
@@ -631,15 +632,15 @@ class EMAChannelStrategy(BaseStrategy):
             if self.current_position != expected_pos:
                 logger.warning(
                     f"[{self.symbol}] Reconcile: internal={self.current_position} "
-                    f"→ exchange={expected_pos} (size={size})"
+                    f"-> exchange={expected_pos} (size={size})"
                 )
             if price_changed:
                 logger.warning(
                     f"[{self.symbol}] Reconcile entry price: "
-                    f"internal={self.entry_price} → exchange={entry_price}"
+                    f"internal={self.entry_price} -> exchange={entry_price}"
                 )
 
-            # Cold start — try to restore from disk
+            # Cold start -- try to restore from disk
             if self.current_position == 0 and expected_pos != 0:
                 found = self._load_from_disk()
                 if found:
@@ -647,7 +648,7 @@ class EMAChannelStrategy(BaseStrategy):
                 else:
                     logger.info("[reconcile] Cold start: no persistent state found.")
 
-            # Genuine direction flip → clear all flags
+            # Genuine direction flip -> clear all flags
             truly_new = (self.current_position != 0 and self.current_position != expected_pos)
             old_position = self.current_position
 
@@ -671,7 +672,7 @@ class EMAChannelStrategy(BaseStrategy):
                     self.trades.append(self.active_trade)
                     self.active_trade = None
 
-                # ⚑ Full stale-state cleanup (parity with Donchian)
+                # (flag) Full stale-state cleanup (parity with Donchian)
                 self.entry_price         = None
                 self.tp_level            = None
                 self.trailing_stop_level = None
@@ -691,7 +692,7 @@ class EMAChannelStrategy(BaseStrategy):
             }
             self.entry_price = entry_price
             logger.info(
-                f"[{self.symbol}] Reconciled → {side} position "
+                f"[{self.symbol}] Reconciled -> {side} position "
                 f"(size={size}, entry={entry_price})"
             )
 
@@ -700,7 +701,7 @@ class EMAChannelStrategy(BaseStrategy):
 
         return action, reason
 
-    # ── Interface: run_backtest ───────────────────────────────────────────────
+    # -- Interface: run_backtest -----------------------------------------------
 
     def run_backtest(self, df: pd.DataFrame):
         """
@@ -767,8 +768,8 @@ class EMAChannelStrategy(BaseStrategy):
             indicators = {"upper_band": upper, "lower_band": lower, "trend_ema": trend}
             pos = self.current_position
 
-            # ── 1. Update trailing stop (ratchet) ─────────────────────────────
-            if self.trailing_stop_level is not None:
+            # -- 1. Update trailing stop (ratchet) -----------------------------
+            if self.enable_trailing_stop and self.trailing_stop_level is not None:
                 if pos == 1:
                     new_stop = close - (atr * self.atr_mult_trail)
                     if new_stop > self.trailing_stop_level:
@@ -778,7 +779,7 @@ class EMAChannelStrategy(BaseStrategy):
                     if new_stop < self.trailing_stop_level:
                         self.trailing_stop_level = new_stop
 
-            # ── 2. PnL % exit (using close price as approximation) ────────────
+            # -- 2. PnL % exit (using close price as approximation) ------------
             if self.pnl_exit_pct is not None and self.entry_price and pos != 0:
                 if pos == 1:
                     pnl_pct = (close - self.entry_price) / self.entry_price * self.leverage * 100
@@ -790,7 +791,7 @@ class EMAChannelStrategy(BaseStrategy):
                     self.update_position_state(act, ts_ms, indicators, close, rsn)
                     continue
 
-            # ── 3. Fixed SL hit (intra-candle using bar low/high) ─────────────
+            # -- 3. Fixed SL hit (intra-candle using bar low/high) -------------
             if self.initial_sl_price is not None:
                 if pos == 1 and low <= self.initial_sl_price:
                     self.update_position_state(
@@ -803,8 +804,8 @@ class EMAChannelStrategy(BaseStrategy):
                     )
                     continue
 
-            # ── 4. Trailing SL hit (intra-candle using bar low/high) ──────────
-            if self.trailing_stop_level is not None:
+            # -- 4. Trailing SL hit (intra-candle using bar low/high) ----------
+            if self.enable_trailing_stop and self.trailing_stop_level is not None:
                 if pos == 1 and low <= self.trailing_stop_level:
                     self.update_position_state(
                         "EXIT_LONG", ts_ms, indicators, self.trailing_stop_level, "Trailing SL Hit"
@@ -816,7 +817,7 @@ class EMAChannelStrategy(BaseStrategy):
                     )
                     continue
 
-            # ── 5. Partial TP (intra-candle using bar high/low) ───────────────
+            # -- 5. Partial TP (intra-candle using bar high/low) ---------------
             if self.enable_partial_tp and not self.partial_exit_done and self.tp_level is not None:
                 if pos == 1 and high >= self.tp_level:
                     self.update_position_state(
@@ -829,7 +830,7 @@ class EMAChannelStrategy(BaseStrategy):
                         f"Partial TP Hit: {self.tp_level:.4f}"
                     )
 
-            # ── 6. Profit milestones (intra-candle using bar high/low) ─────────
+            # -- 6. Profit milestones (intra-candle using bar high/low) ---------
             if self.enable_profit_milestones and self.entry_price and pos != 0:
                 for idx, milestone in enumerate(self.profit_milestones):
                     if self.milestones_hit[idx]:
@@ -852,7 +853,7 @@ class EMAChannelStrategy(BaseStrategy):
             # Re-read position after any early exit above
             pos = self.current_position
 
-            # ── 7. Band channel entries & exits ──────────────────────────────
+            # -- 7. Band channel entries & exits ------------------------------
             if pos == 0:
                 if self.allow_long and close > upper and close > trend:
                     self.tp_level            = close + (atr * self.atr_mult_tp)
