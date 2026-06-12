@@ -196,6 +196,12 @@ def main():
             "desc": "Long/Short: 20 EMA High/Low channel bands + 200 EMA trend filter. No SL — exit on opposite band breach."
         },
         {
+            "id": 18,
+            "name": "EMA Channel — PIPPINUSD (1H Heikin Ashi)",
+            "multi_coin_key": "ema_channel",   # reads multi_coin.ema_channel from settings.yaml
+            "desc": "Runs EMA Channel strategy for PIPPINUSD. 20 EMA channel bands + 200 EMA trend filter + ATR trailing stop."
+        },
+        {
             "id": 20,
             "name": "Master Service — All Configured Strategies (Multiple Strategies + Multiple Coins)",
             "master_mode": True,
