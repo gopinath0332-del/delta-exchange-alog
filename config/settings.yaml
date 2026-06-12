@@ -187,14 +187,14 @@ multi_coin:
         atr_margin_multiplier: 2.0
         target_margin: 100
         log_file: logs/pippin.log
-      - symbol: ZECUSD
+      - symbol: PENGUUSD
         timeframe: 1h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         target_margin: 100
-        log_file: logs/zec.log
+        log_file: logs/pengu.log
       - symbol: PAXGUSD
         timeframe: 1h
         candle_type: heikin-ashi
@@ -280,7 +280,7 @@ single_coin:
   PIPPIN:
     leverage: 5
     target_margin: 100
-  ZEC:
+  PENGU:
     leverage: 5
     target_margin: 100
   BIO:
