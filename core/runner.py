@@ -457,6 +457,30 @@ def run_strategy_terminal(
                                  strategy.partial_exit_done   = _snap_partial_done
                              strategy.trade_id            = _snap_trade_id
                              logger.info("Live position state restored on top of backtest history.")
+                         else:
+                             # No live state was on disk — the bot was flat before this restart.
+                             # The backtest may have ended mid-trade (last historical signal was
+                             # an open LONG/SHORT). Reset position to FLAT so that stale backtest
+                             # state does NOT leak into live reconciliation and trigger a false
+                             # EXIT signal every restart cycle.
+                             if strategy.current_position != 0:
+                                 logger.info(
+                                     f"[{symbol}] Backtest ended with open position "
+                                     f"({strategy.current_position}) but no live state on disk. "
+                                     f"Resetting to FLAT for live reconciliation."
+                                 )
+                             strategy.current_position    = 0
+                             strategy.entry_price         = None
+                             strategy.active_trade        = None
+                             if hasattr(strategy, 'tp_level'):
+                                 strategy.tp_level            = None
+                             if hasattr(strategy, 'trailing_stop_level'):
+                                 strategy.trailing_stop_level = None
+                             if hasattr(strategy, 'initial_sl_price'):
+                                 strategy.initial_sl_price    = None
+                             if hasattr(strategy, 'partial_exit_done'):
+                                 strategy.partial_exit_done   = False
+                             strategy.trade_id            = None
                          logger.info("Warmup complete. Position reconciliation will happen in the main loop.")
 
 
