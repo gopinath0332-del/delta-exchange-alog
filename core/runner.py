@@ -419,10 +419,20 @@ def run_strategy_terminal(
                      # If live state was already restored from disk, snapshot the key
                      # position fields beforehand and re-apply them afterwards so the
                      # open trade is not clobbered by the backtest loop.
+                     #
+                     # IMPORTANT: run_backtest() resets all in-memory state on every
+                     # cycle, so we must check the disk state file NOW (before the
+                     # backtest runs) to correctly detect an active paper/live trade.
+                     # Without this, paper mode always loses the position after the
+                     # first 10-min cycle because the in-memory state was wiped.
+                     from core.persistence import load_strategy_state as _load_state
+                     _disk_state = _load_state(symbol, strategy_name.replace("-", "_").replace("ema-channel", "ema_channel").replace("donchian-channel", "donchian_channel"))
+                     _disk_position = (_disk_state or {}).get('current_position', 0)
                      has_restored_live_state = (
                          getattr(strategy, 'current_position', 0) != 0
                          or getattr(strategy, 'entry_price', None) is not None
                          or getattr(strategy, 'restored_from_disk', False)
+                         or _disk_position != 0  # Active trade persisted to disk
                      )
                      if len(df) > 1:
                          if has_restored_live_state:
@@ -443,19 +453,31 @@ def run_strategy_terminal(
                          logger.info("Backtest warmup complete.")
 
                          if has_restored_live_state:
-                             # Re-apply the live position on top of the backtest trade list
-                             strategy.current_position    = _snap_position
-                             strategy.entry_price         = _snap_entry_price
-                             strategy.active_trade        = _snap_active_trade
-                             if hasattr(strategy, 'tp_level'):
-                                 strategy.tp_level            = _snap_tp
-                             if hasattr(strategy, 'trailing_stop_level'):
-                                 strategy.trailing_stop_level = _snap_trail
-                             if hasattr(strategy, 'initial_sl_price'):
-                                 strategy.initial_sl_price    = _snap_initial_sl
-                             if hasattr(strategy, 'partial_exit_done'):
-                                 strategy.partial_exit_done   = _snap_partial_done
-                             strategy.trade_id            = _snap_trade_id
+                             # Re-apply the live position on top of the backtest trade list.
+                             # For paper mode: if in-memory snap is FLAT (was wiped) but disk
+                             # has an active position, restore it from the disk state directly.
+                             if _snap_position == 0 and _disk_position != 0 and _disk_state:
+                                 logger.info(
+                                     f"[{symbol}] In-memory state was FLAT but disk shows active position "
+                                     f"({_disk_position}). Restoring from disk state for paper trade continuity."
+                                 )
+                                 strategy.load_state()
+                                 if hasattr(strategy, '_load_from_disk'):
+                                     strategy._load_from_disk()
+                                 strategy.restored_from_disk = True
+                             else:
+                                 strategy.current_position    = _snap_position
+                                 strategy.entry_price         = _snap_entry_price
+                                 strategy.active_trade        = _snap_active_trade
+                                 if hasattr(strategy, 'tp_level'):
+                                     strategy.tp_level            = _snap_tp
+                                 if hasattr(strategy, 'trailing_stop_level'):
+                                     strategy.trailing_stop_level = _snap_trail
+                                 if hasattr(strategy, 'initial_sl_price'):
+                                     strategy.initial_sl_price    = _snap_initial_sl
+                                 if hasattr(strategy, 'partial_exit_done'):
+                                     strategy.partial_exit_done   = _snap_partial_done
+                                 strategy.trade_id            = _snap_trade_id
                              logger.info("Live position state restored on top of backtest history.")
                          else:
                              # No live state was on disk — the bot was flat before this restart.
@@ -511,9 +533,11 @@ def run_strategy_terminal(
                              # If the strategy in memory believes it has an active position (strategy.current_position != 0),
                              # but the API returned flat (live_pos_data is None or size == 0.0),
                              # sleep for 2 seconds and retry the position fetch once to avoid false flat reconciliations.
+                             # NOTE: In PAPER mode, the exchange ALWAYS returns FLAT (no real orders placed),
+                             # so we skip this retry entirely — it is meaningless for paper trades.
                              strategy_pos = getattr(strategy, 'current_position', 0)
                              api_size = float(live_pos_data.get('size', 0.0)) if live_pos_data else 0.0
-                             if strategy_pos != 0 and api_size == 0.0:
+                             if strategy_pos != 0 and api_size == 0.0 and mode.lower() != "paper":
                                  logger.warning(
                                      f"[{symbol}] API returned FLAT position, but strategy memory is in an active position ({strategy_pos}). "
                                      f"Retrying position fetch in 2 seconds to mitigate transient API lag..."
@@ -590,6 +614,19 @@ def run_strategy_terminal(
                                      f"exchange position is already flat."
                                  )
                                  strategy.pending_exit_action = None
+
+                         # In PAPER mode, the exchange always returns FLAT (no real orders placed).
+                         # A reconciliation EXIT triggered by "exchange is FLAT" is always a false
+                         # positive in paper mode — suppress it so the paper trade is not closed
+                         # every 10 minutes. Real signal-based exits from check_signals() still fire.
+                         if recon_action and mode.lower() == "paper" and size == 0.0:
+                             logger.info(
+                                 f"[{symbol}] [PAPER] Suppressing reconciliation {recon_action} — "
+                                 f"exchange returns FLAT in paper mode (expected). "
+                                 f"Paper trade remains open."
+                             )
+                             recon_action = None
+                             recon_reason = ""
 
                          # If reconciliation triggered an exit (e.g. SL hit on exchange), journal it immediately
                          if recon_action:
