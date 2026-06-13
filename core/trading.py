@@ -326,10 +326,17 @@ def execute_strategy_signal(
     stop_loss_price: Optional[float] = None,
     is_reconciliation: bool = False,
     trade_id: Optional[str] = None,
+    strategy_current_position: int = 0,
     **kwargs
 ):
     """
     Execute a strategy signal by placing orders and sending notifications.
+
+    Args:
+        strategy_current_position: The strategy's in-memory current_position (0=flat,
+            1=long, -1=short). Used in paper mode as the duplicate-entry guard because
+            the exchange always returns FLAT (no real orders placed in paper mode), making
+            the normal exchange-based guard ineffective for paper trades.
     """
     # 1. Get symbol configuration
     trade_config = get_trade_config(symbol, sizing_config=sizing_config)
@@ -546,19 +553,32 @@ def execute_strategy_signal(
             logger.warning(f"Unknown action: {action}")
             return
 
-        # Prevent duplicate entries if position already exists
+        # Prevent duplicate entries if position already exists.
+        # In PAPER mode the exchange always returns FLAT (no real orders placed), so we
+        # cannot rely on get_positions() to detect an active paper trade. Instead we
+        # use the strategy's in-memory current_position passed by the runner.
         if is_entry:
-            try:
-                current_positions = client.get_positions(product_id=product_id)
-                # Filter for non-zero size just in case
-                active_position = next((p for p in current_positions if float(p.get('size', 0)) != 0), None)
-                
-                if active_position:
-                    logger.warning(f"Skipping {action} for {symbol}: Active position already exists (Size: {active_position.get('size')}).")
+            if mode == "paper":
+                if strategy_current_position != 0:
+                    logger.warning(
+                        f"[PAPER] Skipping {action} for {symbol}: "
+                        f"Strategy already has an active position "
+                        f"(current_position={strategy_current_position}). "
+                        f"No duplicate entry."
+                    )
                     return
-            except Exception as e:
-                logger.error(f"Failed to check existing positions for {symbol}: {e}")
-                return
+            else:
+                try:
+                    current_positions = client.get_positions(product_id=product_id)
+                    # Filter for non-zero size just in case
+                    active_position = next((p for p in current_positions if float(p.get('size', 0)) != 0), None)
+
+                    if active_position:
+                        logger.warning(f"Skipping {action} for {symbol}: Active position already exists (Size: {active_position.get('size')}).")
+                        return
+                except Exception as e:
+                    logger.error(f"Failed to check existing positions for {symbol}: {e}")
+                    return
 
         if not enable_orders or is_reconciliation:
             logger.warning(f"Order placement skipped for {symbol}. Reason: {'RECONCILIATION' if is_reconciliation else 'DISABLED'}. Action: {action}")

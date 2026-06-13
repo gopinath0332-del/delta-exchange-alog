@@ -650,6 +650,7 @@ def run_strategy_terminal(
                                  stop_loss_price=getattr(strategy, 'initial_sl_price', None),
                                  is_reconciliation=True,
                                  trade_id=existing_trade_id,
+                                 strategy_current_position=getattr(strategy, 'current_position', 0),
                                  max_price_seen=getattr(strategy, 'max_price_seen', None),
                                  min_price_seen=getattr(strategy, 'min_price_seen', None)
                              )
@@ -715,6 +716,7 @@ def run_strategy_terminal(
                              sizing_config=symbol_settings,
                              stop_loss_price=getattr(strategy, 'initial_sl_price', None),
                              trade_id=existing_trade_id,
+                             strategy_current_position=getattr(strategy, 'current_position', 0),
                              max_price_seen=getattr(strategy, 'max_price_seen', None),
                              min_price_seen=getattr(strategy, 'min_price_seen', None)
                          )
