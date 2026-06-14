@@ -445,6 +445,8 @@ def run_strategy_terminal(
                              _snap_initial_sl    = getattr(strategy, 'initial_sl_price',    None)
                              _snap_partial_done  = getattr(strategy, 'partial_exit_done',   False)
                              _snap_trade_id      = getattr(strategy, 'trade_id',            None)
+                             # Snapshot milestones_hit so backtest's reset_milestones() doesn't wipe them
+                             _snap_milestones_hit = list(getattr(strategy, 'milestones_hit', []))
                              logger.info("Running backtest warmup for trade history (live state will be restored after)...")
                          else:
                              logger.info("Backtesting history for warmup...")
@@ -478,6 +480,12 @@ def run_strategy_terminal(
                                  if hasattr(strategy, 'partial_exit_done'):
                                      strategy.partial_exit_done   = _snap_partial_done
                                  strategy.trade_id            = _snap_trade_id
+                                 # Restore milestones_hit — run_backtest() calls reset_milestones()
+                                 # which wipes in-memory state. Re-apply the pre-backtest snapshot
+                                 # so already-hit milestones don't re-fire after every cycle.
+                                 if hasattr(strategy, 'milestones_hit') and _snap_milestones_hit:
+                                     strategy.milestones_hit = _snap_milestones_hit
+                                     logger.info(f"[{symbol}] Restored milestones_hit from pre-backtest snapshot: {_snap_milestones_hit}")
                              logger.info("Live position state restored on top of backtest history.")
                          else:
                              # No live state was on disk — the bot was flat before this restart.
