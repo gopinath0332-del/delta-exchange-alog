@@ -574,15 +574,32 @@ def run_strategy_terminal(
                          
                          # Capture existing trade_id BEFORE reconciliation might clear it
                          existing_trade_id = getattr(strategy, 'trade_id', None)
-
-                         try:
-                             # Try matching Rule 3 signature first
-                             recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
-                         except TypeError:
+                         
+                         # PAPER MODE GUARD: In paper mode the exchange always returns FLAT
+                         # (size == 0) because no real orders are placed. Calling
+                         # reconcile_position() in this state causes strategies to run
+                         # their "exchange is flat but strategy thinks it's long/short"
+                         # cleanup path, which deletes the disk state file via
+                         # clear_strategy_state(). Once the file is gone the next cycle
+                         # (or any restart) cannot detect the open paper trade and fires
+                         # a duplicate entry. Skip reconciliation entirely for paper
+                         # mode when the exchange reports flat — signal-based exits from
+                         # check_signals() still fire normally.
+                         if mode.lower() == "paper" and size == 0.0:
+                             logger.info(
+                                 f"[{symbol}] [PAPER] Skipping reconcile_position — "
+                                 f"exchange always FLAT in paper mode (no real orders). "
+                                 f"Paper trade state preserved on disk."
+                             )
+                         else:
                              try:
-                                 recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price)
+                                 # Try matching Rule 3 signature first
+                                 recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price, live_pos_data=live_pos_data)
                              except TypeError:
-                                 recon_action, recon_reason = strategy.reconcile_position(size, entry_price)
+                                 try:
+                                     recon_action, recon_reason = strategy.reconcile_position(size, entry_price, current_market_price)
+                                 except TypeError:
+                                     recon_action, recon_reason = strategy.reconcile_position(size, entry_price)
 
                          # -------------------------------------------------------
                          # PENDING EXIT RETRY
