@@ -170,6 +170,78 @@ class TestTradingExecution(unittest.TestCase):
         
         print("ENTRY_SKIPPED Verified successfully.")
 
+    @patch('core.trading.journal_trade')
+    def test_paper_mode_exit_long_simulation(self, mock_journal_trade):
+        print("\nTesting Paper Mode Exit Long Simulation...")
+        
+        # Entry = 100.0, Exit = 110.0, Position = 1 (LONG)
+        # Size = 1 (default trade config size when active_position is None), Contract Value = 0.001
+        # Expected PnL: (110 - 100) * 1 * 0.001 = 0.01
+        # Expected fees: (100 + 110) * 1 * 0.001 * 0.0005 = 0.000105
+        
+        result = execute_strategy_signal(
+            client=self.mock_client,
+            notifier=self.mock_notifier,
+            symbol="BTCUSD",
+            action="EXIT_LONG",
+            price=110.0,
+            market_price=110.0,
+            rsi=45.0,
+            reason="Test Long Exit",
+            mode="paper",
+            strategy_name="TestStrategy",
+            entry_price=100.0,
+            strategy_current_position=1
+        )
+        
+        self.assertTrue(result['success'])
+        mock_journal_trade.assert_called_once()
+        journal_args = mock_journal_trade.call_args[1]
+        
+        self.assertAlmostEqual(journal_args['pnl'], 0.01)
+        self.assertAlmostEqual(journal_args['trading_fees'], 0.000105)
+        self.assertEqual(journal_args['funding_charges'], 0.0)
+        self.assertEqual(journal_args['entry_price'], 100.0)
+        self.assertEqual(journal_args['exit_price'], 110.0)
+        
+        print("Paper Mode Exit Long Simulation verified successfully.")
+
+    @patch('core.trading.journal_trade')
+    def test_paper_mode_exit_short_simulation(self, mock_journal_trade):
+        print("\nTesting Paper Mode Exit Short Simulation...")
+        
+        # Entry = 100.0, Exit = 90.0, Position = -1 (SHORT)
+        # Size = 1 (default trade config size when active_position is None), Contract Value = 0.001
+        # Expected PnL: (100 - 90) * 1 * 0.001 = 0.01
+        # Expected fees: (100 + 90) * 1 * 0.001 * 0.0005 = 0.000095
+        
+        result = execute_strategy_signal(
+            client=self.mock_client,
+            notifier=self.mock_notifier,
+            symbol="BTCUSD",
+            action="EXIT_SHORT",
+            price=90.0,
+            market_price=90.0,
+            rsi=45.0,
+            reason="Test Short Exit",
+            mode="paper",
+            strategy_name="TestStrategy",
+            entry_price=100.0,
+            strategy_current_position=-1
+        )
+        
+        self.assertTrue(result['success'])
+        mock_journal_trade.assert_called_once()
+        journal_args = mock_journal_trade.call_args[1]
+        
+        self.assertAlmostEqual(journal_args['pnl'], 0.01)
+        self.assertAlmostEqual(journal_args['trading_fees'], 0.000095)
+        self.assertEqual(journal_args['funding_charges'], 0.0)
+        self.assertEqual(journal_args['entry_price'], 100.0)
+        self.assertEqual(journal_args['exit_price'], 90.0)
+        
+        print("Paper Mode Exit Short Simulation verified successfully.")
+
 
 if __name__ == '__main__':
     unittest.main()

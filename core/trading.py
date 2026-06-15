@@ -327,6 +327,7 @@ def execute_strategy_signal(
     is_reconciliation: bool = False,
     trade_id: Optional[str] = None,
     strategy_current_position: int = 0,
+    entry_price: Optional[float] = None,
     **kwargs
 ):
     """
@@ -856,10 +857,39 @@ def execute_strategy_signal(
                     funding_charges = float(active_position.get('funding_pnl', 0.0))
             
             # Fallback if PnL is still None (e.g. paper mode or fetch failed)
-            if pnl is None and active_position:
-                pnl = float(active_position.get('unrealized_pnl', 0.0))
-            if trading_fees is None and active_position:
-                trading_fees = float(active_position.get('commission', 0.0))
+            if pnl is None:
+                if active_position:
+                    pnl = float(active_position.get('unrealized_pnl', 0.0))
+                elif mode == "paper" and entry_price and price:
+                    pos_direction = strategy_current_position
+                    if pos_direction == 0:
+                        if "LONG" in action:
+                            pos_direction = 1
+                        elif "SHORT" in action:
+                            pos_direction = -1
+                    
+                    if pos_direction != 0:
+                        pnl_points = price - entry_price
+                        if pos_direction == -1:
+                            pnl_points = -pnl_points
+                        pnl = pnl_points * order_size * contract_value
+                        logger.info(f"[PAPER] Simulated PnL: ${pnl:+,.4f} (Direction: {pos_direction}, Points: {pnl_points:.4f}, Size: {order_size})")
+
+            if trading_fees is None:
+                if active_position:
+                    trading_fees = float(active_position.get('commission', 0.0))
+                elif mode == "paper" and entry_price and price:
+                    # Calculate simulated trading fees (standard 0.05% taker fee for entry + exit notional value)
+                    entry_notional = entry_price * order_size * contract_value
+                    exit_notional = price * order_size * contract_value
+                    trading_fees = (entry_notional + exit_notional) * 0.0005
+                    logger.info(f"[PAPER] Simulated Trading Fees: ${trading_fees:.4f} (0.05% taker fee for entry & exit)")
+
+            if funding_charges is None:
+                if active_position:
+                    funding_charges = float(active_position.get('funding_pnl', 0.0))
+                elif mode == "paper":
+                    funding_charges = 0.0
 
             logger.info(f"Final exit metrics - PnL: ${pnl if pnl is not None else 0:+,.2f}, Fees: ${trading_fees if trading_fees is not None else 0:,.4f}, Funding: ${funding_charges if funding_charges is not None else 0:+,.4f}")
         
@@ -915,6 +945,8 @@ def execute_strategy_signal(
             # Try to get entry price from active_position if available
             if active_position:
                 entry_price_for_journal = float(active_position.get('entry_price', 0.0)) or None
+            elif mode == "paper" and entry_price:
+                entry_price_for_journal = entry_price
         
         # --- Premium Metrics Calculation ---
         risk_amount_usd = None
