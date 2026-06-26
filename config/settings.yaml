@@ -221,22 +221,22 @@ multi_coin:
         atr_margin_multiplier: 2.0
         target_margin: 100
         log_file: logs/pengu.log
-      - symbol: PAXGUSD
+      - symbol: SKYAIUSD
         timeframe: 1h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         target_margin: 100
-        log_file: logs/paxg.log
-      - symbol: RIVERUSD
+        log_file: logs/skyai.log
+      - symbol: HUSD
         timeframe: 2h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         target_margin: 100
-        log_file: logs/river_2h.log
+        log_file: logs/husd.log
       - symbol: EVAAUSD
         timeframe: 2h
         candle_type: heikin-ashi
@@ -245,6 +245,22 @@ multi_coin:
         atr_margin_multiplier: 2.0
         target_margin: 100
         log_file: logs/evaa_2h.log
+      - symbol: ZECUSD
+        timeframe: 2h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 100
+        log_file: logs/zec.log
+      - symbol: PIUSD
+        timeframe: 2h
+        candle_type: heikin-ashi
+        leverage: 5
+        position_sizing_type: "atr"
+        atr_margin_multiplier: 2.0
+        target_margin: 100
+        log_file: logs/pi.log
       - symbol: DEEPUSD
         timeframe: 4h
         candle_type: heikin-ashi
@@ -253,30 +269,22 @@ multi_coin:
         atr_margin_multiplier: 2.0
         target_margin: 100
         log_file: logs/deep.log
-      - symbol: PIUSD
+      - symbol: IPUSD
         timeframe: 4h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         target_margin: 100
-        log_file: logs/pi.log
-      - symbol: IPUSD
+        log_file: logs/ip.log
+      - symbol: EIGENUSD
         timeframe: 6h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         target_margin: 100
-        log_file: logs/ip_6h.log
-      - symbol: VVVUSD
-        timeframe: 6h
-        candle_type: heikin-ashi
-        leverage: 5
-        position_sizing_type: "atr"
-        atr_margin_multiplier: 2.0
-        target_margin: 100
-        log_file: logs/vvv_6h.log
+        log_file: logs/eigen.log
   # bb_breakout:
   #   mode: paper
   #   symbols:

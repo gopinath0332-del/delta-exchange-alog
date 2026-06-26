@@ -40,13 +40,14 @@ from backtest.candle_transform import apply_heikin_ashi
 PORTFOLIO = [
     {"symbol": "PIPPINUSD",  "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "PENGUUSD",   "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
-    {"symbol": "PAXGUSD",    "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
-    {"symbol": "RIVERUSD",   "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
+    {"symbol": "SKYAIUSD",   "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
+    {"symbol": "HUSD",        "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "EVAAUSD",    "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
+    {"symbol": "ZECUSD",      "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
+    {"symbol": "PIUSD",      "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "DEEPUSD",    "timeframe": "4h", "candle_type": "heikin-ashi", "leverage": 5},
-    {"symbol": "PIUSD",      "timeframe": "4h", "candle_type": "heikin-ashi", "leverage": 5},
-    {"symbol": "IPUSD",      "timeframe": "6h", "candle_type": "heikin-ashi", "leverage": 5},
-    {"symbol": "VVVUSD",     "timeframe": "6h", "candle_type": "heikin-ashi", "leverage": 5},
+    {"symbol": "IPUSD",      "timeframe": "4h", "candle_type": "heikin-ashi", "leverage": 5},
+    {"symbol": "EIGENUSD",   "timeframe": "6h", "candle_type": "heikin-ashi", "leverage": 5},
 ]
 
 STRATEGY_NAME = "donchian_channel"
