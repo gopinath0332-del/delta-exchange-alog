@@ -1463,9 +1463,10 @@ def _send_scanner_discord_messages(notifier: "NotificationManager", qualified: l
             lines.append(line)
         lines.append("\n*To trade these coins, add them manually to `config/settings.yaml` under `multi_coin.donchian_channel` and `single_coin`.*")
         notifier.send_status_message(
-            title="🔍 Delta Bot - New Coin Listing Qualified",
+            title="Delta Bot - New Coin Listing Qualified",
             message="\n".join(lines),
-            order_placement_enabled=True
+            order_placement_enabled=True,
+            use_ansi=False
         )
 
     if warnings:
@@ -1480,9 +1481,10 @@ def _send_scanner_discord_messages(notifier: "NotificationManager", qualified: l
             ]
             lines.append("\n*This coin has been automatically deleted from the monitored list. Please consider removing this coin from the active trading strategy in `settings.yaml`.*")
             notifier.send_status_message(
-                title="🚨 Delta Bot - Monitored Coin Removal Alert",
+                title="Delta Bot - Monitored Coin Removal Alert",
                 message="\n".join(lines),
-                order_placement_enabled=False
+                order_placement_enabled=False,
+                use_ansi=False
             )
 
 

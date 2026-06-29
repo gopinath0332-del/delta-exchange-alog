@@ -139,7 +139,7 @@ class NotificationManager:
             except Exception as e:
                 logger.error("Failed to send Discord error notification", error=str(e))
 
-    def send_status_message(self, title: str, message: str, order_placement_enabled: Optional[bool] = None):
+    def send_status_message(self, title: str, message: str, order_placement_enabled: Optional[bool] = None, use_ansi: bool = True):
         """
         Send status message to all enabled channels.
         
@@ -147,11 +147,12 @@ class NotificationManager:
             title: Message title
             message: Message content
             order_placement_enabled: If provided, will color-code Discord message based on order placement status
+            use_ansi: If True, uses code blocks to support ANSI coloring on Discord. If False, sends standard Markdown.
         """
         # Send to Discord with color support
         if self.discord:
-            # Use colored version if order_placement_enabled is provided
-            if hasattr(self.discord, 'send_status_message_with_color'):
+            # Use colored version if order_placement_enabled is provided and use_ansi is True
+            if use_ansi and hasattr(self.discord, 'send_status_message_with_color'):
                 self.discord.send_status_message_with_color(title, message, order_placement_enabled)
             else:
                 # Fallback to regular message
