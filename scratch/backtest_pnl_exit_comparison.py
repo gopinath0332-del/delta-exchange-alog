@@ -49,9 +49,9 @@ SYMBOLS = [
     {"symbol": "PAXGUSD",   "timeframe": "1h",  "candle_type": "heikin_ashi", "leverage": 5},
     {"symbol": "RIVERUSD",  "timeframe": "2h",  "candle_type": "heikin_ashi", "leverage": 5},
     {"symbol": "EVAAUSD",   "timeframe": "2h",  "candle_type": "heikin_ashi", "leverage": 5},
+    {"symbol": "VELVETUSD", "timeframe": "2h",  "candle_type": "heikin_ashi", "leverage": 5},
     {"symbol": "DEEPUSD",   "timeframe": "4h",  "candle_type": "heikin_ashi", "leverage": 5},
     {"symbol": "BERAUSD",   "timeframe": "4h",  "candle_type": "heikin_ashi", "leverage": 5},
-    {"symbol": "IPUSD",     "timeframe": "6h",  "candle_type": "heikin_ashi", "leverage": 5},
     {"symbol": "VVVUSD",    "timeframe": "6h",  "candle_type": "heikin_ashi", "leverage": 5},
 ]
 

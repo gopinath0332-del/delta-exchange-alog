@@ -66,9 +66,9 @@ SCORE_WEIGHTS = {
 # Current portfolio (for comparison table)
 CURRENT_PORTFOLIO = [
     ("PIPPINUSD", "1h"), ("PENGUUSD", "1h"), ("PAXGUSD", "1h"),
-    ("RIVERUSD", "2h"), ("EVAAUSD", "2h"),
+    ("RIVERUSD", "2h"), ("EVAAUSD", "2h"), ("VELVETUSD", "2h"),
     ("DEEPUSD", "4h"), ("PIUSD", "4h"),
-    ("IPUSD", "6h"), ("VVVUSD", "6h"),
+    ("VVVUSD", "6h"),
 ]
 
 def find_csv(data_root: str, symbol: str, timeframe: str) -> Path | None:

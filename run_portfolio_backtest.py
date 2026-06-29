@@ -45,8 +45,8 @@ PORTFOLIO = [
     {"symbol": "EVAAUSD",    "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "ZECUSD",      "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "PIUSD",      "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
+    {"symbol": "VELVETUSD",   "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "DEEPUSD",    "timeframe": "4h", "candle_type": "heikin-ashi", "leverage": 5},
-    {"symbol": "IPUSD",      "timeframe": "4h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "EIGENUSD",   "timeframe": "6h", "candle_type": "heikin-ashi", "leverage": 5},
 ]
 
