@@ -12,7 +12,7 @@ class MockStrategy:
         self.symbol = symbol
         self.current_position = 0
         self.partial_exit_done = False
-        self.milestones_hit = [False, False]
+        self.milestone_hit = False
         self.entry_price = None
         self.tp_level = None
         self.trailing_stop_level = None
@@ -29,7 +29,7 @@ class MockStrategy:
 
             state = {
                 "partial_exit_done": self.partial_exit_done,
-                "milestones_hit": self.milestones_hit,
+                "milestone_hit": self.milestone_hit,
                 "entry_price": self.entry_price,
                 "tp_level": self.tp_level,
                 "trailing_stop_level": self.trailing_stop_level,

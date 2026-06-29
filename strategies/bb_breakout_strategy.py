@@ -496,7 +496,10 @@ class BBBreakoutStrategy(BaseStrategy):
                 if 0 <= milestone_idx < len(self.profit_milestones):
                     milestone = self.profit_milestones[milestone_idx]
                     exit_pct = milestone.get("exit_pct", 0.0) if isinstance(milestone, dict) else getattr(milestone, "exit_pct", 0.0)
-                    self.milestones_hit[milestone_idx] = True
+                    # NOTE: milestone_hit is intentionally NOT set here.
+                    # It is set only in handle_milestone_state() after the exchange
+                    # confirms a real order was placed, preventing false positives
+                    # during backtest warmup.
 
                 milestone_trade = self.active_trade.copy()
                 milestone_trade["exit_time"] = fmt(current_time_ms)
@@ -698,25 +701,23 @@ class BBBreakoutStrategy(BaseStrategy):
                 bar_high = float(df["high"].iloc[i])
                 bar_low = float(df["low"].iloc[i])
                 
-                for idx, milestone in enumerate(self.profit_milestones):
-                    if self.milestones_hit[idx]:
-                        continue
-                        
-                    pnl_threshold = milestone["pnl_pct"]
-                    if self.current_position == 1:
-                        # Long milestone price
-                        milestone_price = self.entry_price * (1 + pnl_threshold / (100 * self.leverage))
-                        if bar_high >= milestone_price:
-                            reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={milestone['exit_pct']}"
-                            self.update_position_state("MILESTONE_EXIT", current_time_ms, None, milestone_price, reason)
-                            break # Only one milestone per bar
-                    else:
-                        # Short milestone price
-                        milestone_price = self.entry_price * (1 - pnl_threshold / (100 * self.leverage))
-                        if bar_low <= milestone_price:
-                            reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={milestone['exit_pct']}"
-                            self.update_position_state("MILESTONE_EXIT", current_time_ms, None, milestone_price, reason)
-                            break # Only one milestone per bar
+                if not self.milestone_hit:
+                    for idx, milestone in enumerate(self.profit_milestones):
+                        pnl_threshold = milestone["pnl_pct"]
+                        if self.current_position == 1:
+                            # Long milestone price
+                            milestone_price = self.entry_price * (1 + pnl_threshold / (100 * self.leverage))
+                            if bar_high >= milestone_price:
+                                reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={milestone['exit_pct']}"
+                                self.update_position_state("MILESTONE_EXIT", current_time_ms, None, milestone_price, reason)
+                                break # Only one milestone per bar
+                        else:
+                            # Short milestone price
+                            milestone_price = self.entry_price * (1 - pnl_threshold / (100 * self.leverage))
+                            if bar_low <= milestone_price:
+                                reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={milestone['exit_pct']}"
+                                self.update_position_state("MILESTONE_EXIT", current_time_ms, None, milestone_price, reason)
+                                break # Only one milestone per bar
 
             # ── Trailing Stop Ratchet ──────────────────────────────────────
             if self.use_atr_sl and self.trailing_stop_level is not None:

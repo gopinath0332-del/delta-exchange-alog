@@ -17,7 +17,7 @@ def test_numpy_persistence():
         "current_position": np.int64(1),
         "entry_price": np.float64(0.01883),
         "last_action_candle_ts": np.int64(1713060000000),
-        "milestones_hit": [np.bool_(True), False],
+        "milestone_hit": np.bool_(True),
         "arr": np.array([1, 2, 3])
     }
     

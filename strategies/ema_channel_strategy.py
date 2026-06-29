@@ -178,7 +178,12 @@ class EMAChannelStrategy(BaseStrategy):
             return False
 
         self.partial_exit_done = state.get("partial_exit_done", False)
-        self.milestones_hit    = state.get("milestones_hit", [False] * len(self.profit_milestones))
+        # Load boolean milestone flag; backwards-compat with old array format
+        raw = state.get("milestone_hit")
+        if raw is None:
+            old_arr = state.get("milestones_hit", [])
+            raw = bool(old_arr[0]) if old_arr else False
+        self.milestone_hit = bool(raw)
 
         if self.tp_level is None:
             self.tp_level = state.get("tp_level")
@@ -519,7 +524,10 @@ class EMAChannelStrategy(BaseStrategy):
             if 0 <= milestone_idx < len(self.profit_milestones):
                 ms = self.profit_milestones[milestone_idx]
                 exit_pct = ms.get("exit_pct", 0.0) if isinstance(ms, dict) else getattr(ms, "exit_pct", 0.0)
-                self.milestones_hit[milestone_idx] = True
+                # NOTE: milestone_hit is intentionally NOT set here.
+                # It is set only in handle_milestone_state() after the exchange
+                # confirms a real order was placed, preventing false positives
+                # during backtest warmup.
 
             if self.active_trade:
                 ms_trade = self.active_trade.copy()
@@ -832,23 +840,22 @@ class EMAChannelStrategy(BaseStrategy):
 
             # -- 6. Profit milestones (intra-candle using bar high/low) ---------
             if self.enable_profit_milestones and self.entry_price and pos != 0:
-                for idx, milestone in enumerate(self.profit_milestones):
-                    if self.milestones_hit[idx]:
-                        continue
-                    pnl_threshold = milestone["pnl_pct"] if isinstance(milestone, dict) else milestone.pnl_pct
-                    exit_pct      = milestone["exit_pct"] if isinstance(milestone, dict) else milestone.exit_pct
-                    if pos == 1:
-                        ms_price = self.entry_price * (1 + pnl_threshold / (100 * self.leverage))
-                        if high >= ms_price:
-                            rsn = f"Milestone {idx+1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
-                            self.update_position_state("MILESTONE_EXIT", ts_ms, indicators, ms_price, rsn)
-                            break
-                    else:
-                        ms_price = self.entry_price * (1 - pnl_threshold / (100 * self.leverage))
-                        if low <= ms_price:
-                            rsn = f"Milestone {idx+1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
-                            self.update_position_state("MILESTONE_EXIT", ts_ms, indicators, ms_price, rsn)
-                            break
+                if not self.milestone_hit:
+                    for idx, milestone in enumerate(self.profit_milestones):
+                        pnl_threshold = milestone["pnl_pct"] if isinstance(milestone, dict) else milestone.pnl_pct
+                        exit_pct      = milestone["exit_pct"] if isinstance(milestone, dict) else milestone.exit_pct
+                        if pos == 1:
+                            ms_price = self.entry_price * (1 + pnl_threshold / (100 * self.leverage))
+                            if high >= ms_price:
+                                rsn = f"Milestone {idx+1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
+                                self.update_position_state("MILESTONE_EXIT", ts_ms, indicators, ms_price, rsn)
+                                break
+                        else:
+                            ms_price = self.entry_price * (1 - pnl_threshold / (100 * self.leverage))
+                            if low <= ms_price:
+                                rsn = f"Milestone {idx+1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
+                                self.update_position_state("MILESTONE_EXIT", ts_ms, indicators, ms_price, rsn)
+                                break
 
             # Re-read position after any early exit above
             pos = self.current_position

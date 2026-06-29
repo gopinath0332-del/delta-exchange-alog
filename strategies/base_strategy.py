@@ -49,7 +49,8 @@ class BaseStrategy:
         cfg = config.settings.get("strategies", {}).get(strategy_name, {})
         self.enable_profit_milestones = cfg.get("enable_profit_milestones", global_milestones_enabled)
         self.profit_milestones = cfg.get("profit_milestones", global_milestones)
-        self.milestones_hit = [False] * len(self.profit_milestones)
+        # Single boolean: True only after a confirmed milestone order is placed on the exchange
+        self.milestone_hit = False
 
     def _calculate_atr(self, df, period=14) -> float:
         """
@@ -102,10 +103,11 @@ class BaseStrategy:
             else:
                 pnl_pct = ((self.entry_price - current_price) / self.entry_price) * 100 * self.leverage
 
+        # Only one milestone is supported; skip if already hit
+        if self.milestone_hit:
+            return None, ""
+
         for idx, milestone in enumerate(self.profit_milestones):
-            if self.milestones_hit[idx]:
-                continue
-            
             # Handle dictionary-based or object-based milestone definitions
             if isinstance(milestone, dict):
                 pnl_threshold = milestone.get("pnl_pct", 0.0)
@@ -124,7 +126,9 @@ class BaseStrategy:
 
     def handle_milestone_state(self, reason: str, price: float, current_time_ms: float):
         """
-        Update state after a MILESTONE_EXIT order executes.
+        Update state after a MILESTONE_EXIT order executes on the exchange.
+        This is the ONLY place milestone_hit is set to True — always called by the
+        runner after confirming a successful order placement, never during warmup backtest.
         """
         milestone_idx = 0
         exit_pct = 0.0
@@ -134,9 +138,10 @@ class BaseStrategy:
             if match:
                 milestone_idx = int(match.group(1)) - 1
         
+        # Mark the single milestone as hit (confirmed order placed on exchange)
+        self.milestone_hit = True
+
         if 0 <= milestone_idx < len(self.profit_milestones):
-            self.milestones_hit[milestone_idx] = True
-            
             # Handle dict vs object milestone definition
             milestone = self.profit_milestones[milestone_idx]
             if isinstance(milestone, dict):
@@ -189,7 +194,7 @@ class BaseStrategy:
                 "entry_price": self.entry_price,
                 "trailing_stop_level": self.trailing_stop_level,
                 "last_action_candle_ts": self.last_action_candle_ts,
-                "milestones_hit": self.milestones_hit,
+                "milestone_hit": self.milestone_hit,
                 "trade_id": self.trade_id,
                 "max_price_seen": self.max_price_seen,
                 "min_price_seen": self.min_price_seen,
@@ -219,7 +224,13 @@ class BaseStrategy:
             self.entry_price = state.get("entry_price")
             self.trailing_stop_level = state.get("trailing_stop_level")
             self.last_action_candle_ts = state.get("last_action_candle_ts")
-            self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
+            # Load boolean milestone flag; backwards-compat with old array format
+            raw = state.get("milestone_hit")
+            if raw is None:
+                # Old state file used an array — treat first element as the flag
+                old_arr = state.get("milestones_hit", [])
+                raw = bool(old_arr[0]) if old_arr else False
+            self.milestone_hit = bool(raw)
             self.trade_id = state.get("trade_id")
             self.max_price_seen = state.get("max_price_seen")
             self.min_price_seen = state.get("min_price_seen")
@@ -233,7 +244,7 @@ class BaseStrategy:
 
     def reset_milestones(self):
         """Reset the milestone state for a new trade."""
-        self.milestones_hit = [False] * len(self.profit_milestones)
+        self.milestone_hit = False
 
     def clear_state(self):
         """Delete the state file from disk and clear cached attributes."""
@@ -245,7 +256,7 @@ class BaseStrategy:
         self.max_price_seen = None
         self.min_price_seen = None
         self.initial_sl_price = None
-        self.reset_milestones()
+        self.milestone_hit = False
         if not self._suppress_persistence:
             clear_strategy_state(self.symbol, self.strategy_name)
 

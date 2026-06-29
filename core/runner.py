@@ -445,8 +445,8 @@ def run_strategy_terminal(
                              _snap_initial_sl    = getattr(strategy, 'initial_sl_price',    None)
                              _snap_partial_done  = getattr(strategy, 'partial_exit_done',   False)
                              _snap_trade_id      = getattr(strategy, 'trade_id',            None)
-                             # Snapshot milestones_hit so backtest's reset_milestones() doesn't wipe them
-                             _snap_milestones_hit = list(getattr(strategy, 'milestones_hit', []))
+                             # Snapshot milestone_hit so backtest's reset_milestones() doesn't wipe it
+                             _snap_milestone_hit = getattr(strategy, 'milestone_hit', False)
                              logger.info("Running backtest warmup for trade history (live state will be restored after)...")
                          else:
                              logger.info("Backtesting history for warmup...")
@@ -480,12 +480,12 @@ def run_strategy_terminal(
                                  if hasattr(strategy, 'partial_exit_done'):
                                      strategy.partial_exit_done   = _snap_partial_done
                                  strategy.trade_id            = _snap_trade_id
-                                 # Restore milestones_hit — run_backtest() calls reset_milestones()
+                                 # Restore milestone_hit — run_backtest() calls reset_milestones()
                                  # which wipes in-memory state. Re-apply the pre-backtest snapshot
-                                 # so already-hit milestones don't re-fire after every cycle.
-                                 if hasattr(strategy, 'milestones_hit') and _snap_milestones_hit:
-                                     strategy.milestones_hit = _snap_milestones_hit
-                                     logger.info(f"[{symbol}] Restored milestones_hit from pre-backtest snapshot: {_snap_milestones_hit}")
+                                 # so an already-hit milestone doesn't re-fire after every cycle.
+                                 if hasattr(strategy, 'milestone_hit'):
+                                     strategy.milestone_hit = _snap_milestone_hit
+                                     logger.info(f"[{symbol}] Restored milestone_hit from pre-backtest snapshot: {_snap_milestone_hit}")
                              logger.info("Live position state restored on top of backtest history.")
                          else:
                              # No live state was on disk — the bot was flat before this restart.
@@ -1048,8 +1048,8 @@ def run_strategy_terminal(
                     pts_str = get_points_str(t, closes.iloc[-1])
                     if t.get('milestone_exit'):
                         # Count how many milestones hit
-                        m_count = sum(1 for h in getattr(strategy, 'milestones_hit', []) if h)
-                        status = f"OPEN (M{m_count})"
+                        m_hit = getattr(strategy, 'milestone_hit', False)
+                        status = "OPEN (M1)" if m_hit else "OPEN"
                     elif t.get('partial_exit'):
                         status = "OPEN (P)"
                     else:

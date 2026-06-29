@@ -460,7 +460,10 @@ class DonchianChannelStrategy(BaseStrategy):
             if 0 <= milestone_idx < len(self.profit_milestones):
                 milestone = self.profit_milestones[milestone_idx]
                 exit_pct = milestone.get("exit_pct", 0.0) if isinstance(milestone, dict) else getattr(milestone, "exit_pct", 0.0)
-                self.milestones_hit[milestone_idx] = True
+                # NOTE: milestone_hit is intentionally NOT set here.
+                # It is set only in handle_milestone_state() after the exchange
+                # confirms a real order was placed, preventing false positives
+                # during backtest warmup.
 
             if self.active_trade:
                 milestone_trade = self.active_trade.copy()
@@ -570,7 +573,7 @@ class DonchianChannelStrategy(BaseStrategy):
 
         extra = {
             "partial_exit_done": self.partial_exit_done,
-            "milestones_hit": self.milestones_hit,
+            "milestone_hit": self.milestone_hit,
             "tp_level": self.tp_level,
             "initial_sl_price": self.initial_sl_price
         }
@@ -586,13 +589,18 @@ class DonchianChannelStrategy(BaseStrategy):
             return False
             
         self.partial_exit_done = state.get("partial_exit_done", False)
-        self.milestones_hit = state.get("milestones_hit", [False] * len(self.profit_milestones))
+        # Load boolean milestone flag; backwards-compat with old array format
+        raw = state.get("milestone_hit")
+        if raw is None:
+            old_arr = state.get("milestones_hit", [])
+            raw = bool(old_arr[0]) if old_arr else False
+        self.milestone_hit = bool(raw)
         
         # Restore levels if they aren't already set
         if self.tp_level is None: self.tp_level = state.get("tp_level")
         if self.initial_sl_price is None: self.initial_sl_price = state.get("initial_sl_price")
         
-        logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}, Milestones={self.milestones_hit}")
+        logger.info(f"Successfully restored trade state from disk for {self.symbol}: Partial={self.partial_exit_done}, MilestoneHit={self.milestone_hit}")
         return True
 
     def reconcile_position(self, size: float, entry_price: float, current_price: float = None, live_pos_data: Optional[Dict] = None) -> tuple[Optional[str], str]:
@@ -796,23 +804,22 @@ class DonchianChannelStrategy(BaseStrategy):
 
             # Profit Milestone Check (works alongside ATR partial TP)
             if self.enable_profit_milestones and self.entry_price and self.current_position != 0:
-                for idx, milestone in enumerate(self.profit_milestones):
-                    if self.milestones_hit[idx]:
-                        continue
-                    pnl_threshold = milestone["pnl_pct"]
-                    exit_pct = milestone["exit_pct"]
-                    if self.current_position == 1:
-                        milestone_price = self.entry_price * (1 + pnl_threshold / (100 * self.leverage))
-                        if high >= milestone_price:
-                            reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
-                            self.update_position_state("MILESTONE_EXIT", current_time_ms, indicators, milestone_price, reason)
-                            break  # Only one milestone per bar
-                    else:
-                        milestone_price = self.entry_price * (1 - pnl_threshold / (100 * self.leverage))
-                        if low <= milestone_price:
-                            reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
-                            self.update_position_state("MILESTONE_EXIT", current_time_ms, indicators, milestone_price, reason)
-                            break  # Only one milestone per bar
+                if not self.milestone_hit:
+                    for idx, milestone in enumerate(self.profit_milestones):
+                        pnl_threshold = milestone["pnl_pct"]
+                        exit_pct = milestone["exit_pct"]
+                        if self.current_position == 1:
+                            milestone_price = self.entry_price * (1 + pnl_threshold / (100 * self.leverage))
+                            if high >= milestone_price:
+                                reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
+                                self.update_position_state("MILESTONE_EXIT", current_time_ms, indicators, milestone_price, reason)
+                                break  # Only one milestone per bar
+                        else:
+                            milestone_price = self.entry_price * (1 - pnl_threshold / (100 * self.leverage))
+                            if low <= milestone_price:
+                                reason = f"Milestone {idx + 1}: PnL >= {pnl_threshold}% | exit_pct={exit_pct}"
+                                self.update_position_state("MILESTONE_EXIT", current_time_ms, indicators, milestone_price, reason)
+                                break  # Only one milestone per bar
 
             # Channel Logic: Use Prev Candle
             upper_prev = upper_channel.iloc[i-1]
