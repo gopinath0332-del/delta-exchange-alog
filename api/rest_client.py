@@ -328,15 +328,18 @@ class DeltaRestClient:
 
     # Product and Market Data Methods
 
-    def get_products(self) -> List[Dict[str, Any]]:
+    def get_products(self, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Get list of all available products.
+
+        Args:
+            params: Optional query parameters for filtering (e.g. {'states': 'live'})
 
         Returns:
             List of product dictionaries
         """
         logger.debug("Fetching products")
-        response = self._make_direct_request("/v2/products")
+        response = self._make_direct_request("/v2/products", params=params)
         products = response.get("result", [])
         logger.info("Fetched products", count=len(products))
         return cast(List[Dict[str, Any]], products)

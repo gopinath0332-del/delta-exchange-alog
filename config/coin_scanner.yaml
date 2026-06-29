@@ -1,0 +1,18 @@
+coin_scanner:
+  # Entry filter thresholds
+  min_listing_age_days: 7
+  max_listing_age_days: 30             # Scans only new listings (7 to 30 days old)
+  min_24h_volume_usd: 10000000        # $10M
+  min_rvol: 2.0
+  min_adx: 25                          # ADX(14) on 2H Heikin Ashi
+  min_adr_pct: 8.0                     # ATR(14)/Price % on 2H Heikin Ashi (Average Daily Range)
+  min_oi_growth_days: 3
+  require_above_ema20: true            # Close > EMA(20) on 2H Heikin Ashi
+  top_n_coins: 3                       # Report top N in Discord
+
+  # Removal thresholds
+  removal_volume_min: 10000000        # < $10M
+  removal_oi_pct_of_peak: 0.40        # < 40% of peak OI
+  removal_atr_pct_min: 3.0            # < 3%
+  removal_adx_min: 20
+  removal_adx_days: 30                # ADX < 20 for 30 consecutive days

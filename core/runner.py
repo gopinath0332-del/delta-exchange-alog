@@ -1412,6 +1412,16 @@ def run_master_terminal(
         logger.error("Master Service: No threads were prepared. Check your multi_coin config.")
         return
 
+    # Start background thread for daily coin scanning at 10:00 AM local time
+    scanner_thread = threading.Thread(
+        target=_run_daily_coin_scanner_loop,
+        args=(config, shared_client, shared_notifier),
+        name="daily_coin_scanner",
+        daemon=True
+    )
+    scanner_thread.start()
+    logger.info("Master Service: Daily Coin Scanner thread spawned")
+
     # Start all threads
     for t in threads:
         t.start()
@@ -1423,4 +1433,91 @@ def run_master_terminal(
             t.join()
     except KeyboardInterrupt:
         logger.info("Master Service interrupted — shutting down all threads.")
+
+
+def _get_seconds_until_next_10am() -> float:
+    """Calculate the number of seconds until the next 10:00 AM local time."""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    target = now.replace(hour=10, minute=0, second=0, microsecond=0)
+    if now >= target:
+        target += timedelta(days=1)
+    return (target - now).total_seconds()
+
+
+def _send_scanner_discord_messages(notifier: "NotificationManager", qualified: list, warnings: list):
+    """Format and send Discord embeds for new coin selections and removal alerts."""
+    if qualified:
+        lines = ["New perpetual contracts detected and qualified on 2H Heikin Ashi:\n"]
+        for idx, q in enumerate(qualified, 1):
+            line = (
+                f"{idx}. **{q['symbol']}** (Score: **{q['score']}**)\n"
+                f"   • **Listing Age**: {q['age_days']} days (Threshold: 7 to 30 days)\n"
+                f"   • **24H Volume**: ${q['volume_24h']/1e6:.2f}M (Threshold: > $10.0M)\n"
+                f"   • **RVOL**: {q['rvol']} (Threshold: > 2.0)\n"
+                f"   • **ADX(14)**: {q['adx']} (Threshold: > 25.0)\n"
+                f"   • **ATR% (ADR)**: {q['adr_pct']}% (Threshold: > 8.0%)\n"
+                f"   • **EMA(20) Filter**: Price (${q['last_close_ha']}) > EMA(20) (${q['last_ema20']}) (Pass)\n"
+                f"   • **OI Growth**: {q['consecutive_oi_days']} consecutive up-days (Pass)\n"
+            )
+            lines.append(line)
+        lines.append("\n*To trade these coins, add them manually to `config/settings.yaml` under `multi_coin.donchian_channel` and `single_coin`.*")
+        notifier.send_status_message(
+            title="🔍 Delta Bot - New Coin Listing Qualified",
+            message="\n".join(lines),
+            order_placement_enabled=True
+        )
+
+    if warnings:
+        for w in warnings:
+            lines = [
+                f"Monitored coin **{w['symbol']}** has met removal criteria:\n",
+                f"   • **Triggered Rules**: {', '.join(w['reasons'])}\n",
+                f"   • **24H Volume**: ${w['volume_24h']/1e6:.2f}M (Threshold: > $10.0M)\n",
+                f"   • **OI Status**: ${w['oi_value_usd']/1e6:.2f}M (Peak: ${w['peak_oi']/1e6:.2f}M)\n",
+                f"   • **ADX(14)**: {w['adx']:.2f}\n",
+                f"   • **ATR%**: {w['atr_pct']:.2f}%\n"
+            ]
+            lines.append("\n*This coin has been automatically deleted from the monitored list. Please consider removing this coin from the active trading strategy in `settings.yaml`.*")
+            notifier.send_status_message(
+                title="🚨 Delta Bot - Monitored Coin Removal Alert",
+                message="\n".join(lines),
+                order_placement_enabled=False
+            )
+
+
+def _run_daily_coin_scanner_loop(config: "Config", client: "DeltaRestClient", notifier: "NotificationManager"):
+    """Background thread loop for daily coin scanner."""
+    logger.info("Daily Coin Scanner thread is active.")
+    from core.coin_scanner import NewCoinScanner
+    import time
+    
+    # Start with a short delay on bot launch so strategy threads complete initial startups
+    time.sleep(30)
+    
+    try:
+        scanner = NewCoinScanner(client, config)
+        logger.info("Checking if startup coin scan is required...")
+        res = scanner.run_startup_check_if_needed()
+        if res:
+            logger.info("Startup coin scan complete. Sending notifications...")
+            qualified, warnings = res
+            _send_scanner_discord_messages(notifier, qualified, warnings)
+    except Exception as e:
+        logger.error(f"Error during startup coin scanner run: {e}", exc_info=True)
+
+    while True:
+        sleep_secs = _get_seconds_until_next_10am()
+        logger.info(f"Daily Coin Scanner sleeping for {sleep_secs:.1f}s until next 10:00 AM local time.")
+        time.sleep(sleep_secs)
+        
+        try:
+            logger.info("Executing scheduled Daily Coin Scan...")
+            scanner = NewCoinScanner(client, config)
+            qualified, warnings = scanner.run_daily_scan()
+            
+            logger.info(f"Daily scan finished. {len(qualified)} qualified, {len(warnings)} removal warnings.")
+            _send_scanner_discord_messages(notifier, qualified, warnings)
+        except Exception as e:
+            logger.error(f"Error in Daily Coin Scanner execution loop: {e}", exc_info=True)
 
