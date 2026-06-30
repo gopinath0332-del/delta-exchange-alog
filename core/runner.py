@@ -1450,15 +1450,23 @@ def _send_scanner_discord_messages(notifier: "NotificationManager", qualified: l
     if qualified:
         lines = ["New perpetual contracts detected and qualified on 2H Heikin Ashi:\n"]
         for idx, q in enumerate(qualified, 1):
+            filters = q.get("filters", {})
+            ema20_pass = "Pass" if filters.get("ema20", True) else "Fail"
+            oi_pass = "Pass" if filters.get("oi_growth", True) else "Fail"
+            rvol_pass = "Pass" if filters.get("rvol", True) else "Fail"
+            adx_pass = "Pass" if filters.get("adx", True) else "Fail"
+            adr_pass = "Pass" if filters.get("adr", True) else "Fail"
+            vol_pass = "Pass" if filters.get("volume", True) else "Fail"
+            
             line = (
                 f"{idx}. **{q['symbol']}** (Score: **{q['score']}**)\n"
                 f"   • **Listing Age**: {q['age_days']} days (Threshold: 7 to 30 days)\n"
-                f"   • **24H Volume**: ${q['volume_24h']/1e6:.2f}M (Threshold: > $10.0M)\n"
-                f"   • **RVOL**: {q['rvol']} (Threshold: > 2.0)\n"
-                f"   • **ADX(14)**: {q['adx']} (Threshold: > 25.0)\n"
-                f"   • **ATR% (ADR)**: {q['adr_pct']}% (Threshold: > 8.0%)\n"
-                f"   • **EMA(20) Filter**: Price (${q['last_close_ha']}) > EMA(20) (${q['last_ema20']}) (Pass)\n"
-                f"   • **OI Growth**: {q['consecutive_oi_days']} consecutive up-days (Pass)\n"
+                f"   • **24H Volume**: ${q['volume_24h']/1e6:.2f}M (Threshold: > $10.0M) ({vol_pass})\n"
+                f"   • **RVOL**: {q['rvol']} (Threshold: > 2.0) ({rvol_pass})\n"
+                f"   • **ADX(14)**: {q['adx']} (Threshold: > 25.0) ({adx_pass})\n"
+                f"   • **ATR% (ADR)**: {q['adr_pct']}% (Threshold: > 8.0%) ({adr_pass})\n"
+                f"   • **EMA(20) Filter**: Price (${q['last_close_ha']}) > EMA(20) (${q['last_ema20']}) ({ema20_pass})\n"
+                f"   • **OI Growth**: {q['consecutive_oi_days']} consecutive up-days ({oi_pass})\n"
             )
             lines.append(line)
         lines.append("\n*To trade these coins, add them manually to `config/settings.yaml` under `multi_coin.donchian_channel` and `single_coin`.*")

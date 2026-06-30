@@ -91,15 +91,16 @@ def main():
         else:
             print(" Sending test qualified coin embed and test removal warning embed...")
             
-            # Use real evaluated data if available
+            # Use real qualified data if available
+            real_qualified = [e for e in evaluated if e.get("passes")]
             test_qualified = []
-            if evaluated:
+            if real_qualified:
                 # Add the 'score' key if not already ranked
-                ranked_candidates = scanner.score_and_rank(evaluated)
+                ranked_candidates = scanner.score_and_rank(real_qualified)
                 test_qualified = ranked_candidates[:3]
-                print(f" Sending real-time data for: {[q['symbol'] for q in test_qualified]}")
+                print(f" Sending real-time qualified data for: {[q['symbol'] for q in test_qualified]}")
             else:
-                print(" No evaluated coins found; sending fallback TESTCOINUSD mock data...")
+                print(" No qualified coins found (passed all filters); sending fallback TESTCOINUSD mock data...")
                 test_qualified = [{
                     "symbol": "TESTCOINUSD",
                     "score": 82.5,
