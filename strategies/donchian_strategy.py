@@ -401,6 +401,13 @@ class DonchianChannelStrategy(BaseStrategy):
         if action == "ENTRY_LONG":
             self.current_position = 1
             self.last_entry_price = price
+            self.entry_price = price
+            
+            # Recalculate levels using actual execution price
+            self.tp_level = price + (atr_val * self.atr_mult_tp)
+            self.trailing_stop_level = price - (atr_val * self.atr_mult_trail)
+            logger.info(f"[{self.symbol}] Recalculated levels from execution price: {price:.4f} -> SL={self.trailing_stop_level:.4f}, TP={self.tp_level:.4f} (ATR={atr_val:.4f})")
+            
             self.active_trade = {
                 "type": "LONG",
                 "entry_time": format_time(current_time_ms),
@@ -419,6 +426,13 @@ class DonchianChannelStrategy(BaseStrategy):
         elif action == "ENTRY_SHORT":
             self.current_position = -1
             self.last_entry_price = price
+            self.entry_price = price
+            
+            # Recalculate levels using actual execution price
+            self.tp_level = price - (atr_val * self.atr_mult_tp)
+            self.trailing_stop_level = price + (atr_val * self.atr_mult_trail)
+            logger.info(f"[{self.symbol}] Recalculated levels from execution price: {price:.4f} -> SL={self.trailing_stop_level:.4f}, TP={self.tp_level:.4f} (ATR={atr_val:.4f})")
+            
             self.last_long_duration_bars = 0 # Reset duration counter
             self.active_trade = {
                 "type": "SHORT",
