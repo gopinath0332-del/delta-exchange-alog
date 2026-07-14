@@ -37,11 +37,12 @@ risk_management:
   fractional_margin_cap: 0.07 # Max 7% of account as margin per trade (Safe buffer for 10-coin portfolio)
   settlement_asset: "USD"    # Your wallet uses "USD" instead of "USDT"
 
-  # Global Profit Milestones (takes 30% at >=50% PnL, another 30% at >=100% PnL)
+  # Global Profit Milestones — Optimized: exit 50% at >=50% PnL
+  # Backtest result: exit_pct=0.50 yields +1,357% vs +748% with exit_pct=0.30
   enable_profit_milestones: true
   profit_milestones:
     - pnl_pct: 50.0 # Trigger at 50% Unrealized Margin PnL
-      exit_pct: 0.30 # Exit 30% of the current active position size
+      exit_pct: 0.50 # Exit 50% of the current active position size (optimized from 0.30)
     # - pnl_pct: 100.0 # Trigger at 100% Unrealized Margin PnL
     #   exit_pct: 0.30 # Exit 30% of the remaining active position size
 
