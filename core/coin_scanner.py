@@ -245,14 +245,16 @@ class NewCoinScanner:
             volume_24h = float(ticker.get("turnover_usd", ticker.get("volume", 0.0)))
             current_price = float(ticker.get("close", ticker.get("mark_price", 0.0)))
             current_oi = float(ticker.get("oi_value_usd", 0.0))
-            
+
+            # Always update OI snapshots before any filter checks so daily OI history
+            # accumulates even on low-volume days. This is required for the OI growth
+            # filter to have enough data points across consecutive days.
+            self.update_oi_snapshots(symbol, current_oi)
+
             # Minimum Volume Check
             min_vol = self.scanner_config.get("min_24h_volume_usd", 10000000)
             if volume_24h < min_vol:
                 return None
-                
-            # Update OI snapshots locally
-            self.update_oi_snapshots(symbol, current_oi)
             
             # 2. Fetch candles (last 30 days of 2H candles)
             # 30 days of 2H = 360 candles
