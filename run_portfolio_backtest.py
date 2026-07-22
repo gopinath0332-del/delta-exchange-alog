@@ -40,7 +40,7 @@ from backtest.candle_transform import apply_heikin_ashi
 PORTFOLIO = [
     # ── 1h ──────────────────────────────────────────────────────
     {"symbol": "PIPPINUSD",  "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
-    {"symbol": "PENGUUSD",   "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
+    {"symbol": "SNDKBUSD",   "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "SKYAIUSD",   "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "RIVERUSD",   "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "BEATUSD",    "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
