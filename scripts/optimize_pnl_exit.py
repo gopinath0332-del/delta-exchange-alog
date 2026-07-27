@@ -38,6 +38,7 @@ SYMBOLS = [
     "XPLUSD",
     "PIUSD",
     "HUSD",
+    "BANKUSD",
     "BEATUSD",
 ]
 

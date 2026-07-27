@@ -36,6 +36,7 @@ from backtest.candle_transform import apply_heikin_ashi
 # ─── Portfolio definition (mirrors multi_coin.donchian_channel in settings.yaml)
 PORTFOLIO = [
     {"symbol": "PIPPINUSD",  "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
+    {"symbol": "BANKUSD",    "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "SKYAIUSD",   "timeframe": "1h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "HUSD",        "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},
     {"symbol": "EVAAUSD",    "timeframe": "2h", "candle_type": "heikin-ashi", "leverage": 5},

@@ -65,7 +65,7 @@ SCORE_WEIGHTS = {
 # ─────────────────────────────────────────────────────────────
 # Current portfolio (for comparison table)
 CURRENT_PORTFOLIO = [
-    ("PIPPINUSD", "1h"), ("SKYAIUSD", "1h"), ("RIVERUSD", "1h"), ("BEATUSD", "1h"),
+    ("PIPPINUSD", "1h"), ("BANKUSD", "1h"), ("SKYAIUSD", "1h"), ("RIVERUSD", "1h"), ("BEATUSD", "1h"),
     ("HUSD", "2h"), ("EVAAUSD", "2h"), ("ZECUSD", "2h"), ("PIUSD", "2h"),
     ("DEEPUSD", "4h"),
 ]
