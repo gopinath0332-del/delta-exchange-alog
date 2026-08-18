@@ -49,7 +49,7 @@ risk_management:
 # Notification Settings
 notifications:
   discord_enabled: true
-  email_enabled: true
+  email_enabled: false
   alert_on_trade: true
   alert_on_error: true # Smart throttling re-enabled
   alert_on_position_open: true
@@ -207,14 +207,6 @@ multi_coin:
     mode: live
     symbols:
       # ── 1h ──────────────────────────────────────────────────────
-      - symbol: PIPPINUSD
-        timeframe: 1h
-        candle_type: heikin-ashi
-        leverage: 5
-        position_sizing_type: "atr"
-        atr_margin_multiplier: 2.0
-        target_margin: 100
-        log_file: logs/pippin.log
       - symbol: BANKUSD
         timeframe: 1h
         candle_type: heikin-ashi

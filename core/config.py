@@ -145,7 +145,11 @@ class Config:
         self.discord_error_webhook_url = os.getenv("DISCORD_ERROR_WEBHOOK_URL", "")  # Separate webhook for errors
         self.discord_enabled = os.getenv("DISCORD_ENABLED", "true").lower() == "true"
 
-        self.email_enabled = os.getenv("EMAIL_ENABLED", "true").lower() == "true"
+        # Load notification settings from YAML (single source of truth for notifications)
+        notifications_settings = self.settings.get("notifications", {})
+        self.notifications = NotificationsConfig(**notifications_settings)
+        self.email_enabled = self.notifications.email_enabled
+
         self.email_smtp_host = os.getenv("EMAIL_SMTP_HOST", "smtp.gmail.com")
         self.email_smtp_port = int(os.getenv("EMAIL_SMTP_PORT", "587"))
         self.email_use_tls = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
@@ -153,10 +157,6 @@ class Config:
         self.email_password = os.getenv("EMAIL_PASSWORD", "")
         self.email_from = os.getenv("EMAIL_FROM", self.email_username)
         self.email_recipients = os.getenv("EMAIL_RECIPIENTS", "").split(",")
-
-        # Load notification settings from YAML
-        notifications_settings = self.settings.get("notifications", {})
-        self.notifications = NotificationsConfig(**notifications_settings)
 
     def _init_database_config(self):
         """Initialize database configuration."""
