@@ -207,14 +207,14 @@ multi_coin:
     mode: live
     symbols:
       # ── 1h ──────────────────────────────────────────────────────
-      - symbol: BANKUSD
+      - symbol: DASHUSD
         timeframe: 1h
         candle_type: heikin-ashi
         leverage: 5
         position_sizing_type: "atr"
         atr_margin_multiplier: 2.0
         target_margin: 100
-        log_file: logs/bank.log
+        log_file: logs/dash.log
       - symbol: SKYAIUSD
         timeframe: 1h
         candle_type: heikin-ashi
