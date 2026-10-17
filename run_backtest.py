@@ -54,6 +54,9 @@ def get_strategy_instance(strategy_name: str, timeframe: str):
     elif name in ["ema-cross", "ema_cross", "emacross"]:
         from strategies.ema_cross_strategy import EMACrossStrategy
         strategy = EMACrossStrategy()
+    elif name in ["ema-crossover", "ema_crossover", "emacrossover", "ema-cross-over"]:
+        from strategies.ema_crossover_strategy import EMACrossoverStrategy
+        strategy = EMACrossoverStrategy()
     elif name in ["bb-breakout", "bb_breakout", "bbbreakout"]:
         from strategies.bb_breakout_strategy import BBBreakoutStrategy
         strategy = BBBreakoutStrategy()
@@ -183,6 +186,7 @@ def run_backtest_for_file(
         return None
         
     trade_cfg = get_trade_config(symbol)
+    strategy.symbol = symbol
     
     # Sync leverage to strategy so internal PnL targets (Milestones, etc.) are correct
     strategy.leverage = trade_cfg['leverage']
@@ -264,6 +268,7 @@ def main():
             "rsi-supertrend",
             "donchian-channel",
             "ema-cross",
+            "ema-crossover",
             "bb-breakout",
             "ema-channel",
         ]

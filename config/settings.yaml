@@ -144,6 +144,43 @@ strategies:
     slow_ema_length: 20 # Slow EMA period
     allow_flip: true # Allow same-bar close & reverse
 
+  # EMA Crossover Strategy (CrudeOil — ema-cross-over.pin)
+  # 3-layer filter: EMA cross + 200 EMA trend + ADX choppiness
+  # Donchian-style risk management: ATR trail, partial TP, milestone exit
+  ema_crossover:
+    trade_mode: "Both"        # "Long", "Short", "Both"
+    fast_len: 20              # Fast EMA period (Pine default 20)
+    slow_len: 50              # Slow EMA period (Pine default 50)
+
+    # 200 EMA Trend Filter
+    use_trend_filter: true    # Only long above / short below EMA(200)
+    trend_len: 200            # Trend EMA length
+    allow_breakout: true      # Re-enter when price/fast EMA breaks 200 EMA while EMAs already crossed
+
+    # ADX Choppiness Filter
+    use_adx_filter: true      # Skip entries in ranging markets
+    adx_len: 15               # ADX Wilder-smoothing period
+    adx_thresh: 20.0          # Minimum ADX to allow entry (raise to 25 for stricter filter)
+
+    # General
+    allow_flip: true          # Allow same-bar close & reverse on opposite signal
+
+    # ATR-based Risk Management (Donchian-style)
+    atr_period: 14            # ATR smoothing period
+    atr_mult_tp: 4.0          # ATR multiplier for partial take-profit target
+    atr_mult_trail: 2.0       # ATR multiplier for trailing stop (ratchets each candle)
+    enable_partial_tp: true   # Exit partial_pct of position when TP level is reached
+    partial_pct: 0.50         # Fraction to exit at partial TP (0.50 = 50%)
+
+    # Optional hard stop-loss (% of margin, null = disabled)
+    stop_loss_pct: null       # e.g. 0.50 = close when margin loss reaches 50%
+
+    # Optional PnL % exit gate (% of margin unrealised PnL, null = disabled)
+    pnl_exit_pct: null        # e.g. 100 = close when unrealised PnL >= 100% of margin
+
+    # History for backtest warmup
+    historical_days: 90
+
   # EMA Channel Strategy (Long & Short)
   # Upper Band = EMA(High, channel_length)
   # Lower Band = EMA(Low,  channel_length)

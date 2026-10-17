@@ -1,0 +1,112 @@
+//@version=5
+strategy("CrudeOil - EMA Crossover",
+     overlay=true,
+     initial_capital=100000,
+     commission_type=strategy.commission.percent,
+     commission_value=0.05,           // 0.05% default commission
+     pyramiding=0,
+     calc_on_order_fills=true,
+     calc_on_every_tick=false)
+
+// ===== Inputs =====
+grpEMA           = "EMA Settings"
+fastLen          = input.int(20,   "Fast EMA (e.g., 20)", minval=1, group=grpEMA)
+slowLen          = input.int(50,   "Slow EMA (e.g., 50)", minval=1, group=grpEMA)
+
+grpTrend         = "200 EMA Trend Filter"
+useTrendFilter   = input.bool(true,"Use Trend Filter (200 EMA)", group=grpTrend)
+trendLen         = input.int(200,  "Trend EMA Length", minval=1, group=grpTrend)
+allowBreakout    = input.bool(true,"Allow Entry on 200 EMA Breakout (if EMA already crossed)", group=grpTrend)
+
+grpADX           = "Choppiness Filter (ADX)"
+useADXFilter     = input.bool(true,"Filter Choppy Markets with ADX", group=grpADX)
+adxLen           = input.int(15,   "ADX Smoothing Length", minval=1, group=grpADX)
+adxThresh        = input.int(20,   "Min ADX Threshold (e.g., 20–25)", minval=1, maxval=50, group=grpADX)
+
+grpGen           = "General Settings"
+dirInput         = input.string("BOTH", "Trade Direction", options=["LONG", "SHORT", "BOTH"], group=grpGen)
+allowFlip        = input.bool(true,"Allow same-bar flip (close & reverse on same bar)", group=grpGen)
+plotBg           = input.bool(true,"Highlight background by position", group=grpGen)
+
+// NOTE: Commission must be set in the strategy() call.
+// If you want to change commission from the UI, edit the value above or clone with different presets.
+
+// ===== Calculations =====
+emaFast  = ta.ema(close, fastLen)
+emaSlow  = ta.ema(close, slowLen)
+emaTrend = ta.ema(close, trendLen)
+
+// ADX Calculation for Choppiness Filtering
+[diplus, diminus, adxVal] = ta.dmi(adxLen, adxLen)
+adxOk = not useADXFilter or adxVal >= adxThresh
+
+rawLongCross  = ta.crossover(emaFast, emaSlow)   // 20 crosses above 50
+rawShortCross = ta.crossunder(emaFast, emaSlow)  // 20 crosses below 50
+
+// Trend filter conditions
+trendLongOk  = not useTrendFilter or close > emaTrend
+trendShortOk = not useTrendFilter or close < emaTrend
+
+tradeLong  = dirInput == "LONG"  or dirInput == "BOTH"
+tradeShort = dirInput == "SHORT" or dirInput == "BOTH"
+
+// 1) Standard entry: EMA cross occurs while already above/below 200 EMA
+stdLongCond  = rawLongCross and trendLongOk
+stdShortCond = rawShortCross and trendShortOk
+
+// 2) Breakout entry: EMA crossover happened earlier, and now price or fast EMA crosses 200 EMA
+breakLongCond  = allowBreakout and useTrendFilter and (ta.crossover(close, emaTrend) or ta.crossover(emaFast, emaTrend)) and (emaFast > emaSlow)
+breakShortCond = allowBreakout and useTrendFilter and (ta.crossunder(close, emaTrend) or ta.crossunder(emaFast, emaTrend)) and (emaFast < emaSlow)
+
+// Combined entry conditions with ADX Momentum / Choppiness filter
+longEntryCond  = (stdLongCond or breakLongCond) and adxOk and tradeLong
+shortEntryCond = (stdShortCond or breakShortCond) and adxOk and tradeShort
+
+// ===== Plotting =====
+plot(emaFast, "EMA Fast", color=color.new(color.teal, 0),  linewidth=2)
+plot(emaSlow, "EMA Slow", color=color.new(color.orange, 0), linewidth=2)
+plot(useTrendFilter ? emaTrend : na, "EMA 200 Trend", color=color.new(color.white, 0), linewidth=2)
+
+// Plot ADX in Data Window (does not scale or distort main price overlay)
+plot(adxVal, "ADX Value", display=display.data_window)
+
+plotshape(longEntryCond and strategy.position_size <= 0,  title="Bullish Entry", style=shape.triangleup,   location=location.belowbar, color=color.new(color.teal, 0),  size=size.tiny, text="▲")
+plotshape(shortEntryCond and strategy.position_size >= 0, title="Bearish Entry", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.tiny, text="▼")
+
+// Background highlight must be called at global scope; use na when disabled
+bgCol = plotBg ? strategy.position_size > 0 ? color.new(color.teal, 85) : strategy.position_size < 0 ? color.new(color.orange, 85): na    : na
+bgcolor(bgCol)
+
+// ===== Order Logic =====
+// 1) Exit conditions first — ensures we close the previous position before any new entry.
+if strategy.position_size > 0 and rawShortCross
+    strategy.close("Long", comment="Long Exit (bearish cross)")
+
+if strategy.position_size < 0 and rawLongCross
+    strategy.close("Short", comment="Short Exit (bullish cross)")
+
+// 2) Entries
+if allowFlip
+    // Permit close & reverse on the same bar
+    if longEntryCond and strategy.position_size <= 0
+        if strategy.position_size < 0
+            strategy.close("Short", comment="Flip to Long")
+        strategy.entry("Long", strategy.long)
+
+    if shortEntryCond and strategy.position_size >= 0
+        if strategy.position_size > 0
+            strategy.close("Long", comment="Flip to Short")
+        strategy.entry("Short", strategy.short)
+else
+    // Only enter when flat
+    if strategy.position_size == 0
+        if longEntryCond
+            strategy.entry("Long", strategy.long)
+        if shortEntryCond
+            strategy.entry("Short", strategy.short)
+
+// ===== Alerts =====
+alertcondition(longEntryCond,  title="Long Entry",  message="Bullish Entry (EMA Cross / 200 Breakout with ADX Momentum)")
+alertcondition(shortEntryCond, title="Short Entry", message="Bearish Entry (EMA Cross / 200 Breakout with ADX Momentum)")
+alertcondition(strategy.position_size > 0 and rawShortCross, title="Long Exit",  message="Opposite cross → Close Long")
+alertcondition(strategy.position_size < 0 and rawLongCross,  title="Short Exit", message="Opposite cross → Close Short")

@@ -155,6 +155,11 @@ def run_strategy_terminal(
         strategy = EMACrossStrategy(symbol=symbol)
         strategy.timeframe = timeframe
         logger.info(f"Initialized EMACrossStrategy for {symbol}")
+    elif strategy_name.lower() in ["ema-crossover", "ema_crossover", "emacrossover", "ema-cross-over"]:
+        from strategies.ema_crossover_strategy import EMACrossoverStrategy
+        strategy = EMACrossoverStrategy(symbol=symbol)
+        strategy.timeframe = timeframe
+        logger.info(f"Initialized EMACrossoverStrategy for {symbol}")
     elif strategy_name.lower() in ["bb-breakout", "bb_breakout", "bbbreakout"]:
         from strategies.bb_breakout_strategy import BBBreakoutStrategy
         strategy = BBBreakoutStrategy(symbol=symbol)
